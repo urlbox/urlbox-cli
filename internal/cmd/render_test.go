@@ -2,8 +2,10 @@ package cmd
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -136,6 +138,148 @@ func TestBatchDryRunAcceptsWebhookURLFlag(t *testing.T) {
 	}
 }
 
+func TestRenderDryRunAcceptsInlineHTMLFlag(t *testing.T) {
+	output, exitCode := captureStdoutAndStderr(t, func() int {
+		return runRender([]string{
+			"--html", "<html><body><h1>Hello</h1></body></html>",
+			"--format", "png",
+			"--dry-run",
+			"--output-format", "json",
+		})
+	})
+
+	if exitCode != 0 {
+		t.Fatalf("unexpected exit code: %d\noutput:\n%s", exitCode, output)
+	}
+	payload := decodeRenderJSONOutput(t, output)
+	if got, want := payload["html"], "<html><body><h1>Hello</h1></body></html>"; got != want {
+		t.Fatalf("unexpected html: got %#v want %#v", got, want)
+	}
+}
+
+func TestRenderDryRunAcceptsHTMLFileFlag(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "page.html")
+	if err := os.WriteFile(path, []byte("<html><body>File</body></html>"), 0644); err != nil {
+		t.Fatalf("write html file: %v", err)
+	}
+
+	output, exitCode := captureStdoutAndStderr(t, func() int {
+		return runRender([]string{
+			"--html-file", path,
+			"--format", "pdf",
+			"--dry-run",
+			"--output-format", "json",
+		})
+	})
+
+	if exitCode != 0 {
+		t.Fatalf("unexpected exit code: %d\noutput:\n%s", exitCode, output)
+	}
+	payload := decodeRenderJSONOutput(t, output)
+	if got, want := payload["html"], "<html><body>File</body></html>"; got != want {
+		t.Fatalf("unexpected html: got %#v want %#v", got, want)
+	}
+}
+
+func TestRenderDryRunAcceptsHTMLFromStdin(t *testing.T) {
+	output, exitCode := captureStdoutAndStderrWithStdin(t, "<html><body>stdin</body></html>", func() int {
+		return runRender([]string{
+			"--html", "-",
+			"--format", "png",
+			"--dry-run",
+			"--output-format", "json",
+		})
+	})
+
+	if exitCode != 0 {
+		t.Fatalf("unexpected exit code: %d\noutput:\n%s", exitCode, output)
+	}
+	payload := decodeRenderJSONOutput(t, output)
+	if got, want := payload["html"], "<html><body>stdin</body></html>"; got != want {
+		t.Fatalf("unexpected html: got %#v want %#v", got, want)
+	}
+}
+
+func TestBatchDryRunAcceptsInlineHTMLFlag(t *testing.T) {
+	output, exitCode := captureStdoutAndStderr(t, func() int {
+		return runBatch([]string{
+			"--html", "<html><body>Batch</body></html>",
+			"--format", "pdf",
+			"--dry-run",
+			"--output-format", "json",
+		})
+	})
+
+	if exitCode != 0 {
+		t.Fatalf("unexpected exit code: %d\noutput:\n%s", exitCode, output)
+	}
+	if !strings.Contains(output, "\"count\": 1") {
+		t.Fatalf("expected single batch entry, got:\n%s", output)
+	}
+	if !strings.Contains(output, "\"html\": \"\\u003chtml\\u003e\\u003cbody\\u003eBatch\\u003c/body\\u003e\\u003c/html\\u003e\"") {
+		t.Fatalf("expected html in batch output, got:\n%s", output)
+	}
+}
+
+func TestBatchDryRunAcceptsHTMLFromStdin(t *testing.T) {
+	output, exitCode := captureStdoutAndStderrWithStdin(t, "<html><body>Batch stdin</body></html>", func() int {
+		return runBatch([]string{
+			"--html", "-",
+			"--format", "png",
+			"--dry-run",
+			"--output-format", "json",
+		})
+	})
+
+	if exitCode != 0 {
+		t.Fatalf("unexpected exit code: %d\noutput:\n%s", exitCode, output)
+	}
+	if !strings.Contains(output, "\"html\": \"\\u003chtml\\u003e\\u003cbody\\u003eBatch stdin\\u003c/body\\u003e\\u003c/html\\u003e\"") {
+		t.Fatalf("expected html in batch output, got:\n%s", output)
+	}
+}
+
+func TestBatchDryRunAcceptsHTMLFileFlag(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "page.html")
+	if err := os.WriteFile(path, []byte("<html><body>Batch file</body></html>"), 0644); err != nil {
+		t.Fatalf("write html file: %v", err)
+	}
+
+	output, exitCode := captureStdoutAndStderr(t, func() int {
+		return runBatch([]string{
+			"--html-file", path,
+			"--format", "svg",
+			"--dry-run",
+			"--output-format", "json",
+		})
+	})
+
+	if exitCode != 0 {
+		t.Fatalf("unexpected exit code: %d\noutput:\n%s", exitCode, output)
+	}
+	if !strings.Contains(output, "\"html\": \"\\u003chtml\\u003e\\u003cbody\\u003eBatch file\\u003c/body\\u003e\\u003c/html\\u003e\"") {
+		t.Fatalf("expected html in batch output, got:\n%s", output)
+	}
+}
+
+func TestRenderRejectsURLAndHTMLTogether(t *testing.T) {
+	output, exitCode := captureStdoutAndStderr(t, func() int {
+		return runRender([]string{
+			"https://example.com",
+			"--html", "<html></html>",
+			"--dry-run",
+			"--output-format", "json",
+		})
+	})
+
+	if exitCode == 0 {
+		t.Fatalf("expected failure when url and html are both provided")
+	}
+	if !strings.Contains(output, "url positional argument cannot be combined with --html or --html-file") {
+		t.Fatalf("unexpected output:\n%s", output)
+	}
+}
+
 func captureStdoutAndStderr(t *testing.T, fn func() int) (string, int) {
 	t.Helper()
 
@@ -164,4 +308,41 @@ func captureStdoutAndStderr(t *testing.T, fn func() int) (string, int) {
 	os.Stderr = oldStderr
 
 	return <-done, exitCode
+}
+
+func captureStdoutAndStderrWithStdin(t *testing.T, stdin string, fn func() int) (string, int) {
+	t.Helper()
+
+	oldStdin := os.Stdin
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("stdin pipe: %v", err)
+	}
+	if _, err := writer.WriteString(stdin); err != nil {
+		t.Fatalf("write stdin: %v", err)
+	}
+	_ = writer.Close()
+	os.Stdin = reader
+	defer func() {
+		os.Stdin = oldStdin
+		_ = reader.Close()
+	}()
+
+	return captureStdoutAndStderr(t, fn)
+}
+
+func decodeRenderJSONOutput(t *testing.T, raw string) map[string]interface{} {
+	t.Helper()
+
+	var envelope struct {
+		Data struct {
+			ValidatedOptions map[string]interface{} `json:"validated_options"`
+		} `json:"data"`
+	}
+
+	if err := json.Unmarshal([]byte(raw), &envelope); err != nil {
+		t.Fatalf("decode output: %v\nraw:\n%s", err, raw)
+	}
+
+	return envelope.Data.ValidatedOptions
 }

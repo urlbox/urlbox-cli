@@ -29,6 +29,24 @@ urlbox batch --dry-run --json '[
 ]'
 ```
 
+Single HTML document:
+
+```bash
+urlbox batch --html '<html><body>Batch</body></html>' --format pdf --dry-run
+```
+
+Single HTML file:
+
+```bash
+urlbox batch --html-file ./page.html --format svg --dry-run
+```
+
+Single HTML document from stdin:
+
+```bash
+cat page.html | urlbox batch --html - --format pdf --dry-run
+```
+
 Matrix expansion:
 
 ```bash

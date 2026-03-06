@@ -92,6 +92,8 @@ func runRender(args []string) int {
 	var selector stringValue
 	var quality intValue
 	var webhookURL stringValue
+	var htmlInput stringValue
+	var htmlFile string
 	var dryRun bool
 	var async bool
 	var bg bool
@@ -110,6 +112,8 @@ func runRender(args []string) int {
 	fs.Var(&selector, "selector", "CSS selector")
 	fs.Var(&quality, "quality", "image quality")
 	fs.Var(&webhookURL, "webhook-url", "callback URL for async render completion")
+	fs.Var(&htmlInput, "html", "raw HTML input")
+	fs.StringVar(&htmlFile, "html-file", "", "path to an HTML file")
 	fs.BoolVar(&dryRun, "dry-run", false, "validate locally without network calls")
 	fs.BoolVar(&async, "async", false, "use async render mode")
 	fs.BoolVar(&bg, "bg", false, "run in the background")
@@ -128,6 +132,8 @@ func runRender(args []string) int {
 		"--selector":      true,
 		"--quality":       true,
 		"--webhook-url":   true,
+		"--html":          true,
+		"--html-file":     true,
 		"--profile":       true,
 		"--api-host":      true,
 		"--output":        true,
@@ -169,6 +175,30 @@ func runRender(args []string) int {
 
 	if len(positionalArgs) > 0 {
 		payload["url"] = positionalArgs[0]
+	}
+	if htmlInput.set && htmlFile != "" {
+		printRenderError(output.ResolveFormat(outputFormat, cfg.OutputFormat), fmt.Errorf("--html and --html-file are mutually exclusive"))
+		return 1
+	}
+	if len(positionalArgs) > 0 && (htmlInput.set || htmlFile != "") {
+		printRenderError(output.ResolveFormat(outputFormat, cfg.OutputFormat), fmt.Errorf("url positional argument cannot be combined with --html or --html-file"))
+		return 1
+	}
+	if htmlInput.set {
+		html, err := readHTMLInput(htmlInput.value)
+		if err != nil {
+			printRenderError(output.ResolveFormat(outputFormat, cfg.OutputFormat), err)
+			return 1
+		}
+		payload["html"] = html
+	}
+	if htmlFile != "" {
+		html, err := readHTMLFile(htmlFile)
+		if err != nil {
+			printRenderError(output.ResolveFormat(outputFormat, cfg.OutputFormat), err)
+			return 1
+		}
+		payload["html"] = html
 	}
 
 	mergeFlagString(payload, "format", formatValue)
@@ -326,6 +356,34 @@ func readJSONPayload(raw string) (map[string]interface{}, error) {
 	}
 
 	return payload, nil
+}
+
+func readHTMLFile(path string) (string, error) {
+	bytes, err := ioutil.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	if len(bytes) > 5*1024*1024 {
+		return "", fmt.Errorf("--html-file exceeds 5MB limit")
+	}
+	return string(bytes), nil
+}
+
+func readHTMLInput(raw string) (string, error) {
+	if raw == "-" {
+		bytes, err := ioutil.ReadAll(os.Stdin)
+		if err != nil {
+			return "", err
+		}
+		if len(bytes) > 5*1024*1024 {
+			return "", fmt.Errorf("--html input exceeds 5MB limit")
+		}
+		return string(bytes), nil
+	}
+	if len(raw) > 5*1024*1024 {
+		return "", fmt.Errorf("--html input exceeds 5MB limit")
+	}
+	return raw, nil
 }
 
 func mergeFlagString(payload map[string]interface{}, key string, value stringValue) {

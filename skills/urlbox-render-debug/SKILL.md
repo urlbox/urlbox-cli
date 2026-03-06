@@ -13,6 +13,8 @@ description: Debug Urlbox render requests by validating payloads locally, iterat
 - Iterating on timeouts, selectors, and viewport settings
 - Switching from sync debugging to async polling
 - Wiring render callbacks via `webhook_url`
+- Rendering from inline HTML or an HTML file
+- Generating document output like `pdf` or `svg`
 
 ## Recommended Flow
 
@@ -46,6 +48,39 @@ Sync render:
 
 ```bash
 urlbox render https://example.com --format png --width 1440 --full-page
+```
+
+SVG render:
+
+```bash
+urlbox render https://example.com --format svg
+```
+
+Render from inline HTML:
+
+```bash
+urlbox render \
+  --html '<html><body><h1>Hello</h1></body></html>' \
+  --format png \
+  --dry-run
+```
+
+Render from stdin HTML:
+
+```bash
+cat page.html | urlbox render \
+  --html - \
+  --format pdf \
+  --dry-run
+```
+
+Render from an HTML file:
+
+```bash
+urlbox render \
+  --html-file ./fixtures/page.html \
+  --format pdf \
+  --full-page
 ```
 
 Async render:

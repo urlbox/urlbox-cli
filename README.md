@@ -2,6 +2,8 @@
 
 `urlbox` is the official command-line interface for the Urlbox screenshot and web automation API.
 
+It can render screenshots, PDFs, SVGs, videos, and extracted page content from either a URL or raw HTML.
+
 ## Build
 
 ```bash
@@ -17,7 +19,12 @@ go install github.com/urlbox/cli/cmd/urlbox@latest
 ## Commands
 
 - `urlbox render https://example.com --format png`
+- `urlbox render --html '<html><body>Hello</body></html>' --format png`
+- `cat page.html | urlbox render --html - --format pdf --dry-run`
+- `urlbox render --html-file ./page.html --format pdf --full-page`
+- `urlbox render https://example.com --format svg`
 - `urlbox render https://example.com --async --webhook-url https://hooks.example.com/urlbox`
+- `urlbox batch --html-file ./page.html --format svg --dry-run`
 - `urlbox batch --file urls.json --output-format ndjson`
 - `urlbox projects list`
 - `urlbox auth whoami`

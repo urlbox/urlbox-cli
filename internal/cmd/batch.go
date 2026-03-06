@@ -34,6 +34,8 @@ func runBatch(args []string) int {
 	var quality intValue
 	var selector stringValue
 	var webhookURL stringValue
+	var htmlInput stringValue
+	var htmlFile string
 	var dryRun bool
 	var async bool
 	var bg bool
@@ -54,6 +56,8 @@ func runBatch(args []string) int {
 	fs.Var(&quality, "quality", "image quality")
 	fs.Var(&selector, "selector", "css selector")
 	fs.Var(&webhookURL, "webhook-url", "callback URL for async render completion")
+	fs.Var(&htmlInput, "html", "raw HTML input for a single batch entry, or - for stdin")
+	fs.StringVar(&htmlFile, "html-file", "", "path to an HTML file for a single batch entry, or - for stdin")
 	fs.BoolVar(&dryRun, "dry-run", false, "validate only")
 	fs.BoolVar(&async, "async", false, "use async render mode")
 	fs.BoolVar(&bg, "bg", false, "track async renders in the local job registry")
@@ -74,6 +78,8 @@ func runBatch(args []string) int {
 		"--quality":       true,
 		"--selector":      true,
 		"--webhook-url":   true,
+		"--html":          true,
+		"--html-file":     true,
 		"--concurrency":   true,
 		"--profile":       true,
 		"--api-host":      true,
@@ -87,7 +93,7 @@ func runBatch(args []string) int {
 	}
 
 	cfg := config.Load(config.Options{Profile: profile, APIHost: apiHost, OutputFormat: outputFormat})
-	entries, err := loadBatchEntries(jsonInput, filePath, urlsPath)
+	entries, err := loadBatchEntries(jsonInput, filePath, urlsPath, htmlInput, htmlFile)
 	if err != nil {
 		return printAPIError("batch", output.ResolveFormat(outputFormat, cfg.OutputFormat), err)
 	}
@@ -310,7 +316,27 @@ func batchMode(async bool, bg bool) string {
 	return "sync"
 }
 
-func loadBatchEntries(jsonInput stringValue, filePath string, urlsPath string) ([]map[string]interface{}, error) {
+func loadBatchEntries(jsonInput stringValue, filePath string, urlsPath string, htmlInput stringValue, htmlFile string) ([]map[string]interface{}, error) {
+	sources := 0
+	if jsonInput.set {
+		sources++
+	}
+	if filePath != "" {
+		sources++
+	}
+	if urlsPath != "" {
+		sources++
+	}
+	if htmlInput.set {
+		sources++
+	}
+	if htmlFile != "" {
+		sources++
+	}
+	if sources > 1 {
+		return nil, fmt.Errorf("batch input sources are mutually exclusive; use only one of --json, --file, --urls, --html, or --html-file")
+	}
+
 	switch {
 	case jsonInput.set:
 		if jsonInput.value == "-" {
@@ -329,8 +355,28 @@ func loadBatchEntries(jsonInput stringValue, filePath string, urlsPath string) (
 		return decodeBatchEntries(bytes)
 	case urlsPath != "":
 		return decodeURLLines(urlsPath)
+	case htmlInput.set:
+		html, err := readHTMLInput(htmlInput.value)
+		if err != nil {
+			return nil, err
+		}
+		return []map[string]interface{}{{"html": html}}, nil
+	case htmlFile != "":
+		var (
+			html string
+			err  error
+		)
+		if htmlFile == "-" {
+			html, err = readHTMLInput("-")
+		} else {
+			html, err = readHTMLFile(htmlFile)
+		}
+		if err != nil {
+			return nil, err
+		}
+		return []map[string]interface{}{{"html": html}}, nil
 	default:
-		return nil, fmt.Errorf("batch requires one of --json, --file, or --urls")
+		return nil, fmt.Errorf("batch requires one of --json, --file, --urls, --html, or --html-file")
 	}
 }
 
