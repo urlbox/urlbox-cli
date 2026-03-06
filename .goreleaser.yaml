@@ -1,0 +1,40 @@
+version: 2
+
+project_name: urlbox
+
+before:
+  hooks:
+    - go test ./...
+
+builds:
+  - id: urlbox
+    main: ./cmd/urlbox
+    binary: urlbox
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X github.com/urlbox/cli/internal/version.Version={{.Version}}
+      - -X github.com/urlbox/cli/internal/version.Commit={{.ShortCommit}}
+      - -X github.com/urlbox/cli/internal/version.Date={{.Date}}
+
+archives:
+  - id: default
+    builds:
+      - urlbox
+    format_overrides:
+      - goos: windows
+        format: zip
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  use: github
