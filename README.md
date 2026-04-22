@@ -1,35 +1,61 @@
 # Urlbox CLI
 
-`urlbox` is the official command-line interface for the Urlbox screenshot and web automation API.
-
-It can render screenshots, PDFs, SVGs, videos, and extracted page content from either a URL or raw HTML.
-
-## Build
-
-```bash
-go build ./cmd/urlbox
-```
+The official command-line interface for the [Urlbox](https://urlbox.com) screenshot and web automation API.
 
 ## Install
 
-```bash
+### macOS (Homebrew)
+
+```
+brew install urlbox/tap/urlbox
+```
+
+### Windows (Scoop)
+
+```
+scoop bucket add urlbox https://github.com/urlbox/homebrew-tap
+scoop install urlbox
+```
+
+### Linux (deb/rpm/apk)
+
+Download the appropriate package from the [latest release](https://github.com/urlbox/cli/releases/latest).
+
+### Go
+
+```
 go install github.com/urlbox/cli/cmd/urlbox@latest
 ```
 
-## Commands
+### Script (macOS/Linux)
 
-- `urlbox render https://example.com --format png`
-- `urlbox render --html '<html><body>Hello</body></html>' --format png`
-- `cat page.html | urlbox render --html - --format pdf --dry-run`
-- `urlbox render --html-file ./page.html --format pdf --full-page`
-- `urlbox render https://example.com --format svg`
-- `urlbox render https://example.com --async --webhook-url https://hooks.example.com/urlbox`
-- `urlbox batch --html-file ./page.html --format svg --dry-run`
-- `urlbox batch --file urls.json --output-format ndjson`
-- `urlbox projects list`
-- `urlbox auth whoami`
+```
+curl -fsSL https://cli.urlbox.com/install.sh | sh
+```
+
+## Usage
+
+```
+urlbox --version
+urlbox --help
+```
+
+## Upgrade
+
+```
+urlbox upgrade
+```
 
 ## Development
 
-The canonical development source lives in the Urlbox monorepo under `apps/cli/`.
-This public repository is updated by an automated sync workflow from the monorepo.
+```
+make ci        # Run fmt-check, lint, test, build
+make test      # Run tests with race detector
+make lint      # Run golangci-lint
+make fmt       # Format with gofumpt
+make build     # Build binary to bin/urlbox
+```
+
+## License
+
+MIT
