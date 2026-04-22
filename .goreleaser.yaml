@@ -4,7 +4,7 @@ project_name: urlbox
 
 before:
   hooks:
-    - go test ./...
+    - make ci
 
 builds:
   - id: urlbox
@@ -27,14 +27,73 @@ builds:
 
 archives:
   - id: default
-    builds:
+    ids:
       - urlbox
+    name_template: "urlbox_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     format_overrides:
       - goos: windows
-        format: zip
+        formats:
+          - zip
+
+nfpms:
+  - id: packages
+    package_name: urlbox
+    vendor: Urlbox
+    homepage: https://urlbox.com
+    maintainer: Urlbox <support@urlbox.com>
+    description: Official CLI for the Urlbox screenshot and web automation API
+    license: MIT
+    formats:
+      - deb
+      - rpm
+      - apk
+    bindir: /usr/bin
+
+homebrew_casks:
+  - name: urlbox
+    repository:
+      owner: urlbox
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    homepage: https://urlbox.com
+    description: Official CLI for the Urlbox screenshot and web automation API
+    license: MIT
+
+scoops:
+  - name: urlbox
+    repository:
+      owner: urlbox
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    directory: bucket
+    homepage: https://urlbox.com
+    description: Official CLI for the Urlbox screenshot and web automation API
+    license: MIT
 
 checksum:
   name_template: checksums.txt
 
+signs:
+  - cmd: cosign
+    artifacts: checksum
+    output: true
+    args:
+      - "sign-blob"
+      - "--yes"
+      - "--output-signature=${signature}"
+      - "${artifact}"
+
 changelog:
   use: github
+  filters:
+    exclude:
+      - "^docs:"
+      - "^chore:"
+      - "^ci:"
+      - "^test:"
+
+release:
+  github:
+    owner: urlbox
+    name: cli
+  prerelease: auto
