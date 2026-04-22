@@ -42,5 +42,7 @@ func newRootCmd(stdout, stderr io.Writer) *cobra.Command {
 
 	cmd.SetVersionTemplate(fmt.Sprintf("urlbox %s (commit: %s, built: %s)\n", version.Version, version.Commit, version.Date))
 
+	cmd.AddCommand(newUpgradeCmd(stdout, stderr))
+
 	return cmd
 }
