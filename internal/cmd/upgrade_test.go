@@ -56,3 +56,17 @@ func TestUpgrade_HelpText(t *testing.T) {
 		t.Errorf("expected help to mention 'upgrade', got %q", out)
 	}
 }
+
+func TestUpgrade_DetectsLinuxbrewPath(t *testing.T) {
+	method := cmd.DetectInstallMethod("/home/linuxbrew/.linuxbrew/bin/urlbox")
+	if method != "brew" {
+		t.Errorf("expected 'brew' for linuxbrew path, got %q", method)
+	}
+}
+
+func TestUpgrade_CaseInsensitive(t *testing.T) {
+	method := cmd.DetectInstallMethod("/OPT/HOMEBREW/BIN/URLBOX")
+	if method != "brew" {
+		t.Errorf("expected case-insensitive brew detection, got %q", method)
+	}
+}

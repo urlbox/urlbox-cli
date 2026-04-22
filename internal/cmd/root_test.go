@@ -74,3 +74,51 @@ func TestRootCommand_NoArgs_ShowsHelp(t *testing.T) {
 		t.Errorf("expected help output to contain 'urlbox', got %q", out)
 	}
 }
+
+func TestRootCommand_VersionFormat(t *testing.T) {
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+
+	code := cmd.Execute([]string{"--version"}, stdout, stderr)
+
+	if code != 0 {
+		t.Fatalf("expected exit code 0, got %d", code)
+	}
+
+	out := stdout.String()
+	// Version template: "urlbox VERSION (commit: COMMIT, built: DATE)\n"
+	if !strings.Contains(out, "commit:") {
+		t.Errorf("expected version to contain 'commit:', got %q", out)
+	}
+	if !strings.Contains(out, "built:") {
+		t.Errorf("expected version to contain 'built:', got %q", out)
+	}
+}
+
+func TestRootCommand_HelpGoesToStdout(t *testing.T) {
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+
+	cmd.Execute([]string{"--help"}, stdout, stderr)
+
+	if stdout.Len() == 0 {
+		t.Error("expected help output on stdout, got nothing")
+	}
+	if stderr.Len() != 0 {
+		t.Errorf("expected no output on stderr for --help, got %q", stderr.String())
+	}
+}
+
+func TestRootCommand_ErrorGoesToStderr(t *testing.T) {
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+
+	code := cmd.Execute([]string{"nonexistent"}, stdout, stderr)
+
+	if code == 0 {
+		t.Fatal("expected non-zero exit code")
+	}
+	if stderr.Len() == 0 {
+		t.Error("expected error output on stderr, got nothing")
+	}
+}

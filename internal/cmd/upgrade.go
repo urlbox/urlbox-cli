@@ -16,7 +16,7 @@ import (
 func DetectInstallMethod(binaryPath string) string {
 	path := strings.ToLower(binaryPath)
 
-	if strings.Contains(path, "homebrew") || strings.Contains(path, "cellar") || strings.Contains(path, "/opt/homebrew/") {
+	if strings.Contains(path, "homebrew") || strings.Contains(path, "cellar") || strings.Contains(path, "/opt/homebrew/") || strings.Contains(path, "linuxbrew") {
 		return "brew"
 	}
 	if strings.Contains(path, "scoop") {
