@@ -9,21 +9,21 @@ import (
 )
 
 // Execute runs the root command with the given args, writing to the provided writers.
-func Execute(args []string, stdout io.Writer, stderr io.Writer) int {
+func Execute(args []string, stdout, stderr io.Writer) int {
 	rootCmd := newRootCmd(stdout, stderr)
 	rootCmd.SetArgs(args)
 	rootCmd.SetOut(stdout)
 	rootCmd.SetErr(stderr)
 
 	if err := rootCmd.Execute(); err != nil {
-		fmt.Fprintln(stderr, err)
+		_, _ = fmt.Fprintln(stderr, err)
 		return 1
 	}
 
 	return 0
 }
 
-func newRootCmd(stdout io.Writer, stderr io.Writer) *cobra.Command {
+func newRootCmd(stdout, stderr io.Writer) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "urlbox",
 		Short:   "Urlbox CLI — screenshots, PDFs, and more from the command line",
