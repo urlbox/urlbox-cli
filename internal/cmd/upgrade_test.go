@@ -2,6 +2,8 @@ package cmd_test
 
 import (
 	"bytes"
+	"fmt"
+	"io"
 	"strings"
 	"testing"
 
@@ -68,5 +70,126 @@ func TestUpgrade_CaseInsensitive(t *testing.T) {
 	method := cmd.DetectInstallMethod("/OPT/HOMEBREW/BIN/URLBOX")
 	if method != "brew" {
 		t.Errorf("expected case-insensitive brew detection, got %q", method)
+	}
+}
+
+// fakeExec records the command that was executed.
+type fakeExec struct {
+	name string
+	args []string
+	err  error // error to return when called
+}
+
+func (f *fakeExec) run(_ io.Writer, name string, args ...string) error {
+	f.name = name
+	f.args = args
+	return f.err
+}
+
+func TestRunUpgrade_BrewPath(t *testing.T) {
+	fake := &fakeExec{}
+	stderr := &bytes.Buffer{}
+
+	err := cmd.RunUpgrade(stderr, "/opt/homebrew/bin/urlbox", fake.run)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if fake.name != "brew" {
+		t.Errorf("expected command 'brew', got %q", fake.name)
+	}
+	if len(fake.args) < 2 || fake.args[0] != "upgrade" || fake.args[1] != "urlbox/tap/urlbox" {
+		t.Errorf("expected args [upgrade urlbox/tap/urlbox], got %v", fake.args)
+	}
+	out := stderr.String()
+	if !strings.Contains(out, "Homebrew") {
+		t.Errorf("expected stderr to mention Homebrew, got %q", out)
+	}
+}
+
+func TestRunUpgrade_ScoopPath(t *testing.T) {
+	fake := &fakeExec{}
+	stderr := &bytes.Buffer{}
+
+	err := cmd.RunUpgrade(stderr, `C:\Users\user\scoop\apps\urlbox\current\urlbox.exe`, fake.run)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if fake.name != "scoop" {
+		t.Errorf("expected command 'scoop', got %q", fake.name)
+	}
+	if len(fake.args) < 2 || fake.args[0] != "update" || fake.args[1] != "urlbox" {
+		t.Errorf("expected args [update urlbox], got %v", fake.args)
+	}
+}
+
+func TestRunUpgrade_GoPath(t *testing.T) {
+	fake := &fakeExec{}
+	stderr := &bytes.Buffer{}
+
+	err := cmd.RunUpgrade(stderr, "/Users/user/go/bin/urlbox", fake.run)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if fake.name != "go" {
+		t.Errorf("expected command 'go', got %q", fake.name)
+	}
+	if len(fake.args) < 2 || fake.args[0] != "install" {
+		t.Errorf("expected args starting with 'install', got %v", fake.args)
+	}
+}
+
+func TestRunUpgrade_UnknownPath_ShowsManualInstructions(t *testing.T) {
+	fake := &fakeExec{}
+	stderr := &bytes.Buffer{}
+
+	err := cmd.RunUpgrade(stderr, "/usr/local/bin/urlbox", fake.run)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// Should NOT have called any external command
+	if fake.name != "" {
+		t.Errorf("expected no command to be run, got %q", fake.name)
+	}
+	out := stderr.String()
+	if !strings.Contains(out, "Could not detect") {
+		t.Errorf("expected manual instructions, got %q", out)
+	}
+	if !strings.Contains(out, "brew upgrade") {
+		t.Errorf("expected brew instruction in manual help, got %q", out)
+	}
+	if !strings.Contains(out, "curl") {
+		t.Errorf("expected curl instruction in manual help, got %q", out)
+	}
+}
+
+func TestRunUpgrade_ShowsVersionAndMethod(t *testing.T) {
+	fake := &fakeExec{}
+	stderr := &bytes.Buffer{}
+
+	_ = cmd.RunUpgrade(stderr, "/opt/homebrew/bin/urlbox", fake.run)
+
+	out := stderr.String()
+	if !strings.Contains(out, "Current version:") {
+		t.Errorf("expected 'Current version:' in output, got %q", out)
+	}
+	if !strings.Contains(out, "Install method:") {
+		t.Errorf("expected 'Install method:' in output, got %q", out)
+	}
+	if !strings.Contains(out, "Binary path:") {
+		t.Errorf("expected 'Binary path:' in output, got %q", out)
+	}
+}
+
+func TestRunUpgrade_ExecutorError(t *testing.T) {
+	fake := &fakeExec{err: fmt.Errorf("brew not found")}
+	stderr := &bytes.Buffer{}
+
+	err := cmd.RunUpgrade(stderr, "/opt/homebrew/bin/urlbox", fake.run)
+
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "brew not found") {
+		t.Errorf("expected 'brew not found' error, got %q", err.Error())
 	}
 }

@@ -12,6 +12,9 @@ import (
 	"github.com/urlbox/cli/internal/version"
 )
 
+// ExecFunc runs an external command, writing output to w.
+type ExecFunc func(w io.Writer, name string, args ...string) error
+
 // DetectInstallMethod determines how urlbox was installed based on the binary path.
 func DetectInstallMethod(binaryPath string) string {
 	path := strings.ToLower(binaryPath)
@@ -29,23 +32,9 @@ func DetectInstallMethod(binaryPath string) string {
 	return "unknown"
 }
 
-func newUpgradeCmd(stdout, stderr io.Writer) *cobra.Command {
-	return &cobra.Command{
-		Use:   "upgrade",
-		Short: "Update urlbox to the latest version",
-		Long:  "Detects how urlbox was installed and runs the appropriate update command.",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return runUpgrade(stdout, stderr)
-		},
-	}
-}
-
-func runUpgrade(_, stderr io.Writer) error {
-	execPath, err := os.Executable()
-	if err != nil {
-		return fmt.Errorf("could not determine binary path: %w", err)
-	}
-
+// RunUpgrade executes the upgrade logic with the given binary path and command executor.
+// This is exported to allow testing without shelling out to real package managers.
+func RunUpgrade(stderr io.Writer, execPath string, runner ExecFunc) error {
 	method := DetectInstallMethod(execPath)
 
 	_, _ = fmt.Fprintf(stderr, "Current version: %s\n", version.Version)
@@ -55,13 +44,13 @@ func runUpgrade(_, stderr io.Writer) error {
 	switch method {
 	case "brew":
 		_, _ = fmt.Fprintln(stderr, "Upgrading via Homebrew...")
-		return runExternal(stderr, "brew", "upgrade", "urlbox/tap/urlbox")
+		return runner(stderr, "brew", "upgrade", "urlbox/tap/urlbox")
 	case "scoop":
 		_, _ = fmt.Fprintln(stderr, "Upgrading via Scoop...")
-		return runExternal(stderr, "scoop", "update", "urlbox")
+		return runner(stderr, "scoop", "update", "urlbox")
 	case "go":
 		_, _ = fmt.Fprintln(stderr, "Upgrading via go install...")
-		return runExternal(stderr, "go", "install", "github.com/urlbox/cli/cmd/urlbox@latest")
+		return runner(stderr, "go", "install", "github.com/urlbox/cli/cmd/urlbox@latest")
 	default:
 		_, _ = fmt.Fprintln(stderr, "Could not detect install method.")
 		_, _ = fmt.Fprintln(stderr, "To upgrade manually, run one of:")
@@ -74,9 +63,24 @@ func runUpgrade(_, stderr io.Writer) error {
 	}
 }
 
-func runExternal(stderr io.Writer, name string, args ...string) error {
+func newUpgradeCmd(stdout, stderr io.Writer) *cobra.Command {
+	return &cobra.Command{
+		Use:   "upgrade",
+		Short: "Update urlbox to the latest version",
+		Long:  "Detects how urlbox was installed and runs the appropriate update command.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			execPath, err := os.Executable()
+			if err != nil {
+				return fmt.Errorf("could not determine binary path: %w", err)
+			}
+			return RunUpgrade(stderr, execPath, runExternal)
+		},
+	}
+}
+
+func runExternal(w io.Writer, name string, args ...string) error {
 	c := exec.CommandContext(context.Background(), name, args...) //nolint:gosec // intentional: runs trusted package manager commands
-	c.Stdout = stderr
-	c.Stderr = stderr
+	c.Stdout = w
+	c.Stderr = w
 	return c.Run()
 }
