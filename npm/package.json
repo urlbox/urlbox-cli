@@ -1,0 +1,21 @@
+{
+  "name": "@urlbox/cli",
+  "version": "0.0.0",
+  "description": "Official CLI for the Urlbox screenshot and web automation API",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/urlbox/urlbox-cli"
+  },
+  "homepage": "https://urlbox.com",
+  "bin": {
+    "urlbox": "run.js"
+  },
+  "scripts": {
+    "postinstall": "node install.js"
+  },
+  "files": [
+    "install.js",
+    "run.js"
+  ]
+}
