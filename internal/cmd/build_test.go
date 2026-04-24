@@ -19,9 +19,9 @@ func TestBuild_LdflagsInjectVersion(t *testing.T) {
 	binary := filepath.Join(tmpDir, "urlbox")
 
 	ldflags := strings.Join([]string{
-		"-X github.com/urlbox/cli/internal/version.Version=1.2.3-test",
-		"-X github.com/urlbox/cli/internal/version.Commit=abc1234",
-		"-X github.com/urlbox/cli/internal/version.Date=2026-01-01T00:00:00Z",
+		"-X github.com/urlbox/urlbox-cli/internal/version.Version=1.2.3-test",
+		"-X github.com/urlbox/urlbox-cli/internal/version.Commit=abc1234",
+		"-X github.com/urlbox/urlbox-cli/internal/version.Date=2026-01-01T00:00:00Z",
 	}, " ")
 
 	//nolint:gosec // test builds the project binary with known-safe arguments

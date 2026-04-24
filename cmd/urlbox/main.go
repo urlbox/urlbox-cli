@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/urlbox/cli/internal/cmd"
+	"github.com/urlbox/urlbox-cli/internal/cmd"
 )
 
 func main() {

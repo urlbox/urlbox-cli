@@ -3,7 +3,7 @@ package output_test
 import (
 	"testing"
 
-	"github.com/urlbox/cli/internal/output"
+	"github.com/urlbox/urlbox-cli/internal/output"
 )
 
 func TestStyles_NoColor(t *testing.T) {

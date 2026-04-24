@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/urlbox/cli/internal/version"
+	"github.com/urlbox/urlbox-cli/internal/version"
 )
 
 // ExecFunc runs an external command, writing output to w.
@@ -50,14 +50,14 @@ func RunUpgrade(stderr io.Writer, execPath string, runner ExecFunc) error {
 		return runner(stderr, "scoop", "update", "urlbox")
 	case "go":
 		_, _ = fmt.Fprintln(stderr, "Upgrading via go install...")
-		return runner(stderr, "go", "install", "github.com/urlbox/cli/cmd/urlbox@latest")
+		return runner(stderr, "go", "install", "github.com/urlbox/urlbox-cli/cmd/urlbox@latest")
 	default:
 		_, _ = fmt.Fprintln(stderr, "Could not detect install method.")
 		_, _ = fmt.Fprintln(stderr, "To upgrade manually, run one of:")
 		_, _ = fmt.Fprintln(stderr, "")
 		_, _ = fmt.Fprintln(stderr, "  brew upgrade urlbox/tap/urlbox")
 		_, _ = fmt.Fprintln(stderr, "  scoop update urlbox")
-		_, _ = fmt.Fprintln(stderr, "  go install github.com/urlbox/cli/cmd/urlbox@latest")
+		_, _ = fmt.Fprintln(stderr, "  go install github.com/urlbox/urlbox-cli/cmd/urlbox@latest")
 		_, _ = fmt.Fprintln(stderr, "  curl -fsSL https://cli.urlbox.com/install.sh | sh")
 		return nil
 	}

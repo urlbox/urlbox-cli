@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/urlbox/cli/internal/cmd"
+	"github.com/urlbox/urlbox-cli/internal/cmd"
 )
 
 func TestRootCommand_VersionFlag(t *testing.T) {

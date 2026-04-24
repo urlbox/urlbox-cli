@@ -3,7 +3,7 @@ package version_test
 import (
 	"testing"
 
-	"github.com/urlbox/cli/internal/version"
+	"github.com/urlbox/urlbox-cli/internal/version"
 )
 
 func TestVersionDefaults(t *testing.T) {

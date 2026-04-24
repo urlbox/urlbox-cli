@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/urlbox/cli/internal/output"
+	"github.com/urlbox/urlbox-cli/internal/output"
 )
 
 func TestNewLoggerWithWriter_InfoLevel(t *testing.T) {

@@ -19,12 +19,12 @@ scoop install urlbox
 
 ### Linux (deb/rpm/apk)
 
-Download the appropriate package from the [latest release](https://github.com/urlbox/cli/releases/latest).
+Download the appropriate package from the [latest release](https://github.com/urlbox/urlbox-cli/releases/latest).
 
 ### Go
 
 ```
-go install github.com/urlbox/cli/cmd/urlbox@latest
+go install github.com/urlbox/urlbox-cli/cmd/urlbox@latest
 ```
 
 ### Script (macOS/Linux)

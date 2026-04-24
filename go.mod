@@ -1,4 +1,4 @@
-module github.com/urlbox/cli
+module github.com/urlbox/urlbox-cli
 
 go 1.23.0
 

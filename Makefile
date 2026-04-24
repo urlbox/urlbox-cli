@@ -4,9 +4,9 @@ VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev
 COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 DATE    ?= $(shell date -u '+%Y-%m-%dT%H:%M:%SZ')
 LDFLAGS  = -s -w \
-	-X github.com/urlbox/cli/internal/version.Version=$(VERSION) \
-	-X github.com/urlbox/cli/internal/version.Commit=$(COMMIT) \
-	-X github.com/urlbox/cli/internal/version.Date=$(DATE)
+	-X github.com/urlbox/urlbox-cli/internal/version.Version=$(VERSION) \
+	-X github.com/urlbox/urlbox-cli/internal/version.Commit=$(COMMIT) \
+	-X github.com/urlbox/urlbox-cli/internal/version.Date=$(DATE)
 
 build:
 	go build -ldflags "$(LDFLAGS)" -o bin/urlbox ./cmd/urlbox

@@ -4,7 +4,7 @@ set -e
 # Urlbox CLI installer
 # Usage: curl -fsSL https://cli.urlbox.com/install.sh | sh
 
-REPO="urlbox/cli"
+REPO="urlbox/urlbox-cli"
 INSTALL_DIR="/usr/local/bin"
 BINARY_NAME="urlbox"
 

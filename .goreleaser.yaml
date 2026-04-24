@@ -21,9 +21,9 @@ builds:
       - arm64
     ldflags:
       - -s -w
-      - -X github.com/urlbox/cli/internal/version.Version={{.Version}}
-      - -X github.com/urlbox/cli/internal/version.Commit={{.ShortCommit}}
-      - -X github.com/urlbox/cli/internal/version.Date={{.Date}}
+      - -X github.com/urlbox/urlbox-cli/internal/version.Version={{.Version}}
+      - -X github.com/urlbox/urlbox-cli/internal/version.Commit={{.ShortCommit}}
+      - -X github.com/urlbox/urlbox-cli/internal/version.Date={{.Date}}
 
 archives:
   - id: default
@@ -95,5 +95,5 @@ changelog:
 release:
   github:
     owner: urlbox
-    name: cli
+    name: urlbox-cli
   prerelease: auto

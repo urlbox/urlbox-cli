@@ -5,7 +5,7 @@ import (
 	"io"
 
 	"github.com/spf13/cobra"
-	"github.com/urlbox/cli/internal/version"
+	"github.com/urlbox/urlbox-cli/internal/version"
 )
 
 // Execute runs the root command with the given args, writing to the provided writers.

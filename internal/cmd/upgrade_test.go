@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/urlbox/cli/internal/cmd"
+	"github.com/urlbox/urlbox-cli/internal/cmd"
 )
 
 func TestUpgrade_DetectsHomebrew(t *testing.T) {
