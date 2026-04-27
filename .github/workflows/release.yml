@@ -82,6 +82,89 @@ jobs:
           echo "$OUTPUT"
           echo "$OUTPUT" | grep -q "$VERSION"
 
+  verify-checksums:
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: sigstore/cosign-installer@v3
+
+      - name: Download release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release download "$GITHUB_REF_NAME" --repo urlbox/urlbox-cli
+
+      - name: Verify checksums
+        run: sha256sum --check checksums.txt
+
+      - name: Verify cosign signature
+        run: |
+          cosign verify-blob checksums.txt --signature checksums.txt.sig --certificate-identity-regexp='github.com/urlbox/urlbox-cli' --certificate-oidc-issuer='https://token.actions.githubusercontent.com'
+
+  test-npm-install:
+    needs: npm
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install via npm
+        run: npm install -g @urlbox/cli
+
+      - name: Verify binary
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          OUTPUT=$(urlbox --version 2>&1)
+          echo "$OUTPUT"
+          echo "$OUTPUT" | grep -q "$VERSION"
+
+  test-brew-install:
+    needs: release
+    runs-on: macos-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Install via Homebrew
+        run: brew install urlbox/tap/urlbox
+
+      - name: Verify binary
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          OUTPUT=$(urlbox --version 2>&1)
+          echo "$OUTPUT"
+          echo "$OUTPUT" | grep -q "$VERSION"
+
+      - name: Verify upgrade detection
+        run: urlbox upgrade 2>&1 | grep -q "Install method: brew"
+
+  test-install-script:
+    needs: release
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run install script
+        run: |
+          sudo mkdir -p /usr/local/bin
+          bash scripts/install.sh
+
+      - name: Verify binary
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          OUTPUT=$(urlbox --version 2>&1)
+          echo "$OUTPUT"
+          echo "$OUTPUT" | grep -q "$VERSION"
+
   npm:
     needs: release
     runs-on: ubuntu-latest
