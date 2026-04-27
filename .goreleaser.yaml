@@ -78,13 +78,12 @@ checksum:
 signs:
   - cmd: cosign
     artifacts: checksum
-    output: true
+    signature: "${artifact}.sigstore.json"
     args:
       - "sign-blob"
-      - "--yes"
-      - "--output-signature=${signature}"
-      - "--output-certificate=${certificate}"
+      - "--bundle=${signature}"
       - "${artifact}"
+      - "--yes"
 
 changelog:
   use: github

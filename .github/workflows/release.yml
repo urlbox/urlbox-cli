@@ -101,7 +101,7 @@ jobs:
 
       - name: Verify cosign signature
         run: |
-          cosign verify-blob checksums.txt --signature checksums.txt.sig --certificate checksums.txt.pem --certificate-identity-regexp='github.com/urlbox/urlbox-cli' --certificate-oidc-issuer='https://token.actions.githubusercontent.com'
+          cosign verify-blob checksums.txt --bundle checksums.txt.sigstore.json --certificate-identity-regexp='github.com/urlbox/urlbox-cli' --certificate-oidc-issuer='https://token.actions.githubusercontent.com'
 
   test-npm-install:
     needs: npm
