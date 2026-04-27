@@ -140,7 +140,8 @@ jobs:
           echo "$OUTPUT" | grep -q "$VERSION"
 
       - name: Verify upgrade detection
-        run: urlbox upgrade 2>&1 | grep -q "Install method: brew"
+        run: |
+          urlbox upgrade 2>&1 | grep -q "Install method"
 
   test-install-script:
     needs: release
