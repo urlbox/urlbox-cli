@@ -36,6 +36,18 @@ func TestUpgrade_DetectsScoop(t *testing.T) {
 	}
 }
 
+func TestUpgrade_DetectsNpm(t *testing.T) {
+	method := cmd.DetectInstallMethod("/Users/cjr/.nvm/versions/node/v22.17.0/lib/node_modules/@urlbox/cli/urlbox")
+	if method != "npm" {
+		t.Errorf("expected 'npm', got %q", method)
+	}
+
+	method = cmd.DetectInstallMethod(`C:\Users\user\AppData\Roaming\npm\node_modules\@urlbox\cli\urlbox.exe`)
+	if method != "npm" {
+		t.Errorf("expected 'npm' for Windows path, got %q", method)
+	}
+}
+
 func TestUpgrade_DetectsUnknown(t *testing.T) {
 	method := cmd.DetectInstallMethod("/usr/local/bin/urlbox")
 	if method != "unknown" {
@@ -119,6 +131,26 @@ func TestRunUpgrade_ScoopPath(t *testing.T) {
 	}
 	if len(fake.args) < 2 || fake.args[0] != "update" || fake.args[1] != "urlbox" {
 		t.Errorf("expected args [update urlbox], got %v", fake.args)
+	}
+}
+
+func TestRunUpgrade_NpmPath(t *testing.T) {
+	fake := &fakeExec{}
+	stderr := &bytes.Buffer{}
+
+	err := cmd.RunUpgrade(stderr, "/Users/user/.nvm/versions/node/v22.17.0/lib/node_modules/@urlbox/cli/urlbox", fake.run)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if fake.name != "npm" {
+		t.Errorf("expected command 'npm', got %q", fake.name)
+	}
+	if len(fake.args) < 3 || fake.args[0] != "install" || fake.args[1] != "-g" || fake.args[2] != "@urlbox/cli@latest" {
+		t.Errorf("expected args [install -g @urlbox/cli@latest], got %v", fake.args)
+	}
+	out := stderr.String()
+	if !strings.Contains(out, "npm") {
+		t.Errorf("expected stderr to mention npm, got %q", out)
 	}
 }
 

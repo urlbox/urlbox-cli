@@ -25,6 +25,9 @@ func DetectInstallMethod(binaryPath string) string {
 	if strings.Contains(path, "scoop") {
 		return "scoop"
 	}
+	if strings.Contains(path, "node_modules/@urlbox/cli") || strings.Contains(path, "node_modules\\@urlbox\\cli") {
+		return "npm"
+	}
 	if strings.Contains(path, "/go/bin/") {
 		return "go"
 	}
@@ -48,6 +51,9 @@ func RunUpgrade(stderr io.Writer, execPath string, runner ExecFunc) error {
 	case "scoop":
 		_, _ = fmt.Fprintln(stderr, "Upgrading via Scoop...")
 		return runner(stderr, "scoop", "update", "urlbox")
+	case "npm":
+		_, _ = fmt.Fprintln(stderr, "Upgrading via npm...")
+		return runner(stderr, "npm", "install", "-g", "@urlbox/cli@latest")
 	case "go":
 		_, _ = fmt.Fprintln(stderr, "Upgrading via go install...")
 		return runner(stderr, "go", "install", "github.com/urlbox/urlbox-cli/cmd/urlbox@latest")
@@ -56,6 +62,7 @@ func RunUpgrade(stderr io.Writer, execPath string, runner ExecFunc) error {
 		_, _ = fmt.Fprintln(stderr, "To upgrade manually, run one of:")
 		_, _ = fmt.Fprintln(stderr, "")
 		_, _ = fmt.Fprintln(stderr, "  brew upgrade urlbox/tap/urlbox")
+		_, _ = fmt.Fprintln(stderr, "  npm install -g @urlbox/cli@latest")
 		_, _ = fmt.Fprintln(stderr, "  scoop update urlbox")
 		_, _ = fmt.Fprintln(stderr, "  go install github.com/urlbox/urlbox-cli/cmd/urlbox@latest")
 		_, _ = fmt.Fprintln(stderr, "  curl -fsSL https://cli.urlbox.com/install.sh | sh")
