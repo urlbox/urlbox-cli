@@ -46,6 +46,42 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_TOKEN: ${{ steps.app-token.outputs.token }}
 
+  smoke:
+    needs: release
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            asset: urlbox_*_linux_amd64.tar.gz
+            extract: tar xzf
+          - os: macos-latest
+            asset: urlbox_*_darwin_arm64.tar.gz
+            extract: tar xzf
+          - os: windows-latest
+            asset: urlbox_*_windows_amd64.zip
+            extract: unzip -o
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    steps:
+      - name: Download binary
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          ASSET=$(echo "${{ matrix.asset }}" | sed "s/\\*/$VERSION/")
+          gh release download "$GITHUB_REF_NAME" --repo urlbox/urlbox-cli --pattern "$ASSET"
+          ${{ matrix.extract }} "$ASSET"
+
+      - name: Verify binary runs
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          OUTPUT=$(./urlbox --version 2>&1 || ./urlbox.exe --version 2>&1)
+          echo "$OUTPUT"
+          echo "$OUTPUT" | grep -q "$VERSION"
+
   npm:
     needs: release
     runs-on: ubuntu-latest
