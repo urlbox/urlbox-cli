@@ -49,7 +49,7 @@ nfpms:
       - apk
     bindir: /usr/bin
 
-homebrew_casks:
+brews:
   - name: urlbox
     repository:
       owner: urlbox
@@ -58,6 +58,8 @@ homebrew_casks:
     homepage: https://urlbox.com
     description: Official CLI for the Urlbox screenshot and web automation API
     license: MIT
+    install: |
+      bin.install "urlbox"
 
 scoops:
   - name: urlbox
