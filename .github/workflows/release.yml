@@ -57,11 +57,8 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version: "24"
           registry-url: "https://registry.npmjs.org"
-
-      - name: Install npm 11
-        run: npm install -g npm@11.13.0
 
       - name: Set version from tag
         run: |
