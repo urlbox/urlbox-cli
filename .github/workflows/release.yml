@@ -101,7 +101,7 @@ jobs:
 
       - name: Verify cosign signature
         run: |
-          cosign verify-blob checksums.txt --signature checksums.txt.sig --certificate-identity-regexp='github.com/urlbox/urlbox-cli' --certificate-oidc-issuer='https://token.actions.githubusercontent.com'
+          cosign verify-blob checksums.txt --signature checksums.txt.sig --certificate checksums.txt.pem --certificate-identity-regexp='github.com/urlbox/urlbox-cli' --certificate-oidc-issuer='https://token.actions.githubusercontent.com'
 
   test-npm-install:
     needs: npm
@@ -186,4 +186,13 @@ jobs:
           cd npm && npm version "$VERSION" --no-git-tag-version
 
       - name: Publish to npm
-        run: cd npm && npm publish --access public --provenance
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          cd npm
+          npm publish --access public --provenance 2>&1 || {
+            if npm view "@urlbox/cli@$VERSION" version >/dev/null 2>&1; then
+              echo "Version $VERSION already published — skipping"
+            else
+              exit 1
+            fi
+          }

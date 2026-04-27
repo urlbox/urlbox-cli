@@ -42,7 +42,18 @@ detect_arch() {
 }
 
 latest_version() {
-  curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" | grep '"tag_name"' | sed -E 's/.*"v?([^"]+)".*/\1/'
+  # Use redirect to avoid GitHub API rate limits (shared CI IPs get 403)
+  redirect=$(curl -sS -o /dev/null -w '%{redirect_url}' "https://github.com/${REPO}/releases/latest" 2>/dev/null)
+  if [ -n "$redirect" ]; then
+    echo "$redirect" | sed 's|.*/v||'
+    return
+  fi
+  # Fallback to API with auth if available
+  auth_header=""
+  if [ -n "${GITHUB_TOKEN:-}" ]; then
+    auth_header="-H Authorization: token ${GITHUB_TOKEN}"
+  fi
+  curl -fsSL $auth_header "https://api.github.com/repos/${REPO}/releases/latest" | grep '"tag_name"' | sed -E 's/.*"v?([^"]+)".*/\1/'
 }
 
 main() {
