@@ -28,7 +28,7 @@ jobs:
           version: v2.11.4
 
       - name: Install gofumpt
-        run: go install mvdan.cc/gofumpt@latest
+        run: go install mvdan.cc/gofumpt@v0.9.2
 
       - name: Generate Homebrew tap token
         id: app-token
@@ -57,8 +57,11 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
           registry-url: "https://registry.npmjs.org"
+
+      - name: Install npm 11
+        run: npm install -g npm@11.13.0
 
       - name: Set version from tag
         run: |
