@@ -1,10 +1,11 @@
 package cmd
 
 import (
-	"fmt"
+	"errors"
 	"io"
 
 	"github.com/spf13/cobra"
+	"github.com/urlbox/urlbox-cli/internal/output"
 	"github.com/urlbox/urlbox-cli/internal/version"
 )
 
@@ -15,15 +16,30 @@ func Execute(args []string, stdout, stderr io.Writer) int {
 	rootCmd.SetOut(stdout)
 	rootCmd.SetErr(stderr)
 
-	if err := rootCmd.Execute(); err != nil {
-		_, _ = fmt.Fprintln(stderr, err)
-		return 1
+	err := rootCmd.Execute()
+	if err == nil {
+		return 0
 	}
 
-	return 0
+	// Resolve format for error output
+	formatFlag, _ := rootCmd.PersistentFlags().GetString("output-format")
+	format := output.ResolveFormat(formatFlag, stdout)
+	styles := output.NewStylesForWriter(stdout)
+	formatter := output.NewFormatter(format, styles)
+
+	var cliErr *output.CLIError
+	if !errors.As(err, &cliErr) {
+		cliErr = output.NewCLIError(output.ErrUsage, err.Error(), "")
+	}
+
+	env := output.NewErrorEnvelope(calledCommand(rootCmd), cliErr)
+	_ = formatter.WriteError(stdout, env)
+	return cliErr.ExitCode()
 }
 
 func newRootCmd(stdout, stderr io.Writer) *cobra.Command {
+	var outputFormat string
+
 	cmd := &cobra.Command{
 		Use:     "urlbox",
 		Short:   "Urlbox CLI — screenshots, PDFs, and more from the command line",
@@ -40,9 +56,24 @@ func newRootCmd(stdout, stderr io.Writer) *cobra.Command {
 		},
 	}
 
-	cmd.SetVersionTemplate(fmt.Sprintf("urlbox %s (commit: %s, built: %s)\n", version.Version, version.Commit, version.Date))
+	cmd.SetVersionTemplate("urlbox " + version.Version + " (commit: " + version.Commit + ", built: " + version.Date + ")\n")
+	cmd.PersistentFlags().StringVar(&outputFormat, "output-format", "", "Output format: json, text, or quiet")
 
 	cmd.AddCommand(newUpgradeCmd(stdout, stderr))
+	cmd.AddCommand(newCommandsCmd(stdout, stderr))
 
 	return cmd
+}
+
+// calledCommand returns the name of the subcommand that was invoked, or empty string.
+func calledCommand(cmd *cobra.Command) string {
+	if cmd.CalledAs() != "" && cmd.CalledAs() != cmd.Name() {
+		return cmd.CalledAs()
+	}
+	for _, c := range cmd.Commands() {
+		if c.CalledAs() != "" {
+			return c.CalledAs()
+		}
+	}
+	return ""
 }

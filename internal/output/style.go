@@ -1,6 +1,7 @@
 package output
 
 import (
+	"io"
 	"os"
 
 	"github.com/charmbracelet/lipgloss"
@@ -28,6 +29,25 @@ func NewStyles() Styles {
 	}
 
 	return Styles{
+		Success: renderer.NewStyle().Foreground(lipgloss.Color("2")),
+		Error:   renderer.NewStyle().Foreground(lipgloss.Color("1")),
+		Warning: renderer.NewStyle().Foreground(lipgloss.Color("3")),
+		Muted:   renderer.NewStyle().Foreground(lipgloss.Color("8")),
+		Bold:    renderer.NewStyle().Bold(true),
+	}
+}
+
+// NewStylesForWriter creates styles targeting a specific writer for color detection.
+func NewStylesForWriter(w io.Writer) *Styles {
+	noColor := os.Getenv("NO_COLOR") != ""
+
+	renderer := lipgloss.NewRenderer(w)
+	if noColor {
+		renderer.SetHasDarkBackground(false)
+		renderer.SetColorProfile(termenv.Ascii)
+	}
+
+	return &Styles{
 		Success: renderer.NewStyle().Foreground(lipgloss.Color("2")),
 		Error:   renderer.NewStyle().Foreground(lipgloss.Color("1")),
 		Warning: renderer.NewStyle().Foreground(lipgloss.Color("3")),

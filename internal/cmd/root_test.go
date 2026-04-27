@@ -2,6 +2,7 @@ package cmd_test
 
 import (
 	"bytes"
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -11,13 +12,10 @@ import (
 func TestRootCommand_VersionFlag(t *testing.T) {
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
-
 	code := cmd.Execute([]string{"--version"}, stdout, stderr)
-
 	if code != 0 {
 		t.Fatalf("expected exit code 0, got %d (stderr: %s)", code, stderr.String())
 	}
-
 	out := stdout.String()
 	if !strings.Contains(out, "urlbox") {
 		t.Errorf("expected version output to contain 'urlbox', got %q", out)
@@ -27,13 +25,10 @@ func TestRootCommand_VersionFlag(t *testing.T) {
 func TestRootCommand_Help(t *testing.T) {
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
-
 	code := cmd.Execute([]string{"--help"}, stdout, stderr)
-
 	if code != 0 {
 		t.Fatalf("expected exit code 0, got %d (stderr: %s)", code, stderr.String())
 	}
-
 	out := stdout.String()
 	if !strings.Contains(out, "urlbox") {
 		t.Errorf("expected help output to contain 'urlbox', got %q", out)
@@ -46,29 +41,24 @@ func TestRootCommand_Help(t *testing.T) {
 func TestRootCommand_UnknownSubcommand(t *testing.T) {
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
-
 	code := cmd.Execute([]string{"nonexistent"}, stdout, stderr)
-
 	if code == 0 {
 		t.Fatal("expected non-zero exit code for unknown subcommand")
 	}
-
-	errOut := stderr.String()
-	if !strings.Contains(errOut, "unknown") && !strings.Contains(errOut, "nonexistent") {
-		t.Errorf("expected error message about unknown command, got %q", errOut)
+	// Error should be in the envelope on stdout (not stderr)
+	out := stdout.String()
+	if !strings.Contains(out, "unknown") || !strings.Contains(out, "nonexistent") {
+		t.Errorf("expected error about unknown command on stdout, got %q", out)
 	}
 }
 
 func TestRootCommand_NoArgs_ShowsHelp(t *testing.T) {
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
-
 	code := cmd.Execute([]string{}, stdout, stderr)
-
 	if code != 0 {
 		t.Fatalf("expected exit code 0, got %d", code)
 	}
-
 	out := stdout.String()
 	if !strings.Contains(out, "urlbox") {
 		t.Errorf("expected help output to contain 'urlbox', got %q", out)
@@ -78,15 +68,11 @@ func TestRootCommand_NoArgs_ShowsHelp(t *testing.T) {
 func TestRootCommand_VersionFormat(t *testing.T) {
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
-
 	code := cmd.Execute([]string{"--version"}, stdout, stderr)
-
 	if code != 0 {
 		t.Fatalf("expected exit code 0, got %d", code)
 	}
-
 	out := stdout.String()
-	// Version template: "urlbox VERSION (commit: COMMIT, built: DATE)\n"
 	if !strings.Contains(out, "commit:") {
 		t.Errorf("expected version to contain 'commit:', got %q", out)
 	}
@@ -98,9 +84,7 @@ func TestRootCommand_VersionFormat(t *testing.T) {
 func TestRootCommand_HelpGoesToStdout(t *testing.T) {
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
-
 	cmd.Execute([]string{"--help"}, stdout, stderr)
-
 	if stdout.Len() == 0 {
 		t.Error("expected help output on stdout, got nothing")
 	}
@@ -109,16 +93,60 @@ func TestRootCommand_HelpGoesToStdout(t *testing.T) {
 	}
 }
 
-func TestRootCommand_ErrorGoesToStderr(t *testing.T) {
+func TestRootCommand_ErrorGoesToStdout(t *testing.T) {
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
-
 	code := cmd.Execute([]string{"nonexistent"}, stdout, stderr)
-
 	if code == 0 {
 		t.Fatal("expected non-zero exit code")
 	}
-	if stderr.Len() == 0 {
-		t.Error("expected error output on stderr, got nothing")
+	if stdout.Len() == 0 {
+		t.Error("expected error output on stdout, got nothing")
+	}
+}
+
+func TestRootCommand_OutputFormatFlag_Accepted(t *testing.T) {
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	code := cmd.Execute([]string{"--output-format", "json", "--help"}, stdout, stderr)
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d (stderr: %s)", code, stderr.String())
+	}
+}
+
+func TestRootCommand_UnknownSubcommand_JSONErrorEnvelope(t *testing.T) {
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	code := cmd.Execute([]string{"--output-format", "json", "nonexistent"}, stdout, stderr)
+	if code != 1 {
+		t.Fatalf("expected exit 1 (usage), got %d", code)
+	}
+	var env map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("stdout is not valid JSON: %v\nOutput: %s", err, stdout.String())
+	}
+	if env["ok"] != false {
+		t.Errorf("expected ok=false, got %v", env["ok"])
+	}
+	if env["code"] != "usage" {
+		t.Errorf("expected code=usage, got %v", env["code"])
+	}
+}
+
+func TestRootCommand_UnknownSubcommand_ExitCode1(t *testing.T) {
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	code := cmd.Execute([]string{"nonexistent"}, stdout, stderr)
+	if code != 1 {
+		t.Fatalf("expected exit code 1 (usage), got %d", code)
+	}
+}
+
+func TestRootCommand_ErrorEnvelope_GoesToStdout(t *testing.T) {
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	cmd.Execute([]string{"--output-format", "json", "nonexistent"}, stdout, stderr)
+	if stdout.Len() == 0 {
+		t.Error("expected error envelope on stdout, got nothing")
 	}
 }
