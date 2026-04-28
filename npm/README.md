@@ -13,8 +13,14 @@ npm install -g @urlbox/cli
 ```sh
 urlbox --version
 urlbox --help
-urlbox commands
+urlbox commands                       # list every command + flag
+urlbox commands --output-format json  # machine-readable for agents
+urlbox auth --api-key sec_xxxxxx      # save your API key
+urlbox doctor                         # verify install + auth
+urlbox skill show                     # one-page agent guide
 ```
+
+All commands support `--output-format json|text|quiet` and a built-in `--jq <expr>` filter (no external `jq` binary needed).
 
 ## How it works
 

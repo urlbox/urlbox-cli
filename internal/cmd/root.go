@@ -104,6 +104,7 @@ func newRootCmd(stdout, stderr io.Writer) *cobra.Command {
 	cmd.AddCommand(newSurfaceCmd(cmd))
 	cmd.AddCommand(newAuthCmd())
 	cmd.AddCommand(newDoctorCmd())
+	cmd.AddCommand(newSkillCmd())
 
 	return cmd
 }

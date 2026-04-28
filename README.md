@@ -51,11 +51,26 @@ urlbox --help
 # List all commands (human-readable)
 urlbox commands
 
-# List all commands (machine-readable JSON)
+# List all commands (machine-readable JSON, ideal for agents)
 urlbox commands --output-format json
+
+# Configure your API key
+urlbox auth --api-key sec_xxxxxxxxxxxx
+
+# Verify install, config, and credentials
+urlbox doctor
 ```
 
 ## Commands
+
+### `auth`
+
+Saves your Urlbox API key to `~/.config/urlbox/config.json` (mode 0600). The
+env var `URLBOX_API_SECRET` takes precedence at runtime if both are set.
+
+```sh
+urlbox auth --api-key sec_xxxxxxxxxxxx
+```
 
 ### `commands`
 
@@ -67,26 +82,39 @@ In a terminal, output is a human-readable table. When piped or with `--output-fo
 $ urlbox commands
 Available commands:
 
+  auth      Configure API credentials
   commands  List all available commands
+  doctor    Check installation, configuration, network, and credentials
+  skill     Agent skill content
   upgrade   Update urlbox to the latest version
 
 Use "urlbox <command> --help" for more information about a command.
 ```
 
+### `doctor`
+
+Diagnoses installation, configuration, network, and credential issues. Runs
+seven checks: version, install method, config file, API key, DNS, API
+reachability, and credential validity. Exits non-zero if any check fails.
+
+```sh
+urlbox doctor
+urlbox doctor --output-format json --jq '.data.checks[] | select(.status != "ok")'
+```
+
+### `skill`
+
+Prints the embedded `SKILL.md` — a one-page agent guide describing the output
+contract, error codes, discovery commands, and authentication flow. Useful as
+context for an LLM agent.
+
+```sh
+urlbox skill show
+```
+
 ### `upgrade`
 
-Updates urlbox to the latest version. Automatically detects how you installed it (Homebrew, Scoop, npm, or Go) and runs the appropriate update command.
-
-```
-$ urlbox upgrade
-Current version: v0.1.0
-Install method: brew
-Binary path: /opt/homebrew/bin/urlbox
-
-Upgrading via Homebrew...
-```
-
-If the install method can't be detected, it prints all available upgrade commands so you can pick the right one.
+Updates urlbox to the latest version. Automatically detects how you installed it (Homebrew, Scoop, npm, or Go) and runs the appropriate update command. If the install method can't be detected, it prints all available upgrade commands so you can pick the right one.
 
 ## Output Formats
 
@@ -102,18 +130,69 @@ All commands support three output formats via the `--output-format` flag:
 
 The `NO_COLOR` environment variable is respected — when set, terminal colors are disabled.
 
+## Filtering output with `--jq`
+
+Every command supports a built-in `--jq <expr>` flag, powered by [gojq](https://github.com/itchyny/gojq). The expression runs over the JSON envelope, or against `.data` when combined with `--output-format quiet`. No external `jq` binary required.
+
+```sh
+# Pull a single field
+urlbox commands --output-format json --jq '.data.commands[].name'
+
+# Filter to failing doctor checks only
+urlbox doctor --output-format json --jq '.data.checks[] | select(.status != "ok")'
+
+# Use --output-format quiet to run jq directly against .data
+urlbox commands --output-format quiet --jq '.commands | length'
+```
+
+## Agent integration
+
+Three discovery layers built specifically for LLM agents:
+
+```sh
+# 1. Full command catalog as JSON
+urlbox commands --output-format json
+
+# 2. Structured help for any command
+urlbox commands --help --agent
+urlbox doctor --help --agent
+
+# 3. The CLI's agent skill (embedded as SKILL.md)
+urlbox skill show
+```
+
+The CLI's exposed surface (every command and flag, at every level) is committed to `SURFACE.txt` and enforced in CI. New commands and flags can be added freely; renaming or removing one fails the surface gate, so downstream agents and scripts never break silently.
+
+## Authentication
+
+Two ways to provide your Urlbox API key:
+
+```sh
+# Env var (preferred for CI / containers — takes precedence)
+export URLBOX_API_SECRET=sec_xxxxxxxxxxxx
+
+# Or persisted to ~/.config/urlbox/config.json (mode 0600)
+urlbox auth --api-key sec_xxxxxxxxxxxx
+```
+
+Verify with `urlbox doctor`.
+
 ## Development
 
 | Target | Description |
 |--------|-------------|
-| `make ci` | Run all checks: fmt-check, lint, test, build |
+| `make ci` | Run all checks: fmt-check, lint, test, build, surface-check |
 | `make test` | Run tests with race detector |
 | `make e2e` | Run end-to-end tests |
 | `make e2e-verbose` | Run E2E tests with colored output |
 | `make lint` | Run golangci-lint |
 | `make fmt` | Format with gofumpt |
 | `make build` | Build binary to `bin/urlbox` |
+| `make surface-snapshot` | Regenerate `SURFACE.txt` from the built binary |
+| `make surface-check` | Fail if `SURFACE.txt` is stale or has breaking changes |
 | `make clean` | Remove `bin/` and `dist/` |
+
+`SURFACE.txt` is the canonical contract of every command and flag. Run `make surface-snapshot` after intentionally adding a flag or command, then commit the updated file alongside the code change.
 
 ## License
 
