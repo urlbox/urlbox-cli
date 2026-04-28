@@ -52,8 +52,10 @@ func Execute(args []string, stdout, stderr io.Writer) int {
 		cliErr = output.NewCLIError(output.ErrUsage, err.Error(), "")
 	}
 
-	env := output.NewErrorEnvelope(calledCommand(rootCmd), cliErr)
-	_ = formatter.WriteError(stdout, env)
+	if !cliErr.Silent {
+		env := output.NewErrorEnvelope(calledCommand(rootCmd), cliErr)
+		_ = formatter.WriteError(stdout, env)
+	}
 	return cliErr.ExitCode()
 }
 
@@ -100,6 +102,8 @@ func newRootCmd(stdout, stderr io.Writer) *cobra.Command {
 	cmd.AddCommand(newUpgradeCmd(stdout, stderr))
 	cmd.AddCommand(newCommandsCmd(stdout, stderr))
 	cmd.AddCommand(newSurfaceCmd(cmd))
+	cmd.AddCommand(newAuthCmd())
+	cmd.AddCommand(newDoctorCmd())
 
 	return cmd
 }

@@ -2,10 +2,19 @@ urlbox
 urlbox --agent
 urlbox --jq
 urlbox --output-format
+urlbox auth
+urlbox auth --agent
+urlbox auth --api-key
+urlbox auth --jq
+urlbox auth --output-format
 urlbox commands
 urlbox commands --agent
 urlbox commands --jq
 urlbox commands --output-format
+urlbox doctor
+urlbox doctor --agent
+urlbox doctor --jq
+urlbox doctor --output-format
 urlbox upgrade
 urlbox upgrade --agent
 urlbox upgrade --jq

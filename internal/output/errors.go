@@ -41,10 +41,15 @@ func IsValidErrorCode(code ErrorCode) bool {
 }
 
 // CLIError carries a machine-readable code and optional agent hint.
+//
+// Set Silent to true when the command has already written its own envelope to
+// stdout (e.g., doctor's check report) and only the exit code should reflect
+// failure. The Execute layer skips writing an error envelope in that case.
 type CLIError struct {
 	Code    ErrorCode
 	Message string
 	Hint    string
+	Silent  bool
 }
 
 func (e *CLIError) Error() string { return e.Message }
