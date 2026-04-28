@@ -41,6 +41,7 @@ func newCommandsCmd(stdout, stderr io.Writer) *cobra.Command {
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			formatFlag, _ := cmd.Root().PersistentFlags().GetString("output-format")
+			jqExpr, _ := cmd.Root().PersistentFlags().GetString("jq")
 			format := output.ResolveFormat(formatFlag, stdout)
 			styles := output.NewStylesForWriter(stdout)
 
@@ -51,6 +52,9 @@ func newCommandsCmd(stdout, stderr io.Writer) *cobra.Command {
 				{Action: "help", Cmd: "urlbox <command> --help"},
 			})
 
+			if jqExpr != "" {
+				return output.WriteEnvelopeWithJQ(stdout, env, jqExpr, format == output.FormatQuiet)
+			}
 			if format == output.FormatText {
 				return writeCommandsText(stdout, styles, catalog)
 			}

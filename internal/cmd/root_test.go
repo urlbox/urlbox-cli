@@ -150,3 +150,45 @@ func TestRootCommand_ErrorEnvelope_GoesToStdout(t *testing.T) {
 		t.Error("expected error envelope on stdout, got nothing")
 	}
 }
+
+func TestRoot_NoArgs_PrintsBannerToStderr_WhenTTY(t *testing.T) {
+	cmd.SetStderrTTYForTest(true)
+	defer cmd.ResetStderrTTYForTest()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	cmd.Execute([]string{}, stdout, stderr)
+
+	if !strings.Contains(stderr.String(), "urlbox commands") {
+		t.Fatalf("expected banner on stderr; got: %q", stderr.String())
+	}
+	if strings.Contains(stdout.String(), "If you're looking") {
+		t.Fatalf("banner must not appear on stdout; got: %q", stdout.String())
+	}
+}
+
+func TestRoot_NoArgs_NoBanner_WhenPiped(t *testing.T) {
+	cmd.SetStderrTTYForTest(false)
+	defer cmd.ResetStderrTTYForTest()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	cmd.Execute([]string{}, stdout, stderr)
+
+	if strings.Contains(stderr.String(), "If you're looking") {
+		t.Fatalf("banner should not show in non-TTY; got: %q", stderr.String())
+	}
+}
+
+func TestRoot_WithSubcommand_NoBanner(t *testing.T) {
+	cmd.SetStderrTTYForTest(true)
+	defer cmd.ResetStderrTTYForTest()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	cmd.Execute([]string{"commands", "--output-format", "json"}, stdout, stderr)
+
+	if strings.Contains(stderr.String(), "If you're looking") {
+		t.Fatalf("banner leaked into subcommand run; got: %q", stderr.String())
+	}
+}

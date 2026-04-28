@@ -1,6 +1,12 @@
 urlbox
+urlbox --agent
+urlbox --jq
 urlbox --output-format
 urlbox commands
+urlbox commands --agent
+urlbox commands --jq
 urlbox commands --output-format
 urlbox upgrade
+urlbox upgrade --agent
+urlbox upgrade --jq
 urlbox upgrade --output-format
