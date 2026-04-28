@@ -1,0 +1,6 @@
+urlbox
+urlbox --output-format
+urlbox commands
+urlbox commands --output-format
+urlbox upgrade
+urlbox upgrade --output-format
