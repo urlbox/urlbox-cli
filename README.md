@@ -85,6 +85,7 @@ Available commands:
   auth      Configure API credentials
   commands  List all available commands
   doctor    Check installation, configuration, network, and credentials
+  schema    Print JSON Schemas describing Urlbox API payloads
   skill     Agent skill content
   upgrade   Update urlbox to the latest version
 
@@ -101,6 +102,28 @@ reachability, and credential validity. Exits non-zero if any check fails.
 urlbox doctor
 urlbox doctor --output-format json --jq '.data.checks[] | select(.status != "ok")'
 ```
+
+### `schema`
+
+Prints the JSON Schema that describes an Urlbox API payload. Use this to
+discover every valid option and its type — handy for agents building requests
+or for humans exploring the available render options.
+
+```sh
+# Full schema in the standard envelope
+urlbox schema render
+
+# Discover render options
+urlbox schema render --jq '.data.properties | keys'
+
+# Raw schema only (no envelope)
+urlbox schema render --output-format quiet
+```
+
+When `--json` is used to send payloads (Phase 4 onward), this same schema is
+applied for client-side validation before any network call. Validation
+failures return error code `validation` (exit code 2). See `urlbox skill show`
+for the full validation contract.
 
 ### `skill`
 
