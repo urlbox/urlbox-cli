@@ -1,0 +1,1857 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/urlbox/urlbox-cli/schema/render.json",
+  "title": "Urlbox render request",
+  "description": "Public render-request options for urlbox-cli. Generated from the Zod request schema, filtered to the customer-documented option set in apps/dashboard/src/lib/options.ts. Internal/debug options are intentionally excluded.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "html": {
+      "type": "string",
+      "description": "The HTML you want to render."
+    },
+    "url": {
+      "type": "string",
+      "description": "The URL or domain of the website you want to screenshot. We will automatically prepend `http://` if it is missing."
+    },
+    "engine_version": {
+      "type": "string",
+      "enum": [
+        "stable",
+        "latest",
+        "lts",
+        "experimental"
+      ],
+      "description": "Sets the version of the urlbox rendering engine to use when rendering the page. This can be useful for testing how a page will render in the latest version of our rendering engine."
+    },
+    "format": {
+      "type": "string",
+      "enum": [
+        "png",
+        "jpg",
+        "jpeg",
+        "pdf",
+        "avif",
+        "mp4",
+        "webm",
+        "webp",
+        "html",
+        "mhtml",
+        "svg",
+        "md"
+      ],
+      "description": "The output format of the resulting render."
+    },
+    "full_page_mode": {
+      "type": "string",
+      "enum": [
+        "native",
+        "stitch"
+      ],
+      "description": "Whether to use scroll and stitch algorithm (the default) to render a full page screenshot, or to use the native full page screenshot algorithm, which is faster, but can be less accurate on some sites.",
+      "default": "stitch"
+    },
+    "img_fit": {
+      "description": "ImgFit",
+      "type": "string",
+      "enum": [
+        "cover",
+        "contain",
+        "fill",
+        "inside",
+        "outside"
+      ],
+      "examples": [
+        "cover",
+        "contain",
+        "fill",
+        "inside",
+        "outside"
+      ],
+      "default": "cover"
+    },
+    "img_position": {
+      "type": "string",
+      "enum": [
+        "top",
+        "right top",
+        "right",
+        "right bottom",
+        "bottom",
+        "left bottom",
+        "left",
+        "left top",
+        "center",
+        "centre",
+        "north",
+        "northeast",
+        "east",
+        "southeast",
+        "south",
+        "southwest",
+        "west",
+        "northwest",
+        "entropy",
+        "attention"
+      ],
+      "description": "How the image should be positioned when using an [`img_fit`](#img_fit) of `cover` or `contain`.",
+      "examples": [
+        "north",
+        "south",
+        "west",
+        "east",
+        "center",
+        "northwest"
+      ],
+      "default": "center"
+    },
+    "llm_output": {
+      "type": "string",
+      "enum": [
+        "object",
+        "array",
+        "enum"
+      ],
+      "description": "You can provide a structured output type and schema to Urlbox, and we will prompt your LLM to give back that response structure. By passing an llm_schema without this option, it will default to responding with an object specified by your JSON Schema. If you choose Array, the response will be an array of your provided JSON Schema. If you choose enum, you can provide an array of strings as your schema, and your LLM will respond only with a value from that enum."
+    },
+    "media": {
+      "type": "string",
+      "enum": [
+        "print",
+        "screen"
+      ],
+      "description": "By default, when generating a PDF, the `print` CSS media query is used. To generate a PDF using the `screen` CSS, set this option to `screen`.\n\nWhen generating an image, the `screen` CSS media query is used by default. To generate an image using the `print` CSS, set this option to `print`."
+    },
+    "pdf_margin": {
+      "type": "string",
+      "enum": [
+        "default",
+        "none",
+        "minimum"
+      ],
+      "description": "Sets the margin of the PDF document.",
+      "examples": [
+        "none",
+        "default",
+        "minimum"
+      ],
+      "default": "none"
+    },
+    "pdf_orientation": {
+      "type": "string",
+      "enum": [
+        "portrait",
+        "landscape"
+      ],
+      "description": "Sets the orientation of the PDF.",
+      "examples": [
+        "portrait",
+        "landscape"
+      ],
+      "default": "portrait"
+    },
+    "pdf_page_size": {
+      "type": "string",
+      "enum": [
+        "a0",
+        "a1",
+        "a2",
+        "a3",
+        "a4",
+        "a5",
+        "a6",
+        "legal",
+        "ledger",
+        "letter",
+        "tabloid",
+        "A0",
+        "A1",
+        "A2",
+        "A3",
+        "A4",
+        "A5",
+        "A6",
+        "Legal",
+        "Ledger",
+        "Letter",
+        "Tabloid"
+      ],
+      "description": "Sets the PDF page size. \n\n Setting this option will take precedence over `pdf_page_width` and `pdf_page_height`.",
+      "examples": [
+        "A0",
+        "A4",
+        "Letter"
+      ],
+      "default": "A4"
+    },
+    "response_type": {
+      "type": "string",
+      "enum": [
+        "json",
+        "jsondebug",
+        "binary",
+        "base64",
+        "none"
+      ],
+      "description": "For render link requests, setting this option to `json` will change the response type of the Urlbox request to JSON. For the API, the default response type is JSON.",
+      "examples": [
+        "json",
+        "binary"
+      ]
+    },
+    "s3_storageclass": {
+      "type": "string",
+      "enum": [
+        "STANDARD",
+        "REDUCED_REDUNDANCY",
+        "STANDARD_IA",
+        "ONEZONE_IA",
+        "INTELLIGENT_TIERING",
+        "GLACIER",
+        "DEEP_ARCHIVE",
+        "OUTPOSTS",
+        "standard",
+        "reduced_redundancy",
+        "standard_ia",
+        "onezone_ia",
+        "intelligent_tiering",
+        "glacier",
+        "deep_archive",
+        "outposts"
+      ],
+      "description": "Sets the s3 storage class.",
+      "default": "standard"
+    },
+    "wait_until": {
+      "type": "string",
+      "enum": [
+        "domloaded",
+        "mostrequestsfinished",
+        "requestsfinished",
+        "loaded"
+      ],
+      "description": "Waits until the specified DOM event has fired before capturing a render.\n\nThe available options are:\n\n* `domloaded` (the `DOMContentLoaded` event is fired)\n* `mostrequestsfinished` (consider navigation to be finished when there are no more than 2 network connections for at least 500 ms)\n* `requestsfinished` (there are no more than 0 network connections for at least 500 ms)\n* `loaded` (the `load` event is fired) ",
+      "examples": [
+        "domloaded",
+        "mostrequestsfinished",
+        "requestsfinished",
+        "loaded"
+      ],
+      "default": "loaded"
+    },
+    "allow_infinite": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "description": "By default, when Urlbox detects an infinite scrolling page, it does not attempt to continue scrolling to the bottom, as this could result in infinite scrolling! If you want to override this behaviour, pass `true` for this option.",
+      "default": false
+    },
+    "block_ads": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "description": "Blocks requests from popular advertising networks from loading."
+    },
+    "block_data_urls": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "description": "Block data URLs such as `data:image/png;base64,...`"
+    },
+    "block_fetch": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "description": "Block fetch requests from the target URL."
+    },
+    "block_fonts": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "description": "Blocks font requests"
+    },
+    "block_frames": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "description": "Prevents iframe and frame content from loading by blocking non-navigation document requests. The main page will load normally, but any embedded frames/iframes will be blocked."
+    },
+    "block_images": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "description": "Blocks image requests"
+    },
+    "block_medias": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "description": "Block video and audio requests"
+    },
+    "block_scripts": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "description": "Prevent requests for javascript scripts from loading"
+    },
+    "block_sockets": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "description": "Prevents WebSocket connections from being established, blocking real-time communication features like live chat, notifications, or dynamic updates."
+    },
+    "block_styles": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "description": "Prevent stylesheet requests from loading"
+    },
+    "block_xhr": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "description": "Block XHR requests from the target URL."
+    },
+    "certify": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "description": "This creates a hash of the rendered file, timestamp and options providing proof that a render was taken at a given time. Returns a hash, timestamp and the options used to hash. Checkout our [`guide`]( /guides/certify-a-screenshot ) on certifying a render for more information."
+    },
+    "click_accept": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "description": "Similar to the [`hide_cookie_banners`](#hide_cookie_banners) option, but instead of hiding the banners, this option attempts to click on the 'Accept' button, in order to accept cookies."
+    },
+    "dark_mode": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "description": "Emulate dark mode on websites by setting `prefers-color-scheme: dark`",
+      "examples": [
+        true,
+        false
+      ],
+      "default": "false"
+    },
+    "detect_full_height": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "description": "Some pages have full-height backgrounds whose heights are set to 100% of the viewport. This can cause the backgrounds to get stretched when making a full page screenshot. If you are seeing this behaviour in your full page screenshots, pass `true` for this option.",
+      "default": false
+    },
+    "disable_js": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "description": "Turns off javascript on the target URL. \n\n~> Enabling this option will prevent `full_page=true` and many other options, because having javascript disabled prevents Urlbox from evaluating code inside the page's context.",
+      "examples": [
+        true,
+        false
+      ],
+      "default": "false"
+    },
+    "disable_ligatures": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "description": "Prevents ligatures from being used. Useful when rendering a PDF, and you want to extract text which contains ligatures."
+    },
+    "fail_if_selector_missing": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "description": "Fails the request if the elements specified by `selector` or `wait_for` options are not found on the page after waiting for `wait_timeout`.",
+      "default": "false"
+    },
+    "fail_if_selector_present": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "description": "Fails the request if the element specified by `wait_to_leave` option is found on the page after waiting for `wait_timeout`.",
+      "default": "false"
+    },
+    "fail_on_4xx": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "description": "If `fail_on_4xx=true` and the requested URL returns a status code between 400 and 499, Urlbox will fail the request with error code 400 and the message: `Failed to render. Requested URL returned a 4xx error code and fail_on_4xx was true`",
+      "examples": [
+        false,
+        true
+      ],
+      "default": "false"
+    },
+    "fail_on_5xx": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "description": "If `fail_on_5xx=true` and the requested URL returns a status code between 500 and 599, Urlbox will fail the request with error code 400 and message: `Failed to render. Requested URL returned a 5xx error code and fail_on_5xx was true`",
+      "examples": [
+        false,
+        true
+      ],
+      "default": "false"
+    },
+    "force": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "description": "Generate a fresh render on each request, instead of getting a cached version.",
+      "default": "false"
+    },
+    "full_page": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "description": "Specify whether to capture the full scrollable area of the website.\n                For PDFs, `full_page` mode will attempt to capture the whole website onto one single page PDF document.\n                It's likely you'll want to also hide any cookie banners that crop up during a full page screenshot, so we recommend you use [`click_accept`](#click_accept) and [`hide_cookie_banners`](#hide_cookie_banners) too.",
+      "default": "false"
+    },
+    "full_width": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "description": "When full_page=true, specify whether to capture the full width of the website, for example if the site is horizontally scrolling.",
+      "default": "false"
+    },
+    "gpu": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "description": "Enable GPU acceleration to render 3D scenes and heavy WebGL content. This is a beta feature and requires pre-approval. Please contact support@urlbox.com to enable this feature on your account.",
+      "default": "false"
+    },
+    "hide_cookie_banners": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "description": "Automatically hides cookie banners from most websites, by setting their style to `display: none !important;`"
+    },
+    "llm_full_response": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "description": "Return the full LLM response including usage statistics and metadata, rather than just the text content."
+    },
+    "no_suffix": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "description": "By default, urlbox adds the file extension (e.g. `.png`, `.jpg`, `.pdf` etc) to the `s3_path`.\n\nIf `no_suffix=true`, the file extension will NOT be added to the `s3_path`."
+    },
+    "pdf_auto_crop": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "description": "Automatically remove white space from PDF. Occasionally a PDF will have a lot of trailing white space at the bottom of the page. This option will attempt to automatically crop the PDF to remove this white space."
+    },
+    "pdf_background": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "description": "Sets whether to print background images in the PDF",
+      "examples": [
+        true,
+        false
+      ],
+      "default": "true"
+    },
+    "pdf_show_footer": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "description": "Whether to show the default pdf footer on each page of the pdf. The template of the footer can be changed by setting the [`pdf_footer`](#pdf_footer) option.",
+      "examples": [
+        true
+      ]
+    },
+    "pdf_show_header": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "description": "Whether to show the default pdf header on each page of the pdf. The template of the header can be changed by setting the [`pdf_header`](#pdf_header) option.",
+      "examples": [
+        true
+      ]
+    },
+    "press_escape": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "description": "Attempts to press the Escape (ESC) key before capturing the page. Useful for dismissing pop-ups, overlays, or advertising banners that appear on load."
+    },
+    "readable": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "description": "Make the pdf into a readable document by removing unnecessary elements such as navigation bars, ads, etc.",
+      "examples": [
+        true
+      ]
+    },
+    "reduced_motion": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "description": "Prefer less animations on websites by setting `prefers-reduced-motion: reduced`"
+    },
+    "retina": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "description": "Take a 'retina' or high-definition screenshot, equivalent to setting a device pixel ratio of 2.0 or @2x. Please note that retina screenshots will be double the normal dimensions and will normally take slightly longer to process due to the much bigger image size.",
+      "examples": [
+        true,
+        false
+      ],
+      "default": "false"
+    },
+    "secure_mode": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "description": "Ensure that sensitive data remains protected throughout the process. In addition to this option, you need to use one of the storage approaches described on our [`blog post`]( /secure-screenshots ) about secure mode."
+    },
+    "show_timestamp": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "description": "Shows a timestamp in a header above the rendered screenshot. Can be paired with show URL. If you're rendering a PDF, you can achieve this with the show_header option."
+    },
+    "show_url": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "description": "Shows a URL in a header above the rendered screenshot. Can be paired with show timestamp. If you're rendering a PDF, you can achieve this with the show_header option."
+    },
+    "skip_scroll": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "description": "Enabling `skip_scroll` will speed up renders by skipping an initial scroll through the page, which is used to trigger any lazy loading elements.",
+      "examples": [
+        true,
+        false
+      ],
+      "default": "false"
+    },
+    "transparent": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "description": "If a website has no background color set, the image will have a transparent background (PNG/WebP only)",
+      "default": "false"
+    },
+    "use_llm": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "description": "Use the LLM configuration setup in your project settings, or those passed into the request."
+    },
+    "use_proxy": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "description": "This uses the proxy you have stored on your [`project`]( /dashboard/projects ) in use to make screenshot requests via that server."
+    },
+    "use_s3": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "description": "Save the render directly to the S3 (or S3-Compatible) bucket configured on your account.",
+      "default": "false"
+    },
+    "accept_lang": {
+      "type": "string",
+      "description": "Sets an `Accept-Language` header on requests to the target URL",
+      "examples": [
+        "de-CH",
+        "ko-KR"
+      ],
+      "default": "en-US"
+    },
+    "authorization": {
+      "type": "string",
+      "description": "Sets an `Authorization` header on requests to the target URL.\n Can be used to pass an auth token through to the site in order to 'login' before rendering.",
+      "examples": [
+        "Basic my_base64_auth_token",
+        "Bearer my_bearer_token"
+      ]
+    },
+    "unique": {
+      "type": "string",
+      "description": "Pass a unique string such as a UUID, hash or timestamp, to have more control over when to generate a fresh screenshot or PDF."
+    },
+    "user_agent": {
+      "type": "string",
+      "description": "Sets the `User-Agent` string for the request. The user agent identifies what browser/device is making the request, which can affect how websites render content.\n\n**Presets:**\n* `random` - Uses a random user-agent to help avoid bot detection\n* `mobile` - Uses a modern iPhone/Safari user-agent string\n* `desktop` - Uses a modern Chrome/macOS user-agent string\n\n**Why use this?**\n- Some websites serve different content based on the user agent (e.g., mobile vs desktop layouts)\n- Certain sites block requests from unknown or bot-like user agents\n- You may want to emulate how a specific browser or crawler sees a page\n\n**Testing your user agent:**\nTry rendering [httpbin.org/user-agent](https://httpbin.org/user-agent) to see exactly what user agent string is being sent.\n\nFor a comprehensive list of user agent strings, see [useragents.me](https://www.useragents.me/).",
+      "examples": [
+        "random",
+        "mobile",
+        "desktop",
+        "Googlebot/2.1 (+http://www.google.com/bot.html)",
+        "facebookexternalhit/1.1",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 11_2_3) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/89.0.4389.90 Safari/537.36"
+      ]
+    },
+    "platform": {
+      "type": "string",
+      "description": "Sets the `navigator.platform` that the browser will report for the request. Useful for getting around certain scripts that detect the platform.",
+      "examples": [
+        "MacIntel",
+        "Linux x86_64",
+        "Linux armv81",
+        "Win32"
+      ],
+      "default": "MacIntel"
+    },
+    "bg_color": {
+      "type": "string",
+      "description": "Specify a hex code or CSS color string to use as the background color\n\nSome websites don't set a body background colour, and will show up as transparent backgrounds with PNG, or black when using JPG. Use this setting to set a background colour. If the website explicitly sets a transparent background on the html or body elements, this setting will be overridden."
+    },
+    "hide_selector": {
+      "type": "string",
+      "description": "Hide specific HTML elements on the page before rendering. This option accepts a comma-delimited string of CSS element selectors that will be hidden by setting their style to `visibility: hidden !important; pointer-events: none !important;`. This preserves the page layout while making elements invisible.\n\nThis is particularly useful for:\n- Hiding pop-ups, banners, or cookie notices\n- Removing advertisements or promotional overlays\n- Excluding navigation menus or sidebars\n- Hiding specific content sections\n\n**Selector types supported:**\n- **Element selectors** (e.g., `h1`, `div`, `img`) - Hide all elements of that type\n- **Class selectors** (e.g., `.popup`, `.banner`) - Hide elements with specific CSS classes\n- **ID selectors** (e.g., `#header`, `#sidebar`) - Hide elements with specific IDs\n- **Complex selectors** (e.g., `.nav ul li`, `div.content > p`) - Use any valid CSS selector\n- **Multiple selectors** - Combine multiple selectors with commas\n\n**Tip:** To find the selector for any element, open your browser's DevTools, right-click the element in the Elements tab, and select \"Copy > Copy selector\"."
+    },
+    "highlight": {
+      "type": "string",
+      "description": "Specify a string to highlight on the page before capturing a screenshot or PDF. To highlight multiple words, separate words with a pipe character e.g. Hello|World",
+      "examples": [
+        "urlbox|api"
+      ]
+    },
+    "highlightfg": {
+      "type": "string",
+      "description": "Specify the text color of the highlighted word.",
+      "default": "white"
+    },
+    "highlightbg": {
+      "type": "string",
+      "description": "Specify the background color of the highlighted word.",
+      "default": "red"
+    },
+    "selector": {
+      "type": "string",
+      "description": "Take a screenshot of the element that matches this selector. By default, if the selector is not found, Urlbox will take a normal viewport screenshot. If you prefer Urlbox to fail the request when the selector is not found, pass `fail_if_selector_missing=true`."
+    },
+    "css": {
+      "type": "string",
+      "description": "Inject custom CSS into the page"
+    },
+    "js": {
+      "type": "string",
+      "description": "Execute custom JavaScript in the context of the page. The JS gets executed after the page's dom has loaded, but before the screenshot is taken. No need to use `load` etc event handlers to run code, as these events will already have fired by the time this JS gets executed. You can use `await` to wait for promises to resolve."
+    },
+    "s3_bucket": {
+      "type": "string",
+      "description": "Overrides the configured bucket to use when saving the render."
+    },
+    "s3_path": {
+      "type": "string",
+      "description": "Sets the S3 path, including subdirectories and the filename, to use when saving the render in your S3-compatible bucket.\n\n~> The extension (e.g. .png, .jpg or .pdf) will be provided automatically, and should not be included in `s3_path`."
+    },
+    "s3_region": {
+      "type": "string",
+      "description": "Override the configured S3 region when saving the render."
+    },
+    "s3_endpoint": {
+      "type": "string",
+      "description": "You can change the endpoint URL to use an S3 compatible storage provider e.g. DigitalOcean Spaces, Minio, Wasabi, Cloudflare R2 and more."
+    },
+    "cdn_host": {
+      "type": "string",
+      "description": "If your custom bucket is fronted by a CDN, you can set the host name here."
+    },
+    "wait_for": {
+      "type": "string",
+      "description": "Waits for the element specified by this selector to be present in the DOM before taking a screenshot or PDF. \n\nBy default, Urlbox will take a screenshot or PDF if the `wait_for` element is not found after waiting for the time specified by the [`wait_timeout`](#wait_timeout) option.\n\n If you prefer Urlbox to fail the request when the `wait_for` element is not found, pass [`fail_if_selector_missing=true`](#fail_if_selector_missing)",
+      "examples": [
+        "",
+        "#loaded_element"
+      ]
+    },
+    "wait_for_state": {
+      "type": "string",
+      "enum": [
+        "attached",
+        "visible"
+      ],
+      "description": "Whether the element specified by wait_for should be visible or just present in the DOM. Visible means the element is attached to the DOM and has opacity > 0 and its width and height > 0 and doesn't have `visibility:hidden` set.",
+      "default": "attached"
+    },
+    "wait_to_leave": {
+      "type": "string",
+      "description": "Waits for the element specified by this selector to be absent from the DOM before taking a screenshot or PDF. \n\nA typical use-case would be waiting for loading spinners to be absent before taking a screenshot. \n\nBy default, Urlbox will take a screenshot or PDF if the `wait_to_leave` element is still present after the time specified by the [`wait_timeout`](#wait_timeout) option. \n\n If you prefer Urlbox to fail the request when the `wait_to_leave` element is still present, pass [`fail_if_selector_present=true`](#fail_if_selector_present)",
+      "examples": [
+        "",
+        "#loading_element"
+      ]
+    },
+    "proxy": {
+      "type": "string",
+      "description": "Pass in a proxy server address to make screenshot requests via that server in the format `[address]:[port]`.\n\n If proxy authentication is required, you can use the following format: `[user]:[password]@[address]:[port]`."
+    },
+    "clip": {
+      "type": "string",
+      "description": "Clip the screenshot to the bounding box specified by `x,y,width,height`.",
+      "examples": [
+        "0,0,400,400",
+        "100,100,200,200",
+        "0,800,800,600"
+      ]
+    },
+    "tz": {
+      "type": "string",
+      "description": "Emulate the timezone to use when rendering pages.\n\n Example: `tz=Europe/London`. A list of timezone ID's can be found here: https://en.wikipedia.org/wiki/List_of_tz_database_time_zones",
+      "examples": [
+        "Asia/Kolkata",
+        "Asia/Tokyo",
+        "America/Sao_Paulo",
+        "Europe/London"
+      ],
+      "default": "UTC"
+    },
+    "pdf_header": {
+      "type": "string",
+      "description": "Change the default pdf header that is shown on each page of the pdf when [`pdf_show_header`](#pdf_show_header) option is set.\n\n            You have the option to show the following variables in the header (or footer) of the pdf:\n\n            * current `date`\n            * `title` of the page\n            * `url` of the page\n            * current `pageNumber`\n            * the `totalPages` in the pdf document\n\n            You can display these variables by creating empty divs or spans, with special css class names relating to the variable you want to show.\n\n            For example, if you want to show the `date` followed by the `url`, you could use the following pdf header template:\n\n            `<div class=\"date\"></div><div class=\"url\"></div>`.\n\n            The pdf header template you set are inserted as the innerHTML of a parent div which is a flex container, and has `align-items` set to `flex-start`.\n\n            There are also some helper classes for aligning the divs or spans. The following classes are available:\n\n            * `left` - adds some left padding to the element and sets `flex: none`.\n            * `center` - aligns the element and text to the center.\n            * `right` - adds some right padding to the element and sets `flex: none`.\n            * `text` - sets the text to 8pt.\n            * `grow` - sets `flex: auto` on the element, allowing it to grow to fill the available space.\n\n\n            The default pdf header is:\n\n            `<div class='date text left'></div><div class='title text center'></div>`.\n\n            You can see exactly how the pdf page is constructed by looking at the [chromium pdf template](https://source.chromium.org/chromium/chromium/src/+/main:components/printing/resources/print_header_footer_template_page.html;l=98-100?q=header_footer%20&ss=chromium%2Fchromium%2Fsrc) in the chromium source repository.\n            "
+    },
+    "pdf_footer": {
+      "type": "string",
+      "description": "Change the default pdf footer that is shown on each page of the pdf when [`pdf_show_footer`](#pdf_show_footer) option is set.\n\n            You have the option to show the following variables in the footer (or header) of the pdf:\n\n            * current `date`\n            * `title` of the page\n            * `url` of the page\n            * current `pageNumber`\n            * the `totalPages` in the pdf document\n\n            You can display these variables by creating empty divs or spans, with special css class names relating to the variable you want to show.\n\n            For example, if you want to show the `date` followed by the `url`, you could use the following pdf footer template:\n\n            `<div class=\"date\"></div><div class=\"url\"></div>`.\n\n            The pdf footer template you set are inserted as the innerHTML of a parent div which is a flex container, and has `align-items` set to `flex-end`.\n\n            There are also some helper classes for aligning the divs or spans. The following classes are available:\n\n            * `left` - adds some left padding to the element and sets `flex: none`.\n            * `center` - aligns the element and text to the center.\n            * `right` - adds some right padding to the element and sets `flex: none`.\n            * `text` - sets the text to 8pt.\n            * `grow` - sets `flex: auto` on the element, allowing it to grow to fill the available space.\n\n\n            The default pdf footer is:\n\n            `<div class='url text left grow'></div><div class='text right'><span class='pageNumber'></span>/<span class='totalPages'></span></div>`.\n\n            You can see exactly how the pdf page is constructed by looking at the [chromium pdf template](https://source.chromium.org/chromium/chromium/src/+/main:components/printing/resources/print_header_footer_template_page.html;l=101-105?q=header_footer%20&ss=chromium%2Fchromium%2Fsrc) in the chromium source repository.\n            "
+    },
+    "pdf_page_range": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "description": "Sets the PDF page range to return. \n\n By default, the page is split into a multi page document and returns all page. Use this option to restrict which pages should be returned."
+    },
+    "pdf_title": {
+      "type": "string",
+      "description": "Sets the title metadata field of the PDF document. This is visible in PDF readers under document properties. If not set, the page's `<title>` tag will be used as the PDF title."
+    },
+    "pdf_subject": {
+      "type": "string",
+      "description": "Sets the subject metadata field of the PDF document. This is visible in PDF readers under document properties."
+    },
+    "pdf_author": {
+      "type": "string",
+      "description": "Sets the author metadata field of the PDF document. This is visible in PDF readers under document properties."
+    },
+    "pdf_keywords": {
+      "type": "string",
+      "description": "Sets the keywords metadata field of the PDF document. Pass a comma-separated list of keywords, e.g. `\"pdf_keywords\": \"screenshot,web,api\"`. This is visible in PDF readers under document properties and can help with document organization and search."
+    },
+    "pdf_creator": {
+      "type": "string",
+      "description": "Sets the creator metadata field of the PDF document. This typically indicates the application that created the original content. Visible in PDF readers under document properties."
+    },
+    "img_pad": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "description": "Pad the screenshot, giving it a border. Can either be a single pixel value that gets added to each side, or a comma delimited string of `top,right,bottom,left` pixel values.",
+      "examples": [
+        10,
+        30,
+        "1,10,20,40"
+      ]
+    },
+    "img_bg": {
+      "type": "string",
+      "description": "Background colour to use when [img_fit](#img_fit) is `contain`, or [`img_pad`](#img_pad) is used, defaults to black without transparency",
+      "examples": [
+        "red",
+        "#ccc",
+        "rgb(180, 255, 200)",
+        "rgba(180, 255, 200, 0.4)",
+        "hsl(60, 20%, 20%)"
+      ]
+    },
+    "download": {
+      "type": "string",
+      "description": "Pass in a filename which sets the content-disposition header on the response. E.g. `download=myfilename.png` This will make the Urlbox link downloadable, and will prompt the user to save the file as `myfilename.png`"
+    },
+    "llm_prompt": {
+      "type": "string",
+      "description": "The prompt to give the LLM EG \"Analyse this image and its associated HTML, giving me back a summary of what the website contents are and a list of all of the links it has \""
+    },
+    "llm_system_prompt": {
+      "type": "string",
+      "description": "This can be used to provide more overall context for the AI's response."
+    },
+    "llm_key": {
+      "type": "string",
+      "description": "The API access key for the given LLM provider."
+    },
+    "llm_provider": {
+      "type": "string",
+      "enum": [
+        "anthropic",
+        "openai",
+        "google",
+        "azure",
+        "mistral",
+        "cohere",
+        "amazon-bedrock",
+        "google-vertex",
+        "groq",
+        "xai",
+        "deepseek",
+        "perplexity",
+        "togetherai",
+        "fireworks",
+        "cerebras",
+        "openrouter"
+      ],
+      "description": "The LLM provider to use."
+    },
+    "llm_model": {
+      "type": "string",
+      "description": "The LLM model to use for the given provider. E.g. 'gpt-5.1' for OpenAI, 'claude-sonnet-4-5-20250929' for Anthropic."
+    },
+    "llm_schema": {
+      "anyOf": [
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        {
+          "type": "string"
+        },
+        {
+          "type": "object",
+          "properties": {},
+          "additionalProperties": {}
+        }
+      ],
+      "description": "This is the JSON schema or string[] provided which we will pass over to your LLM. Your LLM provider will respond with a structured output (if supported by your provider) according to that schema. Please take a look at the various resources on the [JSON Schema](https://json-schema.org/tools?query=&sortBy=name&sortOrder=ascending&groupBy=toolingTypes&licenses=&languages=&drafts=&toolingTypes=&environments=&showObsolete=false&supportsBowtie=false) website for more information on designing and validating a JSON schema."
+    },
+    "llm_base_url": {
+      "type": "string",
+      "description": "Override the default API endpoint for the LLM provider. Useful for proxies, self-hosted models, or custom endpoints."
+    },
+    "llm_azure_resource_name": {
+      "type": "string",
+      "description": "Azure OpenAI resource name. Used to construct the endpoint URL: `https://{resourceName}.openai.azure.com/`"
+    },
+    "llm_azure_api_version": {
+      "type": "string",
+      "description": "Azure OpenAI API version. Required when using deployment URLs. E.g. '2024-02-15-preview'."
+    },
+    "llm_azure_use_deployment_urls": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "description": "Use legacy Azure deployment URL format. Useful for compatibility with certain Azure OpenAI models or deployments that require the legacy endpoint format."
+    },
+    "llm_aws_region": {
+      "type": "string",
+      "description": "AWS region for Amazon Bedrock. Defaults to 'us-east-1'."
+    },
+    "llm_aws_access_key_id": {
+      "type": "string",
+      "description": "AWS access key ID for Amazon Bedrock authentication."
+    },
+    "llm_aws_secret_access_key": {
+      "type": "string",
+      "description": "AWS secret access key for Amazon Bedrock authentication."
+    },
+    "llm_aws_session_token": {
+      "type": "string",
+      "description": "Optional AWS session token for temporary credentials with Amazon Bedrock."
+    },
+    "llm_gcp_project": {
+      "type": "string",
+      "description": "Google Cloud project ID for Google Vertex AI."
+    },
+    "llm_gcp_location": {
+      "type": "string",
+      "description": "Google Cloud region for Vertex AI. Defaults to 'us-central1'."
+    },
+    "llm_gcp_service_account_json": {
+      "type": "string",
+      "description": "Google Cloud service account JSON key for Vertex AI authentication. Pass the entire JSON key file contents as a string."
+    },
+    "quality": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        }
+      ],
+      "description": "The image quality of the resulting screenshot (JPEG/WebP only)",
+      "examples": [
+        40,
+        80,
+        100
+      ],
+      "default": "80"
+    },
+    "delay": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        }
+      ],
+      "description": "The amount of time to wait before Urlbox captures a render in milliseconds.",
+      "default": "0"
+    },
+    "timeout": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        }
+      ],
+      "description": "The amount of time to wait for the requested URL to load, in milliseconds. The timeout value needs to be between 5,000 and 100,000 milliseconds. The default is 30000 or 30 seconds.",
+      "default": "30000"
+    },
+    "scroll_delay": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        }
+      ],
+      "description": "When Urlbox decides to split a screenshot into multiple sections, the scroll delay is the time to wait between taking the screenshots of each individual section, in milliseconds. While Urlbox does detect animations, and attempts to wait for them before taking a screenshot, this option could be used to force Urlbox to wait for a certain amount of time after scrolling to the next section, to wait for things like animations to finish."
+    },
+    "scroll_to": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "description": "Scroll, to either an element or to a pixel offset from the top, before taking a screenshot",
+      "examples": [
+        "#playground",
+        1024,
+        5000
+      ]
+    },
+    "width": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        }
+      ],
+      "description": "The viewport width of the browser, in pixels.",
+      "default": 1280
+    },
+    "height": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        }
+      ],
+      "description": "The viewport height of the browser, in pixels.",
+      "default": 1024
+    },
+    "thumb_width": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        }
+      ],
+      "description": "The width of the generated thumbnail, in pixels. Omit for a full-size screenshot.",
+      "examples": [
+        100,
+        200,
+        400
+      ]
+    },
+    "thumb_height": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        }
+      ],
+      "description": "The height of the generated thumbnail, in pixels. Omit for a full-size screenshot.",
+      "examples": [
+        100,
+        200,
+        400
+      ]
+    },
+    "max_height": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        }
+      ],
+      "description": "For extremely lengthy websites, it may be preferable to limit the screenshot to a maximum height to prevent Urlbox from spending time scrolling and generating an enormous screenshot."
+    },
+    "max_section_height": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        }
+      ],
+      "description": "When Urlbox takes a `full_page` screenshot, the maximum height of each image section is set to 4096 pixels. If a sites height is greater than this value, Urlbox will start splitting the screenshot into sections. Sometimes it is worthwhile experimenting with this number.",
+      "default": 4096
+    },
+    "ttl": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        }
+      ],
+      "description": "The duration to keep a screenshot or PDF in the cache, in seconds. ttl stands for 'time to live'. The default value is also the maximum value: `2592000` seconds (30 days).",
+      "examples": [
+        86400,
+        604800,
+        2592000
+      ],
+      "default": 2592000
+    },
+    "wait_timeout": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        }
+      ],
+      "description": "The amount of time to wait for the [`wait_for`](#wait_for) element to appear, or the [`wait_to_leave`](#wait_to_leave) element to leave before continuing, in milliseconds.",
+      "default": 30000
+    },
+    "scroll_increment": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        }
+      ],
+      "description": "Sets how many pixels to scroll when scrolling the page to trigger lazy loading elements. By default, the scroll increment is set to the browser viewport height. Some pages' lazy loading elements only trigger when the scroll increment is smaller than this, however, e.g. 400px."
+    },
+    "pdf_page_width": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "description": "Sets the PDF page width, in pixels.",
+      "examples": [
+        400,
+        800,
+        1400
+      ]
+    },
+    "pdf_page_height": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "description": "Sets the PDF page height, in pixels.",
+      "examples": [
+        400,
+        800,
+        2000
+      ]
+    },
+    "pdf_scale": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "description": "Sets the scale factor of the website content in the PDF. Valid values are numbers between 0.1 and 2.",
+      "examples": [
+        0.2,
+        1.2,
+        2
+      ],
+      "default": "1"
+    },
+    "pdf_margin_top": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "description": "Sets a custom top margin on the PDF.",
+      "examples": [
+        40
+      ]
+    },
+    "pdf_margin_bottom": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "description": "Sets a custom bottom margin on the PDF.",
+      "examples": [
+        50
+      ]
+    },
+    "pdf_margin_left": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "description": "Set a custom left margin on the PDF.",
+      "examples": [
+        60
+      ]
+    },
+    "pdf_margin_right": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "description": "Sets a custom right margin on the PDF.",
+      "examples": [
+        100
+      ]
+    },
+    "longitude": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "description": "Sets the longitude used to emulate the Geolocation API.",
+      "examples": [
+        40.7128
+      ]
+    },
+    "latitude": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "description": "Sets the latitude used to emulate the Geolocation API.",
+      "examples": [
+        74.006
+      ]
+    },
+    "accuracy": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "description": "Sets the accurate of the Geolocation API in metres.",
+      "examples": [
+        100,
+        5000
+      ]
+    },
+    "llm_temperature": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        }
+      ],
+      "description": "The temperature (creativity) for the LLM prompt. Defaults to 0 for less creative responses."
+    },
+    "llm_max_tokens": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        }
+      ],
+      "description": "The max number of output tokens the LLM can generate a response with. Defaults to 1000."
+    },
+    "llm_height": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        }
+      ],
+      "description": "The height of the thumbnail image that is sent to the LLM. Defaults to 512."
+    },
+    "llm_width": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        }
+      ],
+      "description": "The width of the thumbnail image that is sent to the LLM. Defaults to 512."
+    },
+    "max_retries": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        }
+      ],
+      "description": "Maximum number of retry attempts when using [`retry_on`](#retry_on). Must be between 0 and 5.",
+      "default": "3"
+    },
+    "retry_delay_ms": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        }
+      ],
+      "description": "Base delay in milliseconds between retry attempts. The delay doubles with each retry (exponential backoff). Must be between 100 and 60000.",
+      "default": "1000"
+    },
+    "min_size_bytes": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        }
+      ],
+      "description": "Minimum expected file size in bytes. Used with [`retry_on: \"small_size\"`](#retry_on) to retry when the screenshot is smaller than expected, which may indicate an error page was captured instead of the intended content.",
+      "default": "1000"
+    },
+    "block_urls": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      ],
+      "description": "Block requests from specific domains from loading. You can use wildcard characters such as `*` to match subdomains."
+    },
+    "click": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      ],
+      "description": "Specifies an element selector to click before generating a screenshot or PDF\n\nExample: `#clickme` would click an element with `id=\"clickme\"`. \n\n Can be used multiple times to simulate multiple sequential click events.\n\n If the selector matches multiple elements, only the first element will be clicked."
+    },
+    "click_all": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      ],
+      "description": "Specifies an element selector to click before generating a screenshot or PDF\n\nExample: `.clickme` would click all elements with `class=\"clickme\"`. \n\n Can be used multiple times to simulate multiple sequential click events.\n\n If the selector matches multiple elements, all elements will be clicked."
+    },
+    "cookie": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      ],
+      "description": "Sets a cookie on the request when loading the URL.\n\n              Example: To set the cookie with key `Opt-In` to the value `yes`, you would set the value of this option to `Opt-In=yes`.\n\n              Cookies can be passed as an array, to allow setting multiple cookies - e.g.`[\"Opt-In=yes\",\"Session-Id=DMTIzNDU\"]`.\n\n                To achieve multiple cookies with render links, just set the cookie option multiple times, like `cookie=Opt-In%3Dyes&cookie=Session-Id%3DDMTIzNDU`.\n\n                To set a specific domain on a cookie, you can do the following: `OptIn=yes;Domain=.mydomain.com`.\n\n                You can set other attributes for the cookie such as `Path`, `HttpOnly` and `SameSite`",
+      "examples": [
+        "OptIn=yes"
+      ]
+    },
+    "fail_on": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      ],
+      "description": "Pass in a specific HTTP status code (e.g., `\"400\"`, `\"500\"`) or an array of status codes (e.g., `[\"400\", \"404\", \"500\"]`) as strings. Urlbox will fail the request if the final response status code matches any of the specified codes."
+    },
+    "fail_on_except": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      ],
+      "description": "Specify status codes to exclude from [`fail_on`](#fail_on), [`fail_on_4xx`](#fail_on_4xx), or [`fail_on_5xx`](#fail_on_5xx) checks. For example, if you want to fail on all 5xx errors except 503, use `fail_on_5xx=true` with `fail_on_except=503`."
+    },
+    "header": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      ],
+      "description": "Set a header on the request when loading the URL\n\nExample: To set the header with key `X-My-Header` to the value `SomeValue`, you would pass `header=X-My-Header%3DSomeValue`.\n      \n\nThis can be set multiple times, to set more than one header - e.g. `header=X-My-Header%3DSomeValue&header=X-My-Other-Header%3DSomeOtherValue`.\n\n      As with all options passed via the query string, the header value must be URL encoded - so `X-My-Header=SomeValue` becomes `X-My-Header%3DSomeValue` in order to be interpreted correctly by Urlbox.",
+      "examples": [
+        "X-My-Header=MyHeaderValue"
+      ]
+    },
+    "hover": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      ],
+      "description": "Specifies an element selector to hover over before generating a screenshot or PDF\n\nExample: `#hoverme` would hover over the element with `id=\"hoverme\"`"
+    },
+    "retry_on": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      ],
+      "description": "Automatically retry renders when specific conditions occur. Pass a single condition, a comma-separated string, or an array of conditions.\n\nWhen a condition matches, Urlbox will retry with exponential backoff (delay doubles each time, starting at 1 second by default) up to 3 times by default.\n\n**HTTP status conditions** (retry based on the page's response):\n\n- **`4xx`** - Retry when the page returns any 4xx status\n- **`5xx`** - Retry when the page returns any 5xx status\n- **`404`**, **`429`**, **`503`**, etc. - Retry on specific status codes\n\n**Engine conditions** (retry when Urlbox encounters an internal error):\n\n- **`timeout`** - Retry when the render times out\n- **`crash`** - Retry when the browser crashes\n\n**Quality conditions:**\n\n- **`small_size`** - Retry when the screenshot is smaller than [`min_size_bytes`](#min_size_bytes)\n\n**Special values:**\n\n- **`all`** - Retry on any of the conditions above\n\n**Examples:**\n\n- `retry_on: \"4xx\"` - Retry when the page returns any 4xx status\n- `retry_on: [\"429\", \"503\"]` - Retry on rate limiting or service unavailable\n- `retry_on: \"timeout,crash\"` - Retry on engine failures only\n- `retry_on: \"5xx,timeout\"` - Retry on page 5xx errors or timeouts\n\n**Note:** If a condition matches both `retry_on` and [`fail_on`](#fail_on), the request will be retried first. Use [`fail_on_except`](#fail_on_except) to mark specific status codes as acceptable (won't retry or fail)."
+    }
+  },
+  "oneOf": [
+    {
+      "required": [
+        "url"
+      ]
+    },
+    {
+      "required": [
+        "html"
+      ]
+    }
+  ]
+}
