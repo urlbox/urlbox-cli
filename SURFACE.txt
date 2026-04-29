@@ -15,6 +15,14 @@ urlbox doctor
 urlbox doctor --agent
 urlbox doctor --jq
 urlbox doctor --output-format
+urlbox schema
+urlbox schema --agent
+urlbox schema --jq
+urlbox schema --output-format
+urlbox schema render
+urlbox schema render --agent
+urlbox schema render --jq
+urlbox schema render --output-format
 urlbox skill
 urlbox skill --agent
 urlbox skill --jq
