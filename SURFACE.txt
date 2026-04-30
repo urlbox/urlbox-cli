@@ -2,36 +2,45 @@ urlbox
 urlbox --agent
 urlbox --jq
 urlbox --output-format
+urlbox --profile
 urlbox auth
 urlbox auth --agent
 urlbox auth --api-key
 urlbox auth --jq
 urlbox auth --output-format
+urlbox auth --profile
 urlbox commands
 urlbox commands --agent
 urlbox commands --jq
 urlbox commands --output-format
+urlbox commands --profile
 urlbox doctor
 urlbox doctor --agent
 urlbox doctor --jq
 urlbox doctor --output-format
+urlbox doctor --profile
 urlbox schema
 urlbox schema --agent
 urlbox schema --jq
 urlbox schema --output-format
+urlbox schema --profile
 urlbox schema render
 urlbox schema render --agent
 urlbox schema render --jq
 urlbox schema render --output-format
+urlbox schema render --profile
 urlbox skill
 urlbox skill --agent
 urlbox skill --jq
 urlbox skill --output-format
+urlbox skill --profile
 urlbox skill show
 urlbox skill show --agent
 urlbox skill show --jq
 urlbox skill show --output-format
+urlbox skill show --profile
 urlbox upgrade
 urlbox upgrade --agent
 urlbox upgrade --jq
 urlbox upgrade --output-format
+urlbox upgrade --profile

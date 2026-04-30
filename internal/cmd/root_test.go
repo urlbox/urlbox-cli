@@ -9,6 +9,21 @@ import (
 	"github.com/urlbox/urlbox-cli/internal/cmd"
 )
 
+func TestRoot_HasProfileFlag(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{"--help"}, &stdout, &stderr)
+	if exit != 0 {
+		t.Fatalf("exit=%d", exit)
+	}
+	help := stdout.String() + stderr.String()
+	if !strings.Contains(help, "--profile") {
+		t.Error("--help is missing --profile")
+	}
+	if strings.Contains(help, "--env") {
+		t.Error("--help contains --env; the flag was dropped in Phase 3")
+	}
+}
+
 func TestRootCommand_VersionFlag(t *testing.T) {
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}

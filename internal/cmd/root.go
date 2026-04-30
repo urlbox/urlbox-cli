@@ -85,6 +85,7 @@ func newRootCmd(stdout, stderr io.Writer) *cobra.Command {
 	cmd.PersistentFlags().StringVar(&outputFormat, "output-format", "", "Output format: json, text, or quiet")
 	cmd.PersistentFlags().Bool("agent", false, "When combined with --help, output structured JSON help")
 	cmd.PersistentFlags().String("jq", "", "Run a jq expression over the envelope (or .data with --output-format quiet)")
+	cmd.PersistentFlags().String("profile", "", "Named config profile to use (overrides URLBOX_PROFILE)")
 
 	defaultHelp := cmd.HelpFunc()
 	cmd.SetHelpFunc(func(c *cobra.Command, args []string) {
