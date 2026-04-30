@@ -82,3 +82,89 @@ func TestAuth_HasBreadcrumbs(t *testing.T) {
 		t.Fatalf("expected breadcrumbs, got: %v", env["breadcrumbs"])
 	}
 }
+
+func TestAuth_NonInteractive_NoKey_StillUsageError(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cmd.SetStdinTTYForTest(false)
+	defer cmd.ResetStdinTTYForTest()
+
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{"auth"}, &stdout, &stderr)
+	if exit != 1 {
+		t.Fatalf("exit=%d, want 1 (usage)", exit)
+	}
+	var env map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("not JSON: %v", err)
+	}
+	if env["code"] != "usage" {
+		t.Errorf("code=%v", env["code"])
+	}
+	if env["error"] != "missing --api-key" {
+		t.Errorf("error=%v", env["error"])
+	}
+}
+
+// The interactive path requires a pty — we don't drive a real pty in CI.
+// Instead we inject a stub secret-reader and verify the dispatcher selects
+// the interactive branch when both stdin and stderr are TTYs.
+func TestAuth_InteractivePath_DispatchedWhenTTY(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cmd.SetStdinTTYForTest(true)
+	cmd.SetStderrTTYForTest(true)
+	defer cmd.ResetStdinTTYForTest()
+	defer cmd.ResetStderrTTYForTest()
+
+	called := false
+	cmd.SetAuthSecretReaderForTest(func() (string, error) {
+		called = true
+		return "sec_prompt", nil
+	})
+	defer cmd.ResetAuthSecretReaderForTest()
+
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{"auth"}, &stdout, &stderr)
+	if exit != 0 {
+		t.Fatalf("exit=%d stderr=%s", exit, stderr.String())
+	}
+	if !called {
+		t.Fatal("interactive secret reader was not called")
+	}
+	if !strings.Contains(stderr.String(), "API secret:") {
+		t.Errorf("expected prompt label on stderr, got %q", stderr.String())
+	}
+
+	c, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Profiles["default"].APIKey != "sec_prompt" {
+		t.Errorf("APIKey = %q", c.Profiles["default"].APIKey)
+	}
+}
+
+func TestAuth_InteractivePath_EmptyInput_UsageError(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cmd.SetStdinTTYForTest(true)
+	cmd.SetStderrTTYForTest(true)
+	defer cmd.ResetStdinTTYForTest()
+	defer cmd.ResetStderrTTYForTest()
+
+	cmd.SetAuthSecretReaderForTest(func() (string, error) {
+		return "", nil
+	})
+	defer cmd.ResetAuthSecretReaderForTest()
+
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{"auth"}, &stdout, &stderr)
+	if exit != 1 {
+		t.Fatalf("exit=%d, want 1", exit)
+	}
+	var env map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("not JSON: %v", err)
+	}
+	if env["code"] != "usage" {
+		t.Errorf("code=%v", env["code"])
+	}
+}
