@@ -87,6 +87,15 @@ The env var URLBOX_API_SECRET takes precedence at runtime over the saved value.`
 			}
 
 			if secret == "" {
+				if interactive {
+					// User was on a TTY and pressed Enter at the prompt — tell them so,
+					// don't suggest "run interactively on a TTY" (they already did).
+					return output.NewCLIError(
+						output.ErrUsage,
+						"empty API secret",
+						"Run 'urlbox auth' again and paste your secret at the prompt.",
+					)
+				}
 				return output.NewCLIError(
 					output.ErrUsage,
 					"missing --api-key",

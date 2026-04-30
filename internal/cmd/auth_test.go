@@ -167,4 +167,12 @@ func TestAuth_InteractivePath_EmptyInput_UsageError(t *testing.T) {
 	if env["code"] != "usage" {
 		t.Errorf("code=%v", env["code"])
 	}
+	// The interactive empty-input error must NOT suggest "run interactively
+	// on a TTY" — the user just did that. It should say so.
+	if env["error"] != "empty API secret" {
+		t.Errorf("error=%v, want %q", env["error"], "empty API secret")
+	}
+	if hint, _ := env["hint"].(string); strings.Contains(hint, "run interactively on a TTY") {
+		t.Errorf("interactive hint shouldn't suggest TTY (user is already on one): %q", hint)
+	}
 }
