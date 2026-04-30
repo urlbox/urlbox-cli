@@ -15,7 +15,10 @@ urlbox --version
 urlbox --help
 urlbox commands                       # list every command + flag
 urlbox commands --output-format json  # machine-readable for agents
-urlbox auth --api-key sec_xxxxxx      # save your API key
+urlbox auth --api-key sec_xxxxxx      # save your API secret (non-interactive)
+urlbox auth                           # TTY-only: prompt with masked echo
+urlbox config path                    # where the config lives
+urlbox config profile list            # see configured profiles
 urlbox doctor                         # verify install + auth
 urlbox schema render                  # JSON Schema for the render payload
 urlbox skill show                     # one-page agent guide
@@ -28,6 +31,8 @@ urlbox schema render --jq '.data.properties | keys'
 ```
 
 All commands support `--output-format json|text|quiet` and a built-in `--jq <expr>` filter (no external `jq` binary needed). Payloads sent via `--json` (Phase 4 onward) are validated client-side against the same schema before any network call — see `urlbox skill show` for the full validation contract.
+
+Multi-account workflows use named profiles (`urlbox --profile <name> ...`); see `urlbox config profile --help`.
 
 ## How it works
 

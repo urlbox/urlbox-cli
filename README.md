@@ -65,12 +65,48 @@ urlbox doctor
 
 ### `auth`
 
-Saves your Urlbox API key to `~/.config/urlbox/config.json` (mode 0600). The
+Saves your Urlbox API secret to `~/.config/urlbox/config.json` (mode 0600). The
 env var `URLBOX_API_SECRET` takes precedence at runtime if both are set.
 
 ```sh
+# Non-interactive (preferred for agents and CI)
 urlbox auth --api-key sec_xxxxxxxxxxxx
+
+# Interactive (humans on a TTY) — prompts once with masked echo
+urlbox auth
 ```
+
+The interactive path is gated on stdin AND stderr being TTYs, so headless
+agents and piped invocations always require `--api-key`.
+
+### `config`
+
+Inspect and modify the persisted configuration. Supports multiple named
+profiles for working across accounts.
+
+```sh
+# Read / write a value
+urlbox config get api_secret
+urlbox config set api_host https://api.urlbox.com
+
+# Show where the config file lives
+urlbox config path
+
+# Profile management
+urlbox config profile list
+urlbox config profile create work --api-secret sec_work
+urlbox config profile default work
+urlbox config profile delete work
+```
+
+**Profile-target resolution for `config set` / `config get`** (per-profile keys):
+
+- 0 profiles: errors with "No profiles configured" — bootstrap with `urlbox auth`.
+- 1 profile: `--profile` is implicit; `config set api_secret sk_xxx` Just Works.
+- 2+ profiles: `--profile` is required; the error lists configured names.
+
+`default_profile` is top-level and exempt from this rule, but the named profile
+must exist (you can't set a dangling default).
 
 ### `commands`
 
@@ -84,6 +120,7 @@ Available commands:
 
   auth      Configure API credentials
   commands  List all available commands
+  config    Inspect and modify CLI configuration
   doctor    Check installation, configuration, network, and credentials
   schema    Print JSON Schemas describing Urlbox API payloads
   skill     Agent skill content
@@ -188,15 +225,31 @@ The CLI's exposed surface (every command and flag, at every level) is committed 
 
 ## Authentication
 
-Two ways to provide your Urlbox API key:
+Three ways to provide your Urlbox API secret. The CLI picks the highest-priority
+source available (highest first):
 
 ```sh
-# Env var (preferred for CI / containers — takes precedence)
+# 1. CLI flag — one-shot, doesn't touch the config file
+urlbox --profile <name> render <url>
+
+# 2. Env var — preferred for CI / containers
 export URLBOX_API_SECRET=sec_xxxxxxxxxxxx
 
-# Or persisted to ~/.config/urlbox/config.json (mode 0600)
+# 3. Persisted to ~/.config/urlbox/config.json (mode 0600)
 urlbox auth --api-key sec_xxxxxxxxxxxx
 ```
+
+The full priority chain:
+
+1. CLI flag (`--profile <name>`)
+2. Env vars (`URLBOX_API_SECRET`, `URLBOX_PROFILE`, `URLBOX_API_HOST`)
+3. The named profile (selected via `--profile`, `URLBOX_PROFILE`, or the
+   stored `default_profile`)
+4. Per-repo overrides at `.urlbox/config.json` (walks from CWD up to `$HOME`)
+5. The global default profile in `~/.config/urlbox/config.json`
+
+Multiple profiles let you keep credentials per account, environment, or repo.
+See `urlbox config profile --help` for management commands.
 
 Verify with `urlbox doctor`.
 
