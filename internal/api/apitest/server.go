@@ -29,9 +29,16 @@ type Server struct {
 // Body is read fully and stored as a defensive copy.
 type CapturedRequest struct {
 	Method string
-	Path   string
-	Header http.Header
-	Body   []byte
+	// Path is the URL-decoded request path (e.g. "/v1/render/abc/def" if
+	// the wire path contained "%2F"). For wire-level escape assertions,
+	// use RawPath.
+	Path string
+	// RawPath is the URL.EscapedPath() — the path as it was sent on the
+	// wire, with %-encoding preserved. Useful for verifying that callers
+	// correctly escape user-supplied path segments.
+	RawPath string
+	Header  http.Header
+	Body    []byte
 }
 
 // ScriptedResponse is a one-shot response written by Server. The mock pops
@@ -78,10 +85,11 @@ func (m *Server) serve(w http.ResponseWriter, r *http.Request) {
 
 	m.mu.Lock()
 	m.requests = append(m.requests, CapturedRequest{
-		Method: r.Method,
-		Path:   r.URL.Path,
-		Header: r.Header.Clone(),
-		Body:   body,
+		Method:  r.Method,
+		Path:    r.URL.Path,
+		RawPath: r.URL.EscapedPath(),
+		Header:  r.Header.Clone(),
+		Body:    body,
 	})
 	if m.cursor >= len(m.scripts) {
 		m.mu.Unlock()

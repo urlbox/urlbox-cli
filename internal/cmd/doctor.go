@@ -11,16 +11,14 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+
+	"github.com/urlbox/urlbox-cli/internal/api"
 	"github.com/urlbox/urlbox-cli/internal/config"
 	"github.com/urlbox/urlbox-cli/internal/output"
 	"github.com/urlbox/urlbox-cli/internal/version"
 )
 
-const (
-	defaultAPIHost = "https://api.urlbox.com"
-	envAPIHost     = "URLBOX_API_HOST"
-	httpTimeout    = 5 * time.Second
-)
+const httpTimeout = 5 * time.Second
 
 // Check is one diagnostic result.
 type Check struct {
@@ -59,7 +57,7 @@ Exits non-zero if any check fails.`,
 				map[string]any{"checks": checks},
 				summary,
 				[]output.Breadcrumb{
-					{Action: "auth", Cmd: "urlbox auth --api-key <key>"},
+					{Action: "auth", Cmd: "urlbox auth --api-secret <secret>"},
 				},
 			)
 
@@ -92,15 +90,8 @@ Exits non-zero if any check fails.`,
 	}
 }
 
-func apiHost() string {
-	if h := os.Getenv(envAPIHost); h != "" {
-		return h
-	}
-	return defaultAPIHost
-}
-
 func runDoctorChecks(ctx context.Context) []Check {
-	host := apiHost()
+	host := api.ResolveAPIHost()
 	return []Check{
 		checkVersion(),
 		checkInstallMethod(),
