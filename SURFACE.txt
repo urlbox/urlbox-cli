@@ -14,6 +14,26 @@ urlbox commands --agent
 urlbox commands --jq
 urlbox commands --output-format
 urlbox commands --profile
+urlbox config
+urlbox config --agent
+urlbox config --jq
+urlbox config --output-format
+urlbox config --profile
+urlbox config get <key>
+urlbox config get <key> --agent
+urlbox config get <key> --jq
+urlbox config get <key> --output-format
+urlbox config get <key> --profile
+urlbox config path
+urlbox config path --agent
+urlbox config path --jq
+urlbox config path --output-format
+urlbox config path --profile
+urlbox config set <key> <value>
+urlbox config set <key> <value> --agent
+urlbox config set <key> <value> --jq
+urlbox config set <key> <value> --output-format
+urlbox config set <key> <value> --profile
 urlbox doctor
 urlbox doctor --agent
 urlbox doctor --jq
