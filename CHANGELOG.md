@@ -6,89 +6,72 @@ and the project follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ## v0.5.0 — 2026-04-30
 
-This release combines two phases of work that were committed on `main` but not
-released separately. v0.4.0 was skipped intentionally — Phase 2 (schema +
-validation) and Phase 3 (multi-profile config + auth) ship together.
-
 ### Added
 
-#### Multi-profile configuration (Phase 3)
-
-- New `Config` shape: `default_profile` + `profiles` map, each profile carries
-  `api_key`, `api_secret`, `api_host`. Phase 1 single-key files migrate
-  transparently in memory and are rewritten on first save.
-- Atomic save (temp file + rename) preserves 0600 perms.
+- `urlbox config` command tree:
+  - `urlbox config path` — print the resolved config-file path.
+  - `urlbox config get <key>` / `urlbox config set <key> <value>` — read/write
+    a single value with smart profile-target resolution: with one profile
+    `--profile` is implicit; with two or more it's required and the error
+    lists configured names.
+  - `urlbox config profile create <name>` (with `--api-host`, `--api-secret`,
+    `--api-key`).
+  - `urlbox config profile list` — JSON-friendly, marks the default, masks
+    secrets.
+  - `urlbox config profile default <name>` — switch the default; refuses
+    unknown names.
+  - `urlbox config profile delete <name>` — refuses the default or the only
+    remaining profile.
+- Multi-profile configuration: each profile carries `api_key`, `api_secret`,
+  and `api_host`. The priority chain is **flag > env > repo > profile >
+  stored default**, with per-field provenance available to callers.
 - Per-repo overlay at `.urlbox/config.json`: walks from CWD up, stops at
-  `$HOME` so a stray overlay outside your project tree can never silently
-  affect production renders.
-- `Resolve(opts)` priority chain: flag > env > repo > profile > stored default.
-  Per-field provenance via `Resolved.Source`.
+  `$HOME` so a stray overlay outside your project tree can't silently affect
+  production renders.
 - New persistent flag: `--profile <name>` on every command. Honors
-  `URLBOX_PROFILE` and `URLBOX_API_HOST` env vars.
-
-#### `urlbox config` command tree (Phase 3)
-
-- `urlbox config path` — prints the resolved config-file path.
-- `urlbox config get <key>` / `urlbox config set <key> <value>` — read/write a
-  single value. Smart profile-target resolution: with one profile `--profile`
-  is implicit; with two or more it's required and the error lists configured
-  names.
-- `urlbox config profile create <name>` (with `--api-host`, `--api-secret`,
-  `--api-key`).
-- `urlbox config profile list` — JSON-friendly, marks the default, masks
-  secrets.
-- `urlbox config profile default <name>` — switch the default; refuses unknown
-  names.
-- `urlbox config profile delete <name>` — refuses the default or the only
-  remaining profile.
-
-#### `urlbox auth` masked-secret prompt (Phase 3)
-
+  `URLBOX_PROFILE` and `URLBOX_API_HOST` environment variables.
 - `urlbox auth` (no args, on a TTY) now prompts once for the API secret with
-  terminal echo disabled via `golang.org/x/term`. The non-interactive path
-  (`--api-key <secret>`) is unchanged and remains the recommended contract for
-  agents and CI.
-
-#### Public render JSON Schema (Phase 2)
-
-- `schema/render.json` (152 properties) — JSON Schema 2020-12 generated from
-  the dashboard allowlist, embedded via `go:embed`. `additionalProperties:
-  false`, `oneOf [url, html]`. No internal hidden options leaked.
-- `urlbox schema render` — print the schema in the standard envelope, raw, or
-  filtered through `--jq`.
-
-#### Validation (Phase 2)
-
-- `internal/validation` package, exposed when payloads land in Phase 4:
-  - 1 MiB payload cap, control-character rejection (<0x20 or 0x7F).
-  - Fuzzy correction for unknown top-level options ("did you mean … ?").
-  - Full JSON Schema 2020-12 validation against the embedded render schema.
+  terminal echo disabled. The non-interactive path (`--api-key <secret>`) is
+  unchanged and remains the recommended contract for agents and CI.
+- `urlbox schema render` — print the public JSON Schema 2020-12 describing the
+  render request payload (152 properties, generated from the dashboard
+  allowlist, embedded in the binary). Use `--jq` to drill into specific
+  fields.
+- Client-side payload validation (active when payloads land in a future
+  release): 1 MiB cap, control-character rejection, fuzzy correction for
+  unknown options ("did you mean … ?"), and full JSON Schema validation
+  against the embedded schema.
 
 ### Changed
 
 - `urlbox auth` now writes into the resolved profile (creates one if none
   exists) instead of overwriting a single top-level `api_key`.
-- `Save` is atomic.
+- Config saves are now atomic (temp file + rename), preserving 0600 perms.
+- Phase 1 single-key config files are migrated transparently in memory and
+  rewritten on first save. No user action required.
 
 ### Dependencies
 
-- New direct dep: `golang.org/x/term v0.27.0` — for `term.ReadPassword` /
-  `term.IsTerminal`. Pinned to the same major version as `x/text` to keep the
-  Go floor at `1.24.0`.
-- New direct dep: `github.com/santhosh-tekuri/jsonschema/v6 v6.0.2` — JSON
-  Schema 2020-12 validator (Phase 2).
-
-### Removed
-
-- The `Config{APIKey string}` single-key shape from Phase 1. The legacy field
-  is read transparently and migrated; no user action required.
+- Added direct dep `golang.org/x/term v0.27.0` for masked terminal input.
+  Pinned to the same major version as `x/text` to keep the Go floor at
+  `1.24.0`.
+- Added direct dep `github.com/santhosh-tekuri/jsonschema/v6 v6.0.2` for JSON
+  Schema 2020-12 validation.
 
 ## v0.3.0 — 2026-04-28
 
-Phase 1: Agent Contract & Discovery. Surface stability gate (`SURFACE.txt`),
-discoverability banner, `--help --agent`, `--jq` filter, `urlbox auth`,
-`urlbox doctor`, embedded `SKILL.md`, READMEs. Distribution via Homebrew, npm,
-and `install.sh`.
+### Added
+
+- Surface stability gate: every command, subcommand, and flag is recorded in
+  `SURFACE.txt` and CI fails on breaking changes.
+- Discoverability banner on TTY runs.
+- `--help --agent` — structured JSON help on any command.
+- `--jq <expr>` — built-in jq filter over envelopes (no external `jq` binary).
+- `urlbox auth` — save API key to `~/.config/urlbox/config.json` (mode 0600).
+- `urlbox doctor` — diagnose install, config, network, and credentials.
+- `urlbox commands` — list every command + flag, JSON or text.
+- `urlbox skill show` — print the embedded `SKILL.md` agent guide.
+- Distribution via Homebrew, npm, and `install.sh`.
 
 ## v0.2.0 and earlier
 
