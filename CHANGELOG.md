@@ -4,6 +4,50 @@ All notable changes to the `urlbox` CLI are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
+## v0.6.0 — 2026-04-30
+
+Mostly internal plumbing for the upcoming `urlbox render` command. Two
+user-visible changes: the auth flag rename and a doctor bug fix.
+
+### Changed
+
+- `urlbox auth --api-key` is now `urlbox auth --api-secret`. The flag
+  matches the dashboard's terminology and the underlying field. v0.5.0
+  configs aren't migrated — re-run `urlbox auth --api-secret <secret>`
+  after upgrading.
+- The auth flow now stores the secret in `Profiles[<name>].APISecret`
+  (was `APIKey`). The `APIKey` field is reserved for the publishable
+  key used by HMAC URL signing in a later release.
+- `ResolveAPIKey()` / `APIKeySource()` in `internal/config` renamed to
+  `ResolveAPISecret()` / `APISecretSource()`.
+
+### Fixed
+
+- `urlbox doctor`'s auth check now hits the correct `/v1/user/me`
+  endpoint. Previously it was hitting `/v1/account`, which doesn't
+  exist on the API — the check would always have failed against a
+  real backend (it only "passed" because the test suite stubbed the
+  response).
+- Doctor's User-Agent now matches the rest of the CLI's HTTP traffic
+  (`urlbox-cli/<ver> (<os>/<arch>) go/<go-ver>`).
+
+### Added (internal)
+
+These don't add user-visible commands yet — `urlbox render` lands in
+the next release — but they're worth listing because they shape the
+public API surface that's coming:
+
+- `internal/api` package: mockable `Client` interface (`Render`,
+  `RenderAsync`, `Status`); `HTTPClient` implementation with Bearer
+  auth, TLS 1.2 minimum, configurable retry, and full status-code
+  mapping (401→auth, 403→forbidden, 404→not_found, 409→conflict,
+  429→rate_limit, 5xx→server, network→network).
+- Retry with exponential backoff + jitter, respects `Retry-After`
+  (seconds and HTTP-date forms). Disable with the upcoming
+  `--no-retry` flag.
+- Test scaffolding (`internal/api/apitest`) used by every API client
+  test; never touches real `api.urlbox.com`.
+
 ## v0.5.0 — 2026-04-30
 
 ### Added
