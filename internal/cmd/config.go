@@ -119,7 +119,24 @@ profile count.`,
 			if err != nil {
 				return output.NewCLIError(output.ErrServer, "failed to read config", err.Error())
 			}
+			// default_profile is top-level (no profile-target resolution), but the
+			// named profile MUST exist — silently accepting a dangling default_profile
+			// would break credential resolution downstream.
 			if key == "default_profile" {
+				if len(c.Profiles) == 0 {
+					return output.NewCLIError(
+						output.ErrUsage,
+						"No profiles configured",
+						"Run `urlbox auth --api-key <secret>` to create one.",
+					)
+				}
+				if _, ok := c.Profiles[val]; !ok {
+					return output.NewCLIError(
+						output.ErrUsage,
+						"Unknown profile: "+val,
+						"Configured profiles: "+quotedSortedProfileNames(c.Profiles)+".",
+					)
+				}
 				c.DefaultProfile = val
 				if err := config.Save(c); err != nil {
 					return output.NewCLIError(output.ErrServer, "failed to save config", err.Error())

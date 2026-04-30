@@ -196,6 +196,60 @@ func TestConfigSet_DefaultProfileKey_AlwaysWrites(t *testing.T) {
 	}
 }
 
+func TestConfigSet_DefaultProfile_UnknownName_Errors(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	seedConfig(t, dir, map[string]config.Profile{
+		"default": {},
+		"work":    {},
+	})
+
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{"config", "set", "default_profile", "ghost"}, &stdout, &stderr)
+	if exit != 1 {
+		t.Fatalf("expected exit 1 (usage), got %d", exit)
+	}
+	var env map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("not JSON: %v", err)
+	}
+	if env["code"] != "usage" {
+		t.Errorf("code=%v", env["code"])
+	}
+	if env["error"] != "Unknown profile: ghost" {
+		t.Errorf("error=%v", env["error"])
+	}
+	want := `Configured profiles: "default", "work".`
+	if env["hint"] != want {
+		t.Errorf("hint=%v want=%v", env["hint"], want)
+	}
+
+	// Verify default_profile was NOT changed on disk.
+	c, err := config.Load()
+	must(t, err)
+	if c.DefaultProfile != "default" {
+		t.Errorf("DefaultProfile changed to %q after rejected set", c.DefaultProfile)
+	}
+}
+
+func TestConfigSet_DefaultProfile_NoProfiles_Errors(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{"config", "set", "default_profile", "anything"}, &stdout, &stderr)
+	if exit != 1 {
+		t.Fatalf("expected exit 1, got %d", exit)
+	}
+	var env map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("not JSON: %v", err)
+	}
+	if env["error"] != "No profiles configured" {
+		t.Errorf("error=%v", env["error"])
+	}
+}
+
 func TestConfigSet_UnknownKey_Errors(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)
