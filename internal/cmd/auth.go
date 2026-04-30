@@ -58,14 +58,14 @@ func defaultAuthSecretReader() (string, error) {
 }
 
 func newAuthCmd() *cobra.Command {
-	var apiKey string
+	var apiSecret string
 	c := &cobra.Command{
 		Use:   "auth",
 		Short: "Configure API credentials",
-		Long: `Save Urlbox API credentials to the local config file.
+		Long: `Save your Urlbox API secret to the local config file.
 
 Non-interactive (preferred for agents and CI):
-  urlbox auth --api-key <secret>
+  urlbox auth --api-secret <secret>
 
 Interactive (humans, on a TTY):
   urlbox auth         # prompts once for the secret with masked echo
@@ -73,9 +73,9 @@ Interactive (humans, on a TTY):
 The env var URLBOX_API_SECRET takes precedence at runtime over the saved value.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			secret := apiKey
+			secret := apiSecret
 
-			interactive := apiKey == "" && isStdinTTY(cmd.InOrStdin()) && isStderrTTY(cmd.ErrOrStderr())
+			interactive := apiSecret == "" && isStdinTTY(cmd.InOrStdin()) && isStderrTTY(cmd.ErrOrStderr())
 			if interactive {
 				// Prompt label on stderr — keeps stdout clean for --output-format json.
 				_, _ = fmt.Fprint(cmd.ErrOrStderr(), "API secret: ")
@@ -98,8 +98,8 @@ The env var URLBOX_API_SECRET takes precedence at runtime over the saved value.`
 				}
 				return output.NewCLIError(
 					output.ErrUsage,
-					"missing --api-key",
-					"Pass --api-key <secret>, export URLBOX_API_SECRET, or run interactively on a TTY.",
+					"missing --api-secret",
+					"Pass --api-secret <secret>, export URLBOX_API_SECRET, or run interactively on a TTY.",
 				)
 			}
 
@@ -120,7 +120,7 @@ The env var URLBOX_API_SECRET takes precedence at runtime over the saved value.`
 				cfg.DefaultProfile = profileName
 			}
 			p := cfg.Profiles[profileName]
-			p.APIKey = secret
+			p.APISecret = secret
 			cfg.Profiles[profileName] = p
 
 			if err := config.Save(cfg); err != nil {
@@ -131,15 +131,15 @@ The env var URLBOX_API_SECRET takes precedence at runtime over the saved value.`
 				)
 			}
 
-			masked := maskKey(secret)
+			masked := maskSecret(secret)
 			env := output.NewEnvelope(
 				"auth",
 				map[string]string{
-					"masked_key":  masked,
-					"profile":     profileName,
-					"config_path": config.Path(),
+					"masked_secret": masked,
+					"profile":       profileName,
+					"config_path":   config.Path(),
 				},
-				fmt.Sprintf("API key configured (%s)", masked),
+				fmt.Sprintf("API secret configured (%s)", masked),
 				[]output.Breadcrumb{
 					{Action: "verify", Cmd: "urlbox doctor"},
 					{Action: "render", Cmd: "urlbox render <url>"},
@@ -159,12 +159,12 @@ The env var URLBOX_API_SECRET takes precedence at runtime over the saved value.`
 			return formatter.WriteSuccess(stdout, env)
 		},
 	}
-	c.Flags().StringVar(&apiKey, "api-key", "", "Urlbox API secret (skip the interactive prompt — required in CI / non-TTY)")
+	c.Flags().StringVar(&apiSecret, "api-secret", "", "Urlbox API secret (skip the interactive prompt — required in CI / non-TTY)")
 	return c
 }
 
-// maskKey returns a redacted form of the key for safe display.
-func maskKey(s string) string {
+// maskSecret returns a redacted form of the API secret for safe display.
+func maskSecret(s string) string {
 	if len(s) < 8 {
 		return "***"
 	}

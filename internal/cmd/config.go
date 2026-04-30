@@ -119,7 +119,7 @@ func newProfileListCmd() *cobra.Command {
 				rows = append(rows, map[string]string{
 					"name":          n,
 					"api_host":      p.APIHost,
-					"masked_secret": maskKey(p.APISecret),
+					"masked_secret": maskSecret(p.APISecret),
 					"is_default":    fmt.Sprintf("%v", n == cfg.DefaultProfile),
 				})
 			}

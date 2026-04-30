@@ -62,20 +62,20 @@ func TestDoctor_AllChecksPass_Exit0(t *testing.T) {
 	}
 
 	// Validate at least these checks are present
-	for _, name := range []string{"version", "install_method", "config_file", "api_key", "dns", "api_reachable", "auth"} {
+	for _, name := range []string{"version", "install_method", "config_file", "api_secret", "dns", "api_reachable", "auth"} {
 		_ = extractCheck(t, env, name)
 	}
 }
 
-func TestDoctor_NoAPIKey_FailsAPIKeyCheck(t *testing.T) {
+func TestDoctor_NoAPISecret_FailsAPISecretCheck(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("URLBOX_API_SECRET", "")
 
 	env, exit, _, _ := runDoctor(t)
 
-	c := extractCheck(t, env, "api_key")
+	c := extractCheck(t, env, "api_secret")
 	if c["status"] != "fail" {
-		t.Fatalf("api_key status = %v want fail", c["status"])
+		t.Fatalf("api_secret status = %v want fail", c["status"])
 	}
 	if exit == 0 {
 		t.Fatal("expected non-zero exit when checks fail")

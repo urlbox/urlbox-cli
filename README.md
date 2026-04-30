@@ -54,8 +54,8 @@ urlbox commands
 # List all commands (machine-readable JSON, ideal for agents)
 urlbox commands --output-format json
 
-# Configure your API key
-urlbox auth --api-key sec_xxxxxxxxxxxx
+# Configure your API secret
+urlbox auth --api-secret sec_xxxxxxxxxxxx
 
 # Verify install, config, and credentials
 urlbox doctor
@@ -70,14 +70,14 @@ env var `URLBOX_API_SECRET` takes precedence at runtime if both are set.
 
 ```sh
 # Non-interactive (preferred for agents and CI)
-urlbox auth --api-key sec_xxxxxxxxxxxx
+urlbox auth --api-secret sec_xxxxxxxxxxxx
 
 # Interactive (humans on a TTY) — prompts once with masked echo
 urlbox auth
 ```
 
 The interactive path is gated on stdin AND stderr being TTYs, so headless
-agents and piped invocations always require `--api-key`.
+agents and piped invocations always require `--api-secret`.
 
 ### `config`
 
@@ -132,7 +132,7 @@ Use "urlbox <command> --help" for more information about a command.
 ### `doctor`
 
 Diagnoses installation, configuration, network, and credential issues. Runs
-seven checks: version, install method, config file, API key, DNS, API
+seven checks: version, install method, config file, API secret, DNS, API
 reachability, and credential validity. Exits non-zero if any check fails.
 
 ```sh
@@ -236,7 +236,7 @@ urlbox --profile <name> render <url>
 export URLBOX_API_SECRET=sec_xxxxxxxxxxxx
 
 # 3. Persisted to ~/.config/urlbox/config.json (mode 0600)
-urlbox auth --api-key sec_xxxxxxxxxxxx
+urlbox auth --api-secret sec_xxxxxxxxxxxx
 ```
 
 The full priority chain:

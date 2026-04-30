@@ -105,7 +105,7 @@ func runDoctorChecks(ctx context.Context) []Check {
 		checkVersion(),
 		checkInstallMethod(),
 		checkConfigFile(),
-		checkAPIKey(),
+		checkAPISecret(),
 		checkDNS(ctx, host),
 		checkAPIReachable(ctx, host),
 		checkAuth(ctx, host),
@@ -142,21 +142,21 @@ func checkConfigFile() Check {
 		Name:    "config_file",
 		Status:  "warn",
 		Message: "missing",
-		Hint:    "Run `urlbox auth --api-key <key>` to create",
+		Hint:    "Run `urlbox auth --api-secret <secret>` to create",
 	}
 }
 
-func checkAPIKey() Check {
-	src := config.APIKeySource()
+func checkAPISecret() Check {
+	src := config.APISecretSource()
 	if src == "none" {
 		return Check{
-			Name:    "api_key",
+			Name:    "api_secret",
 			Status:  "fail",
-			Message: "no API key found",
-			Hint:    "Set URLBOX_API_SECRET or run `urlbox auth --api-key <key>`",
+			Message: "no API secret found",
+			Hint:    "Set URLBOX_API_SECRET or run `urlbox auth --api-secret <secret>`",
 		}
 	}
-	return Check{Name: "api_key", Status: "ok", Message: "configured (" + src + ")"}
+	return Check{Name: "api_secret", Status: "ok", Message: "configured (" + src + ")"}
 }
 
 func checkDNS(ctx context.Context, host string) Check {
@@ -194,9 +194,9 @@ func checkAPIReachable(ctx context.Context, host string) Check {
 }
 
 func checkAuth(ctx context.Context, host string) Check {
-	key := config.ResolveAPIKey()
+	key := config.ResolveAPISecret()
 	if key == "" {
-		return Check{Name: "auth", Status: "warn", Message: "skipped (no API key)"}
+		return Check{Name: "auth", Status: "warn", Message: "skipped (no API secret)"}
 	}
 	endpoint := host + "/v1/account"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, http.NoBody)
