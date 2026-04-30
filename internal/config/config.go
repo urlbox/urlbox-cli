@@ -1,6 +1,5 @@
 // Package config handles XDG-aware persistent configuration for the urlbox CLI.
-// Phase 3 expands the original single-key shape into multi-profile storage with
-// transparent migration of Phase 1 files on first save.
+// Multi-profile storage with transparent migration of Phase 1 files on first save.
 package config
 
 import (
@@ -11,7 +10,7 @@ import (
 	"path/filepath"
 )
 
-// Config is the persisted CLI configuration. Multi-profile in Phase 3.
+// Config is the persisted CLI configuration. Multi-profile.
 type Config struct {
 	DefaultProfile string             `json:"default_profile,omitempty"`
 	Profiles       map[string]Profile `json:"profiles,omitempty"`
@@ -19,7 +18,9 @@ type Config struct {
 	// LegacyAPIKey holds the top-level api_key field from Phase 1 single-key
 	// files. Populated only by Load when reading a legacy file. Never written
 	// back: Save strips it so the first persist after upgrade migrates the
-	// file to the new shape.
+	// file to the new shape. Phase 1 stored the *secret* in this field
+	// (mislabel — see CHANGELOG v0.6.0); Load migrates the value into
+	// Profiles["default"].APISecret.
 	LegacyAPIKey string `json:"api_key,omitempty"`
 }
 
@@ -33,8 +34,10 @@ func Path() string {
 }
 
 // Load reads the config file. Missing file returns an empty config without
-// error. A Phase 1 single-key file is migrated in memory: LegacyAPIKey is set,
-// and Profiles["default"].APIKey + DefaultProfile = "default" are populated.
+// error. A Phase 1 flat-shape file (`{"api_key": "..."}`) is migrated in
+// memory: LegacyAPIKey is set, and Profiles["default"].APISecret +
+// DefaultProfile = "default" are populated. The flat api_key field always
+// held the *secret* in Phase 1 (the field name was a mislabel).
 func Load() (*Config, error) {
 	b, err := os.ReadFile(Path())
 	if err != nil {
@@ -48,7 +51,7 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 	if c.LegacyAPIKey != "" && len(c.Profiles) == 0 {
-		c.Profiles = map[string]Profile{"default": {APIKey: c.LegacyAPIKey}}
+		c.Profiles = map[string]Profile{"default": {APISecret: c.LegacyAPIKey}}
 		c.DefaultProfile = "default"
 	}
 	return &c, nil
@@ -91,10 +94,10 @@ func Save(c *Config) error {
 	return os.Rename(tmpPath, p)
 }
 
-// ResolveAPIKey returns the API key, preferring the env var over the file.
-// Phase 3 reads the default profile's APIKey, falling back to LegacyAPIKey
-// for unmigrated files.
-func ResolveAPIKey() string {
+// ResolveAPISecret returns the Urlbox API secret, preferring the env var over
+// the file. Reads the default profile's APISecret, falling back to
+// LegacyAPIKey for unmigrated Phase 1 files.
+func ResolveAPISecret() string {
 	if v := os.Getenv(EnvAPISecret); v != "" {
 		return v
 	}
@@ -103,15 +106,16 @@ func ResolveAPIKey() string {
 		return ""
 	}
 	if c.DefaultProfile != "" {
-		if p, ok := c.Profiles[c.DefaultProfile]; ok && p.APIKey != "" {
-			return p.APIKey
+		if p, ok := c.Profiles[c.DefaultProfile]; ok && p.APISecret != "" {
+			return p.APISecret
 		}
 	}
 	return c.LegacyAPIKey
 }
 
-// APIKeySource describes where the resolved API key came from: "env", "file", or "none".
-func APIKeySource() string {
+// APISecretSource describes where the resolved API secret came from:
+// "env", "file", or "none".
+func APISecretSource() string {
 	if os.Getenv(EnvAPISecret) != "" {
 		return "env"
 	}
@@ -120,7 +124,7 @@ func APIKeySource() string {
 		return "none"
 	}
 	if c.DefaultProfile != "" {
-		if p, ok := c.Profiles[c.DefaultProfile]; ok && p.APIKey != "" {
+		if p, ok := c.Profiles[c.DefaultProfile]; ok && p.APISecret != "" {
 			return "file"
 		}
 	}

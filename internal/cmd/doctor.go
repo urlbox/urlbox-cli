@@ -7,20 +7,17 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"runtime"
 	"time"
 
 	"github.com/spf13/cobra"
+
+	"github.com/urlbox/urlbox-cli/internal/api"
 	"github.com/urlbox/urlbox-cli/internal/config"
 	"github.com/urlbox/urlbox-cli/internal/output"
 	"github.com/urlbox/urlbox-cli/internal/version"
 )
 
-const (
-	defaultAPIHost = "https://api.urlbox.com"
-	envAPIHost     = "URLBOX_API_HOST"
-	httpTimeout    = 5 * time.Second
-)
+const httpTimeout = 5 * time.Second
 
 // Check is one diagnostic result.
 type Check struct {
@@ -59,7 +56,7 @@ Exits non-zero if any check fails.`,
 				map[string]any{"checks": checks},
 				summary,
 				[]output.Breadcrumb{
-					{Action: "auth", Cmd: "urlbox auth --api-key <key>"},
+					{Action: "auth", Cmd: "urlbox auth --api-secret <secret>"},
 				},
 			)
 
@@ -92,20 +89,13 @@ Exits non-zero if any check fails.`,
 	}
 }
 
-func apiHost() string {
-	if h := os.Getenv(envAPIHost); h != "" {
-		return h
-	}
-	return defaultAPIHost
-}
-
 func runDoctorChecks(ctx context.Context) []Check {
-	host := apiHost()
+	host := api.ResolveAPIHost()
 	return []Check{
 		checkVersion(),
 		checkInstallMethod(),
 		checkConfigFile(),
-		checkAPIKey(),
+		checkAPISecret(),
 		checkDNS(ctx, host),
 		checkAPIReachable(ctx, host),
 		checkAuth(ctx, host),
@@ -142,21 +132,21 @@ func checkConfigFile() Check {
 		Name:    "config_file",
 		Status:  "warn",
 		Message: "missing",
-		Hint:    "Run `urlbox auth --api-key <key>` to create",
+		Hint:    "Run `urlbox auth --api-secret <secret>` to create",
 	}
 }
 
-func checkAPIKey() Check {
-	src := config.APIKeySource()
+func checkAPISecret() Check {
+	src := config.APISecretSource()
 	if src == "none" {
 		return Check{
-			Name:    "api_key",
+			Name:    "api_secret",
 			Status:  "fail",
-			Message: "no API key found",
-			Hint:    "Set URLBOX_API_SECRET or run `urlbox auth --api-key <key>`",
+			Message: "no API secret found",
+			Hint:    "Set URLBOX_API_SECRET or run `urlbox auth --api-secret <secret>`",
 		}
 	}
-	return Check{Name: "api_key", Status: "ok", Message: "configured (" + src + ")"}
+	return Check{Name: "api_secret", Status: "ok", Message: "configured (" + src + ")"}
 }
 
 func checkDNS(ctx context.Context, host string) Check {
@@ -194,17 +184,17 @@ func checkAPIReachable(ctx context.Context, host string) Check {
 }
 
 func checkAuth(ctx context.Context, host string) Check {
-	key := config.ResolveAPIKey()
+	key := config.ResolveAPISecret()
 	if key == "" {
-		return Check{Name: "auth", Status: "warn", Message: "skipped (no API key)"}
+		return Check{Name: "auth", Status: "warn", Message: "skipped (no API secret)"}
 	}
-	endpoint := host + "/v1/account"
+	endpoint := host + "/v1/user/me"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, http.NoBody)
 	if err != nil {
 		return Check{Name: "auth", Status: "fail", Message: err.Error()}
 	}
 	req.Header.Set("Authorization", "Bearer "+key)
-	req.Header.Set("User-Agent", "urlbox-cli/"+version.Version+" "+runtime.GOOS+"/"+runtime.GOARCH)
+	req.Header.Set("User-Agent", api.BuildUserAgent(version.Version))
 
 	client := &http.Client{Timeout: httpTimeout}
 	resp, err := client.Do(req)
@@ -219,7 +209,7 @@ func checkAuth(ctx context.Context, host string) Check {
 			Name:    "auth",
 			Status:  "fail",
 			Message: "credentials rejected",
-			Hint:    "Re-run `urlbox auth --api-key <key>` with a valid key",
+			Hint:    "Re-run `urlbox auth --api-secret <secret>` with a valid secret",
 		}
 	case resp.StatusCode >= 500:
 		return Check{

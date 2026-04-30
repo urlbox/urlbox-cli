@@ -10,12 +10,12 @@ import (
 	"github.com/urlbox/urlbox-cli/internal/config"
 )
 
-func TestAuth_RequiresAPIKey(t *testing.T) {
+func TestAuth_RequiresAPISecret(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	var stdout, stderr bytes.Buffer
 	exit := cmd.Execute([]string{"auth"}, &stdout, &stderr)
 	if exit == 0 {
-		t.Fatal("expected non-zero exit on missing --api-key")
+		t.Fatal("expected non-zero exit on missing --api-secret")
 	}
 }
 
@@ -24,22 +24,55 @@ func TestAuth_WritesConfigFile(t *testing.T) {
 	t.Setenv("URLBOX_API_SECRET", "")
 
 	var stdout, stderr bytes.Buffer
-	exit := cmd.Execute([]string{"auth", "--api-key", "sec_xxxxxxxxxxxx"}, &stdout, &stderr)
+	exit := cmd.Execute([]string{"auth", "--api-secret", "sec_xxxxxxxxxxxx"}, &stdout, &stderr)
 	if exit != 0 {
 		t.Fatalf("exit=%d stdout=%s stderr=%s", exit, stdout.String(), stderr.String())
 	}
 
-	if got := config.ResolveAPIKey(); got != "sec_xxxxxxxxxxxx" {
-		t.Fatalf("key not persisted; got %q", got)
+	if got := config.ResolveAPISecret(); got != "sec_xxxxxxxxxxxx" {
+		t.Fatalf("secret not persisted; got %q", got)
 	}
 }
 
-func TestAuth_OutputEnvelopeMasksKey(t *testing.T) {
+func TestAuth_FlagPath_StoresInAPISecret(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("URLBOX_API_SECRET", "")
 
 	var stdout, stderr bytes.Buffer
-	exit := cmd.Execute([]string{"auth", "--api-key", "sec_supersecretvalue", "--output-format", "json"}, &stdout, &stderr)
+	exit := cmd.Execute([]string{"auth", "--api-secret", "sec_xxx"}, &stdout, &stderr)
+	if exit != 0 {
+		t.Fatalf("exit=%d stderr=%s", exit, stderr.String())
+	}
+	c, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Profiles["default"].APISecret != "sec_xxx" {
+		t.Errorf("APISecret = %q, want sec_xxx", c.Profiles["default"].APISecret)
+	}
+	if c.Profiles["default"].APIKey != "" {
+		t.Errorf("APIKey unexpectedly populated: %q (publishable-key field; should be empty after auth)", c.Profiles["default"].APIKey)
+	}
+}
+
+func TestAuth_OldAPIKeyFlag_RemovedFromHelp(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	cmd.Execute([]string{"auth", "--help"}, &stdout, &stderr)
+	help := stdout.String() + stderr.String()
+	if strings.Contains(help, "--api-key") {
+		t.Error("--api-key should be gone in v0.6.0; replaced by --api-secret")
+	}
+	if !strings.Contains(help, "--api-secret") {
+		t.Error("--api-secret missing from --help")
+	}
+}
+
+func TestAuth_OutputEnvelopeMasksSecret(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("URLBOX_API_SECRET", "")
+
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{"auth", "--api-secret", "sec_supersecretvalue", "--output-format", "json"}, &stdout, &stderr)
 	if exit != 0 {
 		t.Fatalf("exit=%d", exit)
 	}
@@ -50,30 +83,30 @@ func TestAuth_OutputEnvelopeMasksKey(t *testing.T) {
 	}
 	summary, _ := env["summary"].(string)
 	if strings.Contains(summary, "supersecretvalue") {
-		t.Fatalf("summary should mask the key: %q", summary)
+		t.Fatalf("summary should mask the secret: %q", summary)
 	}
 	if !strings.Contains(summary, "sec_") {
 		t.Fatalf("summary should show prefix: %q", summary)
 	}
 	data, _ := env["data"].(map[string]any)
-	if mk, _ := data["masked_key"].(string); strings.Contains(mk, "supersecretvalue") {
-		t.Fatalf("masked_key leaked secret: %q", mk)
+	if ms, _ := data["masked_secret"].(string); strings.Contains(ms, "supersecretvalue") {
+		t.Fatalf("masked_secret leaked secret: %q", ms)
 	}
 }
 
-func TestAuth_RejectsEmptyKey(t *testing.T) {
+func TestAuth_RejectsEmptySecret(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	var stdout, stderr bytes.Buffer
-	exit := cmd.Execute([]string{"auth", "--api-key", ""}, &stdout, &stderr)
+	exit := cmd.Execute([]string{"auth", "--api-secret", ""}, &stdout, &stderr)
 	if exit == 0 {
-		t.Fatal("expected non-zero exit on empty key")
+		t.Fatal("expected non-zero exit on empty secret")
 	}
 }
 
 func TestAuth_HasBreadcrumbs(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	var stdout, stderr bytes.Buffer
-	cmd.Execute([]string{"auth", "--api-key", "sec_test1234", "--output-format", "json"}, &stdout, &stderr)
+	cmd.Execute([]string{"auth", "--api-secret", "sec_test1234", "--output-format", "json"}, &stdout, &stderr)
 
 	var env map[string]any
 	_ = json.Unmarshal(stdout.Bytes(), &env)
@@ -83,7 +116,7 @@ func TestAuth_HasBreadcrumbs(t *testing.T) {
 	}
 }
 
-func TestAuth_NonInteractive_NoKey_StillUsageError(t *testing.T) {
+func TestAuth_NonInteractive_NoSecret_StillUsageError(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	cmd.SetStdinTTYForTest(false)
 	defer cmd.ResetStdinTTYForTest()
@@ -100,7 +133,7 @@ func TestAuth_NonInteractive_NoKey_StillUsageError(t *testing.T) {
 	if env["code"] != "usage" {
 		t.Errorf("code=%v", env["code"])
 	}
-	if env["error"] != "missing --api-key" {
+	if env["error"] != "missing --api-secret" {
 		t.Errorf("error=%v", env["error"])
 	}
 }
@@ -138,8 +171,8 @@ func TestAuth_InteractivePath_DispatchedWhenTTY(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c.Profiles["default"].APIKey != "sec_prompt" {
-		t.Errorf("APIKey = %q", c.Profiles["default"].APIKey)
+	if c.Profiles["default"].APISecret != "sec_prompt" {
+		t.Errorf("APISecret = %q, want sec_prompt", c.Profiles["default"].APISecret)
 	}
 }
 

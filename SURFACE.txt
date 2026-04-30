@@ -5,7 +5,7 @@ urlbox --output-format
 urlbox --profile
 urlbox auth
 urlbox auth --agent
-urlbox auth --api-key
+urlbox auth --api-secret
 urlbox auth --jq
 urlbox auth --output-format
 urlbox auth --profile

@@ -15,7 +15,7 @@ urlbox --version
 urlbox --help
 urlbox commands                       # list every command + flag
 urlbox commands --output-format json  # machine-readable for agents
-urlbox auth --api-key sec_xxxxxx      # save your API secret (non-interactive)
+urlbox auth --api-secret sec_xxxxxx   # save your API secret (non-interactive)
 urlbox auth                           # TTY-only: prompt with masked echo
 urlbox config path                    # where the config lives
 urlbox config profile list            # see configured profiles

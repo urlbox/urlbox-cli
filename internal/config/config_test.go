@@ -83,62 +83,62 @@ func TestLoad_ReadsSavedConfig(t *testing.T) {
 	}
 }
 
-func TestResolveAPIKey_PrefersEnv(t *testing.T) {
+func TestResolveAPISecret_PrefersEnv(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	t.Setenv("URLBOX_API_SECRET", "env_key")
+	t.Setenv("URLBOX_API_SECRET", "env_secret")
 	_ = config.Save(&config.Config{
 		DefaultProfile: "default",
-		Profiles:       map[string]config.Profile{"default": {APIKey: "file_key"}},
+		Profiles:       map[string]config.Profile{"default": {APISecret: "file_secret"}},
 	})
-	if got := config.ResolveAPIKey(); got != "env_key" {
+	if got := config.ResolveAPISecret(); got != "env_secret" {
 		t.Fatalf("got %q", got)
 	}
 }
 
-func TestResolveAPIKey_FallsBackToFile(t *testing.T) {
+func TestResolveAPISecret_FallsBackToFile(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("URLBOX_API_SECRET", "")
 	_ = config.Save(&config.Config{
 		DefaultProfile: "default",
-		Profiles:       map[string]config.Profile{"default": {APIKey: "file_key"}},
+		Profiles:       map[string]config.Profile{"default": {APISecret: "file_secret"}},
 	})
-	if got := config.ResolveAPIKey(); got != "file_key" {
+	if got := config.ResolveAPISecret(); got != "file_secret" {
 		t.Fatalf("got %q", got)
 	}
 }
 
-func TestResolveAPIKey_EmptyWhenNoneSet(t *testing.T) {
+func TestResolveAPISecret_EmptyWhenNoneSet(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("URLBOX_API_SECRET", "")
-	if got := config.ResolveAPIKey(); got != "" {
+	if got := config.ResolveAPISecret(); got != "" {
 		t.Fatalf("got %q", got)
 	}
 }
 
-func TestResolveAPIKeySource_Env(t *testing.T) {
+func TestAPISecretSource_Env(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	t.Setenv("URLBOX_API_SECRET", "env_key")
-	if src := config.APIKeySource(); src != "env" {
+	t.Setenv("URLBOX_API_SECRET", "env_secret")
+	if src := config.APISecretSource(); src != "env" {
 		t.Fatalf("got %q", src)
 	}
 }
 
-func TestResolveAPIKeySource_File(t *testing.T) {
+func TestAPISecretSource_File(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("URLBOX_API_SECRET", "")
 	_ = config.Save(&config.Config{
 		DefaultProfile: "default",
-		Profiles:       map[string]config.Profile{"default": {APIKey: "file_key"}},
+		Profiles:       map[string]config.Profile{"default": {APISecret: "file_secret"}},
 	})
-	if src := config.APIKeySource(); src != "file" {
+	if src := config.APISecretSource(); src != "file" {
 		t.Fatalf("got %q", src)
 	}
 }
 
-func TestResolveAPIKeySource_None(t *testing.T) {
+func TestAPISecretSource_None(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("URLBOX_API_SECRET", "")
-	if src := config.APIKeySource(); src != "none" {
+	if src := config.APISecretSource(); src != "none" {
 		t.Fatalf("got %q", src)
 	}
 }
@@ -175,11 +175,14 @@ func TestConfig_LoadNewShape_MultiProfile(t *testing.T) {
 }
 
 func TestConfig_LoadLegacyShape_Migrates(t *testing.T) {
+	// Phase 1's flat-shape file `{"api_key":"sec_xxx"}` always held the *secret*
+	// (the field name was a mislabel — see CHANGELOG v0.6.0). Load migrates
+	// the value into Profiles["default"].APISecret.
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)
 
 	must(t, os.MkdirAll(filepath.Join(dir, "urlbox"), 0o700))
-	must(t, os.WriteFile(filepath.Join(dir, "urlbox", "config.json"), []byte(`{"api_key":"pub_legacy"}`), 0o600))
+	must(t, os.WriteFile(filepath.Join(dir, "urlbox", "config.json"), []byte(`{"api_key":"sec_legacy"}`), 0o600))
 
 	c, err := config.Load()
 	if err != nil {
@@ -188,11 +191,14 @@ func TestConfig_LoadLegacyShape_Migrates(t *testing.T) {
 	if c.DefaultProfile != "default" {
 		t.Errorf("DefaultProfile = %q, want default", c.DefaultProfile)
 	}
-	if got := c.Profiles["default"].APIKey; got != "pub_legacy" {
-		t.Errorf("default.api_key = %q, want pub_legacy", got)
+	if got := c.Profiles["default"].APISecret; got != "sec_legacy" {
+		t.Errorf("default.api_secret = %q, want sec_legacy (legacy migration)", got)
 	}
-	if c.LegacyAPIKey != "pub_legacy" {
-		t.Errorf("LegacyAPIKey = %q, want pub_legacy", c.LegacyAPIKey)
+	if got := c.Profiles["default"].APIKey; got != "" {
+		t.Errorf("default.api_key = %q, want empty (Phase 1 mislabel: secret was in api_key field)", got)
+	}
+	if c.LegacyAPIKey != "sec_legacy" {
+		t.Errorf("LegacyAPIKey = %q, want sec_legacy", c.LegacyAPIKey)
 	}
 }
 

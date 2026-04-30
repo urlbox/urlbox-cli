@@ -75,7 +75,7 @@ silently disappear between versions without a major version bump.
 
 | Command                          | Purpose                                                |
 |----------------------------------|--------------------------------------------------------|
-| `urlbox auth`                    | Save API secret (`--api-key <secret>`; or interactive) |
+| `urlbox auth`                    | Save API secret (`--api-secret <secret>`; or interactive) |
 | `urlbox commands`                | List every command + flag                              |
 | `urlbox config get <key>`        | Read a config value                                    |
 | `urlbox config set <key> <val>`  | Write a config value                                   |
@@ -130,7 +130,7 @@ on a profile directly: `urlbox --profile <name> config set api_host https://...`
 
 `config set` and `config get` adapt to the profile count:
 
-- **0 profiles:** `config set` errors with "No profiles configured" — run `urlbox auth --api-key <secret>` to bootstrap.
+- **0 profiles:** `config set` errors with "No profiles configured" — run `urlbox auth --api-secret <secret>` to bootstrap.
 - **1 profile:** `--profile` is implicit; `urlbox config set api_secret sk_xxx` Just Works.
 - **2+ profiles:** `--profile` is required; the error lists configured names.
 
@@ -142,7 +142,7 @@ default_profile <name>` requires `<name>` to exist as a profile.
 ### For agents and CI (preferred — non-interactive)
 
 ```sh
-urlbox auth --api-key <secret>     # one-liner, never prompts
+urlbox auth --api-secret <secret>  # one-liner, never prompts
 urlbox doctor --output-format json # JSON envelope: ok/not-ok
 ```
 
