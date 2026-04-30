@@ -35,7 +35,183 @@ func newConfigCmd() *cobra.Command {
 	parent.AddCommand(newConfigPathCmd())
 	parent.AddCommand(newConfigGetCmd())
 	parent.AddCommand(newConfigSetCmd())
+	parent.AddCommand(newProfileCmd())
 	return parent
+}
+
+func newProfileCmd() *cobra.Command {
+	parent := &cobra.Command{
+		Use:   "profile",
+		Short: "Manage named config profiles",
+		Args:  cobra.NoArgs,
+		RunE:  func(cmd *cobra.Command, _ []string) error { return cmd.Help() },
+	}
+	parent.AddCommand(newProfileCreateCmd())
+	parent.AddCommand(newProfileListCmd())
+	parent.AddCommand(newProfileDefaultCmd())
+	parent.AddCommand(newProfileDeleteCmd())
+	return parent
+}
+
+func newProfileCreateCmd() *cobra.Command {
+	var apiHost, apiSecret, apiKey string
+	c := &cobra.Command{
+		Use:   "create <name>",
+		Short: "Create a new profile",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			name := args[0]
+			cfg, err := config.Load()
+			if err != nil {
+				return output.NewCLIError(output.ErrServer, "failed to read config", err.Error())
+			}
+			if _, exists := cfg.Profiles[name]; exists {
+				return output.NewCLIError(
+					output.ErrConflict,
+					`Profile "`+name+`" already exists`,
+					"Use 'urlbox config set <key> <value> --profile "+name+"' to update it.",
+				)
+			}
+			if cfg.Profiles == nil {
+				cfg.Profiles = map[string]config.Profile{}
+			}
+			cfg.Profiles[name] = config.Profile{APIKey: apiKey, APISecret: apiSecret, APIHost: apiHost}
+			if cfg.DefaultProfile == "" {
+				cfg.DefaultProfile = name
+			}
+			if err := config.Save(cfg); err != nil {
+				return output.NewCLIError(output.ErrServer, "failed to save config", err.Error())
+			}
+			env := output.NewEnvelope(
+				"config profile create",
+				map[string]string{"name": name, "api_host": apiHost},
+				`Profile "`+name+`" created`,
+				[]output.Breadcrumb{{Action: "use", Cmd: "urlbox --profile " + name + " render <url>"}},
+			)
+			return writeEnvelope(cmd, env)
+		},
+	}
+	c.Flags().StringVar(&apiHost, "api-host", "", "API host for this profile")
+	c.Flags().StringVar(&apiSecret, "api-secret", "", "API secret for this profile")
+	c.Flags().StringVar(&apiKey, "api-key", "", "Publishable API key for this profile")
+	return c
+}
+
+func newProfileListCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "list",
+		Short: "List all profiles",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			cfg, err := config.Load()
+			if err != nil {
+				return output.NewCLIError(output.ErrServer, "failed to read config", err.Error())
+			}
+			names := make([]string, 0, len(cfg.Profiles))
+			for n := range cfg.Profiles {
+				names = append(names, n)
+			}
+			sort.Strings(names)
+
+			rows := make([]map[string]string, 0, len(names))
+			for _, n := range names {
+				p := cfg.Profiles[n]
+				rows = append(rows, map[string]string{
+					"name":          n,
+					"api_host":      p.APIHost,
+					"masked_secret": maskKey(p.APISecret),
+					"is_default":    fmt.Sprintf("%v", n == cfg.DefaultProfile),
+				})
+			}
+			env := output.NewEnvelope(
+				"config profile list",
+				map[string]any{"profiles": rows, "default": cfg.DefaultProfile},
+				fmt.Sprintf("%d profile(s); default = %q", len(rows), cfg.DefaultProfile),
+				nil,
+			)
+			return writeEnvelope(cmd, env)
+		},
+	}
+}
+
+func newProfileDefaultCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "default <name>",
+		Short: "Set the default profile",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			name := args[0]
+			cfg, err := config.Load()
+			if err != nil {
+				return output.NewCLIError(output.ErrServer, "failed to read config", err.Error())
+			}
+			if _, ok := cfg.Profiles[name]; !ok {
+				return output.NewCLIError(
+					output.ErrNotFound,
+					`Profile "`+name+`" does not exist`,
+					"Run 'urlbox config profile list' to see available profiles.",
+				)
+			}
+			cfg.DefaultProfile = name
+			if err := config.Save(cfg); err != nil {
+				return output.NewCLIError(output.ErrServer, "failed to save config", err.Error())
+			}
+			env := output.NewEnvelope(
+				"config profile default",
+				map[string]string{"default": name},
+				`Default profile set to "`+name+`"`,
+				nil,
+			)
+			return writeEnvelope(cmd, env)
+		},
+	}
+}
+
+func newProfileDeleteCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "delete <name>",
+		Short: "Delete a profile",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			name := args[0]
+			cfg, err := config.Load()
+			if err != nil {
+				return output.NewCLIError(output.ErrServer, "failed to read config", err.Error())
+			}
+			if _, ok := cfg.Profiles[name]; !ok {
+				return output.NewCLIError(
+					output.ErrNotFound,
+					`Profile "`+name+`" does not exist`,
+					"Run 'urlbox config profile list' to see available profiles.",
+				)
+			}
+			if name == cfg.DefaultProfile && len(cfg.Profiles) == 1 {
+				return output.NewCLIError(
+					output.ErrConflict,
+					`Cannot delete the only profile "`+name+`"`,
+					"Create another profile first, or run 'urlbox auth' to start fresh.",
+				)
+			}
+			if name == cfg.DefaultProfile {
+				return output.NewCLIError(
+					output.ErrConflict,
+					`Cannot delete the default profile "`+name+`"`,
+					"Run 'urlbox config profile default <other>' to switch the default first.",
+				)
+			}
+			delete(cfg.Profiles, name)
+			if err := config.Save(cfg); err != nil {
+				return output.NewCLIError(output.ErrServer, "failed to save config", err.Error())
+			}
+			env := output.NewEnvelope(
+				"config profile delete",
+				map[string]string{"deleted": name},
+				`Profile "`+name+`" deleted`,
+				nil,
+			)
+			return writeEnvelope(cmd, env)
+		},
+	}
 }
 
 func newConfigPathCmd() *cobra.Command {

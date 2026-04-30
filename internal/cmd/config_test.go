@@ -289,6 +289,160 @@ func TestConfigGet_MissingValue_ReturnsEmptyString(t *testing.T) {
 	}
 }
 
+func TestProfileCreate_NewProfileWritesFile(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{
+		"config", "profile", "create", "staging",
+		"--api-host", "https://api-staging.urlbox.com",
+		"--api-secret", "stg_xxx",
+	}, &stdout, &stderr)
+	if exit != 0 {
+		t.Fatalf("exit=%d stderr=%s", exit, stderr.String())
+	}
+
+	b, err := os.ReadFile(filepath.Join(dir, "urlbox", "config.json"))
+	must(t, err)
+	for _, want := range []string{`"staging"`, `"stg_xxx"`, `"https://api-staging.urlbox.com"`} {
+		if !strings.Contains(string(b), want) {
+			t.Errorf("config missing %q:\n%s", want, string(b))
+		}
+	}
+}
+
+func TestProfileCreate_DuplicateName_Errors(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+
+	var stdout, stderr bytes.Buffer
+	cmd.Execute([]string{"config", "profile", "create", "staging", "--api-secret", "x"}, &stdout, &stderr)
+	stdout.Reset()
+	stderr.Reset()
+
+	exit := cmd.Execute([]string{"config", "profile", "create", "staging", "--api-secret", "y"}, &stdout, &stderr)
+	if exit != 7 { // ErrConflict
+		t.Fatalf("exit=%d, want 7 (conflict)", exit)
+	}
+	var env map[string]any
+	must(t, json.Unmarshal(stdout.Bytes(), &env))
+	if env["code"] != "conflict" {
+		t.Errorf("code=%v", env["code"])
+	}
+	if env["error"] != `Profile "staging" already exists` {
+		t.Errorf("error=%v", env["error"])
+	}
+}
+
+func TestProfileList_ShowsNames_MarksDefault(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	cmd.Execute([]string{"config", "profile", "create", "default", "--api-secret", "s1"}, new(bytes.Buffer), new(bytes.Buffer))
+	cmd.Execute([]string{"config", "profile", "create", "staging", "--api-secret", "s2"}, new(bytes.Buffer), new(bytes.Buffer))
+
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{"config", "profile", "list", "--output-format", "json"}, &stdout, &stderr)
+	if exit != 0 {
+		t.Fatalf("exit=%d", exit)
+	}
+	var env map[string]any
+	must(t, json.Unmarshal(stdout.Bytes(), &env))
+	data, _ := env["data"].(map[string]any)
+	profiles, _ := data["profiles"].([]any)
+	if len(profiles) != 2 {
+		t.Fatalf("profiles len=%d, want 2", len(profiles))
+	}
+	if data["default"] != "default" {
+		t.Errorf("default=%v", data["default"])
+	}
+}
+
+func TestProfileDefault_SetExisting(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	cmd.Execute([]string{"config", "profile", "create", "default", "--api-secret", "s1"}, new(bytes.Buffer), new(bytes.Buffer))
+	cmd.Execute([]string{"config", "profile", "create", "staging", "--api-secret", "s2"}, new(bytes.Buffer), new(bytes.Buffer))
+
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{"config", "profile", "default", "staging"}, &stdout, &stderr)
+	if exit != 0 {
+		t.Fatalf("exit=%d", exit)
+	}
+	c, err := config.Load()
+	must(t, err)
+	if c.DefaultProfile != "staging" {
+		t.Errorf("DefaultProfile=%q", c.DefaultProfile)
+	}
+}
+
+func TestProfileDefault_Unknown_Errors(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{"config", "profile", "default", "ghost"}, &stdout, &stderr)
+	if exit != 5 { // ErrNotFound
+		t.Fatalf("exit=%d, want 5 (not_found)", exit)
+	}
+	var env map[string]any
+	must(t, json.Unmarshal(stdout.Bytes(), &env))
+	if env["error"] != `Profile "ghost" does not exist` {
+		t.Errorf("error=%v", env["error"])
+	}
+}
+
+func TestProfileDelete_NonDefault(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	cmd.Execute([]string{"config", "profile", "create", "default", "--api-secret", "s1"}, new(bytes.Buffer), new(bytes.Buffer))
+	cmd.Execute([]string{"config", "profile", "create", "staging", "--api-secret", "s2"}, new(bytes.Buffer), new(bytes.Buffer))
+
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{"config", "profile", "delete", "staging"}, &stdout, &stderr)
+	if exit != 0 {
+		t.Fatalf("exit=%d", exit)
+	}
+	c, err := config.Load()
+	must(t, err)
+	if _, ok := c.Profiles["staging"]; ok {
+		t.Errorf("staging not deleted")
+	}
+}
+
+func TestProfileDelete_DefaultProfile_Errors(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	cmd.Execute([]string{"config", "profile", "create", "default", "--api-secret", "s1"}, new(bytes.Buffer), new(bytes.Buffer))
+	cmd.Execute([]string{"config", "profile", "create", "staging", "--api-secret", "s2"}, new(bytes.Buffer), new(bytes.Buffer))
+
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{"config", "profile", "delete", "default"}, &stdout, &stderr)
+	if exit != 7 { // ErrConflict
+		t.Fatalf("exit=%d, want 7 (conflict)", exit)
+	}
+	var env map[string]any
+	must(t, json.Unmarshal(stdout.Bytes(), &env))
+	if env["error"] != `Cannot delete the default profile "default"` {
+		t.Errorf("error=%v", env["error"])
+	}
+	if env["hint"] != "Run 'urlbox config profile default <other>' to switch the default first." {
+		t.Errorf("hint=%v", env["hint"])
+	}
+}
+
+func TestProfileDelete_OnlyProfile_Errors(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	cmd.Execute([]string{"config", "profile", "create", "default", "--api-secret", "s1"}, new(bytes.Buffer), new(bytes.Buffer))
+
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{"config", "profile", "delete", "default"}, &stdout, &stderr)
+	if exit != 7 {
+		t.Fatalf("exit=%d", exit)
+	}
+}
+
 // strconvQuote wraps a string in JSON-escaped double quotes (matches what
 // QuietFormatter / jsonScalarLine emit for a string scalar).
 func strconvQuote(s string) string {
