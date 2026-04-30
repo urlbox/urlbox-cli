@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"runtime"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -189,13 +188,13 @@ func checkAuth(ctx context.Context, host string) Check {
 	if key == "" {
 		return Check{Name: "auth", Status: "warn", Message: "skipped (no API secret)"}
 	}
-	endpoint := host + "/v1/account"
+	endpoint := host + "/v1/user/me"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, http.NoBody)
 	if err != nil {
 		return Check{Name: "auth", Status: "fail", Message: err.Error()}
 	}
 	req.Header.Set("Authorization", "Bearer "+key)
-	req.Header.Set("User-Agent", "urlbox-cli/"+version.Version+" "+runtime.GOOS+"/"+runtime.GOARCH)
+	req.Header.Set("User-Agent", api.BuildUserAgent(version.Version))
 
 	client := &http.Client{Timeout: httpTimeout}
 	resp, err := client.Do(req)
