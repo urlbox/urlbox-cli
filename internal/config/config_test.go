@@ -221,6 +221,21 @@ func TestConfig_SaveAfterLegacyLoad_WritesNewShape(t *testing.T) {
 	}
 }
 
+func TestProfile_IsEmpty(t *testing.T) {
+	if !(config.Profile{}).IsEmpty() {
+		t.Error("zero-value Profile should be IsEmpty")
+	}
+	if (config.Profile{APIKey: "x"}).IsEmpty() {
+		t.Error("Profile with APIKey should not be IsEmpty")
+	}
+	if (config.Profile{APISecret: "x"}).IsEmpty() {
+		t.Error("Profile with APISecret should not be IsEmpty")
+	}
+	if (config.Profile{APIHost: "x"}).IsEmpty() {
+		t.Error("Profile with APIHost should not be IsEmpty")
+	}
+}
+
 func TestConfig_Save_AtomicViaRename(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)

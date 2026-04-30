@@ -124,3 +124,95 @@ func TestResolve_NilConfig_OK(t *testing.T) {
 		t.Errorf("got APISecret=%q APIHost=%q", r.APISecret, r.APIHost)
 	}
 }
+
+func TestResolve_EnvProfile_PicksProfile(t *testing.T) {
+	cfg := &config.Config{
+		Profiles: map[string]config.Profile{
+			"work": {APIKey: "p_work"},
+		},
+	}
+	r, err := config.Resolve(config.ResolveOptions{EnvProfile: "work", Config: cfg})
+	must(t, err)
+	if r.Profile != "work" || r.Source.Profile != "env" {
+		t.Errorf("Profile=%q Source=%q", r.Profile, r.Source.Profile)
+	}
+	if r.APIKey != "p_work" {
+		t.Errorf("APIKey=%q", r.APIKey)
+	}
+}
+
+func TestResolve_RepoOverlayProfileWins_OverEnvProfile(t *testing.T) {
+	cfg := &config.Config{
+		Profiles: map[string]config.Profile{
+			"repo": {APIKey: "p_repo"},
+			"env":  {APIKey: "p_env"},
+		},
+	}
+	r, err := config.Resolve(config.ResolveOptions{
+		EnvProfile:  "env",
+		RepoOverlay: &config.RepoOverlay{Profile: "repo"},
+		Config:      cfg,
+	})
+	must(t, err)
+	if r.Profile != "repo" || r.Source.Profile != "repo" {
+		t.Errorf("Profile=%q Source=%q", r.Profile, r.Source.Profile)
+	}
+}
+
+func TestResolve_APIHost_FlagBeatsEnvBeatsRepoBeatsProfile(t *testing.T) {
+	cfg := &config.Config{
+		DefaultProfile: "default",
+		Profiles:       map[string]config.Profile{"default": {APIHost: "https://profile.example"}},
+	}
+
+	r, err := config.Resolve(config.ResolveOptions{
+		FlagAPIHost: "https://flag.example",
+		EnvAPIHost:  "https://env.example",
+		RepoOverlay: &config.RepoOverlay{APIHost: "https://repo.example"},
+		Config:      cfg,
+	})
+	must(t, err)
+	if r.APIHost != "https://flag.example" || r.Source.APIHost != "flag" {
+		t.Errorf("flag tier: %q (%q)", r.APIHost, r.Source.APIHost)
+	}
+
+	r, err = config.Resolve(config.ResolveOptions{
+		EnvAPIHost:  "https://env.example",
+		RepoOverlay: &config.RepoOverlay{APIHost: "https://repo.example"},
+		Config:      cfg,
+	})
+	must(t, err)
+	if r.APIHost != "https://env.example" || r.Source.APIHost != "env" {
+		t.Errorf("env tier: %q (%q)", r.APIHost, r.Source.APIHost)
+	}
+
+	r, err = config.Resolve(config.ResolveOptions{
+		RepoOverlay: &config.RepoOverlay{APIHost: "https://repo.example"},
+		Config:      cfg,
+	})
+	must(t, err)
+	if r.APIHost != "https://repo.example" || r.Source.APIHost != "repo" {
+		t.Errorf("repo tier: %q (%q)", r.APIHost, r.Source.APIHost)
+	}
+
+	r, err = config.Resolve(config.ResolveOptions{Config: cfg})
+	must(t, err)
+	if r.APIHost != "https://profile.example" || r.Source.APIHost != "profile" {
+		t.Errorf("profile tier: %q (%q)", r.APIHost, r.Source.APIHost)
+	}
+}
+
+func TestResolve_APIKey_FromRepoOverlay(t *testing.T) {
+	cfg := &config.Config{
+		DefaultProfile: "default",
+		Profiles:       map[string]config.Profile{"default": {APIKey: "p_default"}},
+	}
+	r, err := config.Resolve(config.ResolveOptions{
+		RepoOverlay: &config.RepoOverlay{APIKey: "repo_pub"},
+		Config:      cfg,
+	})
+	must(t, err)
+	if r.APIKey != "repo_pub" || r.Source.APIKey != "repo" {
+		t.Errorf("APIKey=%q Source=%q", r.APIKey, r.Source.APIKey)
+	}
+}
