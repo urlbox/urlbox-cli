@@ -24,7 +24,27 @@ The env var URLBOX_API_SECRET takes precedence at runtime.`,
 					"Pass --api-key <key> or export URLBOX_API_SECRET",
 				)
 			}
-			if err := config.Save(&config.Config{APIKey: apiKey}); err != nil {
+			cfg, err := config.Load()
+			if err != nil {
+				return output.NewCLIError(
+					output.ErrServer,
+					"failed to read config",
+					err.Error(),
+				)
+			}
+			if cfg.Profiles == nil {
+				cfg.Profiles = map[string]config.Profile{}
+			}
+			profileName := cfg.DefaultProfile
+			if profileName == "" {
+				profileName = "default"
+				cfg.DefaultProfile = profileName
+			}
+			p := cfg.Profiles[profileName]
+			p.APIKey = apiKey
+			cfg.Profiles[profileName] = p
+
+			if err := config.Save(cfg); err != nil {
 				return output.NewCLIError(
 					output.ErrServer,
 					"failed to save config",
