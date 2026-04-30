@@ -11,9 +11,6 @@ import (
 	"path/filepath"
 )
 
-// EnvAPIKey is the env var that overrides any saved API key.
-const EnvAPIKey = "URLBOX_API_SECRET" //nolint:gosec // env var name, not a credential
-
 // Config is the persisted CLI configuration. Multi-profile in Phase 3.
 type Config struct {
 	DefaultProfile string             `json:"default_profile,omitempty"`
@@ -98,7 +95,7 @@ func Save(c *Config) error {
 // Phase 3 reads the default profile's APIKey, falling back to LegacyAPIKey
 // for unmigrated files.
 func ResolveAPIKey() string {
-	if v := os.Getenv(EnvAPIKey); v != "" {
+	if v := os.Getenv(EnvAPISecret); v != "" {
 		return v
 	}
 	c, err := Load()
@@ -115,7 +112,7 @@ func ResolveAPIKey() string {
 
 // APIKeySource describes where the resolved API key came from: "env", "file", or "none".
 func APIKeySource() string {
-	if os.Getenv(EnvAPIKey) != "" {
+	if os.Getenv(EnvAPISecret) != "" {
 		return "env"
 	}
 	c, err := Load()

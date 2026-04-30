@@ -59,6 +59,27 @@ func TestRepoOverlay_FoundInAncestor(t *testing.T) {
 	}
 }
 
+func TestRepoOverlay_AtBoundary_IsRead(t *testing.T) {
+	// The directory AT the boundary must be inspected (resolved OQ3).
+	// Strictly above is excluded — that's covered by TestRepoOverlay_StopsAtBoundary.
+	root := t.TempDir()
+	boundary := filepath.Join(root, "home")
+	cwd := filepath.Join(boundary, "project")
+	must(t, os.MkdirAll(cwd, 0o755))
+	must(t, os.MkdirAll(filepath.Join(boundary, ".urlbox"), 0o700))
+	must(t, os.WriteFile(filepath.Join(boundary, ".urlbox", "config.json"),
+		[]byte(`{"api_key":"pub_at_boundary"}`), 0o600))
+
+	overlay, err := config.LoadRepoOverlay(cwd, boundary)
+	must(t, err)
+	if overlay == nil {
+		t.Fatal("expected overlay AT boundary to be read, got nil")
+	}
+	if overlay.APIKey != "pub_at_boundary" {
+		t.Errorf("APIKey = %q", overlay.APIKey)
+	}
+}
+
 func TestRepoOverlay_StopsAtBoundary(t *testing.T) {
 	root := t.TempDir()
 	boundary := filepath.Join(root, "home")
