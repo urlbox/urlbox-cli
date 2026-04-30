@@ -78,6 +78,12 @@ func RetryDo(ctx context.Context, cfg RetryConfig, do func() (*http.Response, er
 			_ = resp.Body.Close()
 		}
 
+		// Run the sleep in a goroutine so we can race it against ctx.Done().
+		// On ctx cancel, the goroutine survives until cfg.Sleep returns —
+		// a bounded leak (capped by MaxDelay = 30s) we accept for now to
+		// keep the Sleep injection point a simple `func(time.Duration)`.
+		// Cleaner alternative: switch Sleeper to `func(ctx, d) error` and
+		// use time.Timer + Stop(). Deferred to v1.0 polish.
 		done := make(chan struct{})
 		go func() {
 			cfg.Sleep(delay)
