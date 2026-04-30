@@ -2,36 +2,93 @@ urlbox
 urlbox --agent
 urlbox --jq
 urlbox --output-format
+urlbox --profile
 urlbox auth
 urlbox auth --agent
 urlbox auth --api-key
 urlbox auth --jq
 urlbox auth --output-format
+urlbox auth --profile
 urlbox commands
 urlbox commands --agent
 urlbox commands --jq
 urlbox commands --output-format
+urlbox commands --profile
+urlbox config
+urlbox config --agent
+urlbox config --jq
+urlbox config --output-format
+urlbox config --profile
+urlbox config get <key>
+urlbox config get <key> --agent
+urlbox config get <key> --jq
+urlbox config get <key> --output-format
+urlbox config get <key> --profile
+urlbox config path
+urlbox config path --agent
+urlbox config path --jq
+urlbox config path --output-format
+urlbox config path --profile
+urlbox config profile
+urlbox config profile --agent
+urlbox config profile --jq
+urlbox config profile --output-format
+urlbox config profile --profile
+urlbox config profile create <name>
+urlbox config profile create <name> --agent
+urlbox config profile create <name> --api-host
+urlbox config profile create <name> --api-key
+urlbox config profile create <name> --api-secret
+urlbox config profile create <name> --jq
+urlbox config profile create <name> --output-format
+urlbox config profile create <name> --profile
+urlbox config profile default <name>
+urlbox config profile default <name> --agent
+urlbox config profile default <name> --jq
+urlbox config profile default <name> --output-format
+urlbox config profile default <name> --profile
+urlbox config profile delete <name>
+urlbox config profile delete <name> --agent
+urlbox config profile delete <name> --jq
+urlbox config profile delete <name> --output-format
+urlbox config profile delete <name> --profile
+urlbox config profile list
+urlbox config profile list --agent
+urlbox config profile list --jq
+urlbox config profile list --output-format
+urlbox config profile list --profile
+urlbox config set <key> <value>
+urlbox config set <key> <value> --agent
+urlbox config set <key> <value> --jq
+urlbox config set <key> <value> --output-format
+urlbox config set <key> <value> --profile
 urlbox doctor
 urlbox doctor --agent
 urlbox doctor --jq
 urlbox doctor --output-format
+urlbox doctor --profile
 urlbox schema
 urlbox schema --agent
 urlbox schema --jq
 urlbox schema --output-format
+urlbox schema --profile
 urlbox schema render
 urlbox schema render --agent
 urlbox schema render --jq
 urlbox schema render --output-format
+urlbox schema render --profile
 urlbox skill
 urlbox skill --agent
 urlbox skill --jq
 urlbox skill --output-format
+urlbox skill --profile
 urlbox skill show
 urlbox skill show --agent
 urlbox skill show --jq
 urlbox skill show --output-format
+urlbox skill show --profile
 urlbox upgrade
 urlbox upgrade --agent
 urlbox upgrade --jq
 urlbox upgrade --output-format
+urlbox upgrade --profile
