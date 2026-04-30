@@ -164,7 +164,8 @@ func mapStatusToCLIError(resp *http.Response, body []byte) *output.CLIError {
 		if msg == "" {
 			msg = "Conflict"
 		}
-		return output.NewCLIError(output.ErrConflict, msg, apiMsg)
+		return output.NewCLIError(output.ErrConflict, msg,
+			"Wait for the in-flight request to complete, or check the dashboard.")
 	case resp.StatusCode == http.StatusTooManyRequests:
 		msg := apiMsg
 		if msg == "" {

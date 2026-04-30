@@ -210,7 +210,7 @@ func checkAuth(ctx context.Context, host string) Check {
 			Name:    "auth",
 			Status:  "fail",
 			Message: "credentials rejected",
-			Hint:    "Re-run `urlbox auth --api-key <key>` with a valid key",
+			Hint:    "Re-run `urlbox auth --api-secret <secret>` with a valid secret",
 		}
 	case resp.StatusCode >= 500:
 		return Check{
