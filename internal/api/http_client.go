@@ -139,12 +139,14 @@ func (c *HTTPClient) do(ctx context.Context, method, path string, body any) (*Re
 
 // mapStatusToCLIError maps a non-2xx response to a typed *output.CLIError.
 // 401 → auth, 403 → forbidden, 404 → not_found, 409 → conflict,
-// 429 → rate_limit, 5xx → server, 4xx (other) → usage with the API's
-// error message lifted into Message.
+// 429 → rate_limit, 5xx → server, 4xx (other) → usage. The API's error
+// message is lifted into Message; for 400 the error code is also
+// inspected — auth-related codes (ApiKeyNotFound, ApiKeyInvalid, ...)
+// re-route to ErrAuth even though the HTTP status is 400.
 func mapStatusToCLIError(resp *http.Response, body []byte) *output.CLIError {
-	apiMsg := extractAPIErrorMessage(body)
+	apiMsg, apiCode := extractAPIError(body)
 	switch {
-	case resp.StatusCode == http.StatusUnauthorized:
+	case resp.StatusCode == http.StatusUnauthorized || isAuthErrorCode(apiCode):
 		msg := apiMsg
 		if msg == "" {
 			msg = "API rejected the request: not authenticated"
@@ -195,21 +197,48 @@ func mapStatusToCLIError(resp *http.Response, body []byte) *output.CLIError {
 	}
 }
 
-// extractAPIErrorMessage tries to read an `error` or `message` field from a
-// JSON error body. Falls back to the trimmed body string if it isn't JSON
-// (some upstream errors return plain text).
-func extractAPIErrorMessage(body []byte) string {
+// isAuthErrorCode returns true when the API error code names an auth
+// failure. Urlbox's HTTP status for these is sometimes 400 (e.g.
+// ApiKeyNotFound) rather than 401, so we inspect the body code too.
+func isAuthErrorCode(code string) bool {
+	if code == "" {
+		return false
+	}
+	return strings.HasPrefix(code, "ApiKey") ||
+		strings.HasPrefix(code, "Auth") ||
+		strings.HasPrefix(code, "Unauthorized")
+}
+
+// extractAPIError reads an Urlbox-shaped JSON error body and returns
+// (message, code). Both shapes are supported:
+//
+//   - flat:   {"error": "string message"}
+//   - nested: {"error": {"code": "ApiKeyNotFound", "message": "..."}}
+//   - flat:   {"message": "string message"}
+//
+// Non-JSON bodies fall back to (trimmed body string, "").
+func extractAPIError(body []byte) (msg, code string) {
 	trimmed := strings.TrimSpace(string(body))
 	if trimmed == "" {
-		return ""
+		return "", ""
 	}
 	var parsed map[string]any
 	if err := json.Unmarshal(body, &parsed); err == nil {
+		// Urlbox-specific nested shape: {"error": {"code": "...", "message": "..."}}.
+		if errObj, ok := parsed["error"].(map[string]any); ok {
+			if c, ok := errObj["code"].(string); ok {
+				code = c
+			}
+			if m, ok := errObj["message"].(string); ok && m != "" {
+				return m, code
+			}
+		}
+		// Flat-string shapes.
 		for _, k := range []string{"error", "message"} {
 			if v, ok := parsed[k].(string); ok && v != "" {
-				return v
+				return v, code
 			}
 		}
 	}
-	return trimmed
+	return trimmed, code
 }
