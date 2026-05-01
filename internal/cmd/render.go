@@ -189,7 +189,26 @@ func runRender(cmd *cobra.Command, args []string, f *renderFlags) error {
 		return writeRenderEnvelope(cmd, env)
 	}
 
-	// 7. Real call. Build the client (test override wins) and dispatch.
+	// 7. --curl short-circuits with a copy-pasteable curl command. Secret
+	// is redacted as $URLBOX_API_SECRET (never printed).
+	if f.curl {
+		path := api.PathSync
+		if f.async {
+			path = api.PathAsync
+		}
+		host := api.ResolveAPIHost()
+		env := output.NewEnvelope(
+			"render",
+			map[string]any{"curl": buildCurl(host, path, validated)},
+			"Equivalent curl command (no API call made)",
+			[]output.Breadcrumb{
+				{Action: "run", Cmd: "urlbox render <url>"},
+			},
+		)
+		return writeRenderEnvelope(cmd, env)
+	}
+
+	// 8. Real call. Build the client (test override wins) and dispatch.
 	client, cerr := buildRenderClient(f)
 	if cerr != nil {
 		return cerr

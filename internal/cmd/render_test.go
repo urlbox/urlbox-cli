@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/urlbox/urlbox-cli/internal/api"
+	"github.com/urlbox/urlbox-cli/internal/api/apitest"
 	"github.com/urlbox/urlbox-cli/internal/cmd"
 )
 
@@ -261,6 +262,73 @@ func TestRender_DryRun_DoesNotInvokeClient(t *testing.T) {
 	cmd.Execute([]string{"render", "https://example.com", "--dry-run", "--output-format", "json"}, &stdout, &stderr)
 	if fc.lastOpts != nil {
 		t.Errorf("client was called on --dry-run: %v", fc.lastOpts)
+	}
+}
+
+// Hard guarantee: --dry-run must NEVER make an HTTP call. Point the env at
+// a server that fails the test on any request, then run --dry-run.
+func TestRender_DryRun_DoesNotHitNetwork(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	s := apitest.NeverHitServer(t)
+	t.Cleanup(s.Close)
+	t.Setenv(api.EnvAPIHost, s.URL)
+
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{
+		"render", "https://example.com",
+		"--dry-run", "--output-format", "json",
+	}, &stdout, &stderr)
+	if exit != 0 {
+		t.Fatalf("exit=%d stderr=%s", exit, stderr.String())
+	}
+}
+
+// Same hard guarantee for --curl: must NEVER make an HTTP call.
+func TestRender_Curl_DoesNotHitNetwork(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	s := apitest.NeverHitServer(t)
+	t.Cleanup(s.Close)
+	t.Setenv(api.EnvAPIHost, s.URL)
+
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{
+		"render", "https://example.com",
+		"--curl", "--output-format", "json",
+	}, &stdout, &stderr)
+	if exit != 0 {
+		t.Fatalf("exit=%d stderr=%s", exit, stderr.String())
+	}
+	var env map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("not JSON: %v", err)
+	}
+	data := env["data"].(map[string]any)
+	curl, _ := data["curl"].(string)
+	if !strings.Contains(curl, "curl -X POST") {
+		t.Errorf("curl command malformed: %q", curl)
+	}
+	if !strings.Contains(curl, "$URLBOX_API_SECRET") {
+		t.Errorf("curl should reference $URLBOX_API_SECRET (redacted secret); got: %q", curl)
+	}
+	if strings.Contains(curl, "ubx_") || strings.Contains(curl, "sec_") {
+		t.Errorf("curl appears to leak a real secret: %q", curl)
+	}
+}
+
+func TestRender_Curl_AsyncFlag_HitsAsyncPath(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	var stdout, stderr bytes.Buffer
+	cmd.Execute([]string{
+		"render", "https://example.com",
+		"--curl", "--async", "--output-format", "json",
+	}, &stdout, &stderr)
+	var env map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("not JSON: %v\nout: %s", err, stdout.String())
+	}
+	curl := env["data"].(map[string]any)["curl"].(string)
+	if !strings.Contains(curl, "/v1/screenshot/async") {
+		t.Errorf("--curl --async should target async endpoint; got: %s", curl)
 	}
 }
 

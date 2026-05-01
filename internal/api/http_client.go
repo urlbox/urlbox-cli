@@ -16,11 +16,17 @@ import (
 	"github.com/urlbox/urlbox-cli/internal/version"
 )
 
-// Endpoint paths locked from urlbox-mono spec (apps/api/src/modules/render/render.routes.ts).
+// Endpoint paths locked from urlbox-mono spec
+// (apps/api/src/modules/render/render.routes.ts). Exported so callers like
+// `urlbox render --curl` can reference the same paths the HTTPClient uses.
 const (
-	pathSync   = "/v1/screenshot"
-	pathAsync  = "/v1/screenshot/async"
-	pathStatus = "/v1/render/" // append the URL-escaped renderID
+	// PathSync is the synchronous render endpoint.
+	PathSync = "/v1/screenshot"
+	// PathAsync is the asynchronous render endpoint (returns 201 + renderId).
+	PathAsync = "/v1/screenshot/async"
+	// PathStatus is the prefix for render-status lookups; append the
+	// URL-escaped renderID.
+	PathStatus = "/v1/render/"
 )
 
 // HTTPClient is the production api.Client implementation.
@@ -56,18 +62,18 @@ func NewHTTPClient(baseURL, apiKey, apiSecret string) *HTTPClient {
 
 // Render performs a synchronous render. POST /v1/screenshot.
 func (c *HTTPClient) Render(ctx context.Context, opts map[string]any) (*Response, error) {
-	return c.do(ctx, http.MethodPost, pathSync, opts)
+	return c.do(ctx, http.MethodPost, PathSync, opts)
 }
 
 // RenderAsync queues a render. POST /v1/screenshot/async. Returns 201 with
 // {status, renderId, statusUrl}.
 func (c *HTTPClient) RenderAsync(ctx context.Context, opts map[string]any) (*Response, error) {
-	return c.do(ctx, http.MethodPost, pathAsync, opts)
+	return c.do(ctx, http.MethodPost, PathAsync, opts)
 }
 
 // Status returns the latest state of an async render. GET /v1/render/<renderID>.
 func (c *HTTPClient) Status(ctx context.Context, renderID string) (*Response, error) {
-	return c.do(ctx, http.MethodGet, pathStatus+url.PathEscape(renderID), nil)
+	return c.do(ctx, http.MethodGet, PathStatus+url.PathEscape(renderID), nil)
 }
 
 // do is the single request entry point: build, send (through retry), parse.
