@@ -64,6 +64,9 @@ func newAuthCmd() *cobra.Command {
 		Short: "Configure API credentials",
 		Long: `Save your Urlbox API secret to the local config file.
 
+Find your API secret in your project's settings on the dashboard:
+  https://urlbox.com/dashboard/projects   (open your project → API Secret)
+
 Non-interactive (preferred for agents and CI):
   urlbox auth --api-secret <secret>
 
@@ -78,6 +81,9 @@ The env var URLBOX_API_SECRET takes precedence at runtime over the saved value.`
 			interactive := apiSecret == "" && isStdinTTY(cmd.InOrStdin()) && isStderrTTY(cmd.ErrOrStderr())
 			if interactive {
 				// Prompt label on stderr — keeps stdout clean for --output-format json.
+				// Pre-prompt pointer to where the secret lives, so a first-time
+				// user doesn't have to hunt or guess the URL.
+				_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "Find your API secret in your project's settings: https://urlbox.com/dashboard/projects")
 				_, _ = fmt.Fprint(cmd.ErrOrStderr(), "API secret: ")
 				s, err := authSecretReader()
 				if err != nil {
@@ -99,7 +105,7 @@ The env var URLBOX_API_SECRET takes precedence at runtime over the saved value.`
 				return output.NewCLIError(
 					output.ErrUsage,
 					"missing --api-secret",
-					"Pass --api-secret <secret>, export URLBOX_API_SECRET, or run interactively on a TTY.",
+					"Pass --api-secret <secret>, export URLBOX_API_SECRET, or run interactively on a TTY. Find your API secret in your project's settings at https://urlbox.com/dashboard/projects.",
 				)
 			}
 
