@@ -40,6 +40,26 @@ agentic field test of v0.7.0 surfaced.
   context and failed immediately. v0.8.0 drops auto-retry-on-timeout
   in favor of fail-fast + an honest hint, putting the recovery decision
   in the caller's hands.
+- `schema/render.json` now accepts the five `video_scroll*` fields the
+  dashboard exposes (`video_scroll`, `video_scroll_back`,
+  `video_scroll_distance`, `video_scroll_duration`,
+  `video_scroll_back_duration`). v0.7.0 had `additionalProperties: false`
+  blocking them. Root cause: the schema-sync pipeline lives on
+  urlbox-mono's `feature/urlbox-cli` branch and never landed on main; the
+  dashboard later refactored its option metadata into per-component files,
+  breaking the original allowlist source. Hand-patched until the broader
+  sync rebuild lands.
+- `urlbox auth` now points users at the dashboard URL where they can
+  copy their API secret (https://urlbox.com/dashboard/projects). The URL
+  appears in `--help`, the interactive pre-prompt, and the missing-secret
+  error envelope's hint. Field report: agents were inventing wrong URLs
+  ("urlbox.com/dashboard/api-secrets") because the CLI never said where
+  the secret actually lives.
+- `skills/SKILL.md` now teaches the `--json` fallback prominently. v0.7.0
+  buried the "any field not in a flag is settable via --json" guidance
+  deep in the render section; agents bounced off "no flag for that field"
+  walls. New section "Field not exposed by a flag? Use `--json`" lands
+  right after Discovery, with a decision tree and worked examples.
 
 ### Added
 

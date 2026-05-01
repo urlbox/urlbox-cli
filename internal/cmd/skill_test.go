@@ -93,6 +93,13 @@ func TestSkill_DocumentsRenderSurface(t *testing.T) {
 		"upstreamOk", // new envelope field
 		"--timeout",  // new flag
 		`"timeout"`,  // new closed-set error code value
+		// v0.8.0 agent-discovery additions (post-audit field-report fixes):
+		// the SKILL must teach the --json fallback prominently so agents
+		// don't bounce off "no flag for that field" walls.
+		"video_scroll",                // sample option only reachable via --json
+		"Field not exposed by a flag", // section header — agents read top-down
+		"urlbox schema render",        // discovery pointer for the full key set
+		"Decision tree for agents",    // explicit branching guidance
 	}
 	for _, s := range required {
 		if !strings.Contains(body, s) {

@@ -72,6 +72,38 @@ Every command in this CLI is listed in the repo's `SURFACE.txt`; that file is
 the authoritative contract and is enforced in CI. New flags or commands won't
 silently disappear between versions without a major version bump.
 
+## Field not exposed by a flag? Use `--json`
+
+The render command exposes ~30 of the most common Urlbox API options as
+flags (`--width`, `--full-page`, `--block-ads`, etc.). **For anything else,
+use `--json '{...}'`.** Every API option in the schema is settable this
+way — including options the dashboard exposes that the CLI hasn't grown a
+dedicated flag for yet (e.g. `video_scroll`, `video_scroll_distance`,
+`save_html`, `cookies`, hundreds more).
+
+```sh
+# Discover the full set of valid keys (152 fields as of v0.8.0)
+urlbox schema render --jq '.data.properties | keys'
+
+# Drill into one field's contract
+urlbox schema render --jq '.data.properties.video_scroll'
+
+# Pass any option through --json
+urlbox render --json '{"url":"https://example.com","video_scroll":true,"video_scroll_distance":1200,"video_scroll_duration":1800}'
+
+# --json composes with flags (flags win on conflict)
+urlbox render https://example.com --json '{"video_scroll":true}' --output movie.mp4 --format mp4
+```
+
+The validator runs locally against the embedded JSON Schema, so
+typos are caught before any API call (saves credits + tightens the
+feedback loop). Unknown keys produce a `code: "validation"` envelope
+with a "did you mean: <closest>" hint.
+
+**Decision tree for agents:** if the option you need is in
+`urlbox render --help`, use the flag; otherwise reach for `--json '{...}'`.
+Never guess — `urlbox schema render` is the source of truth.
+
 ## Available commands
 
 | Command                          | Purpose                                                |
