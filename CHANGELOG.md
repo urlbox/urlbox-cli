@@ -9,6 +9,16 @@ and the project follows [SemVer](https://semver.org/spec/v2.0.0.html).
 Render UX & reliability hardening — addresses every friction point an
 agentic field test of v0.7.0 surfaced.
 
+### Breaking
+
+- `--timeout` flag changed type from `int` (milliseconds, mapped to the
+  Urlbox API's hard page-timeout option) to `duration` (the CLI's
+  per-attempt render budget — see Added below). Old invocations like
+  `--timeout 30000` will fail at flag parsing because `30000` is not a
+  valid duration string. The hard page-timeout API option is still
+  reachable via `--json '{"timeout": 30000}'`. Acceptable break: zero
+  reported v0.7.0 users.
+
 ### Fixed
 
 - `--wait-until` help text now lists the API's real enum values
