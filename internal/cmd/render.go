@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -121,7 +122,7 @@ Use --dry-run to validate the merged payload without making an API call.`,
 	c.Flags().BoolVar(&f.curl, "curl", false, "Print an equivalent curl command instead of calling the API")
 	c.Flags().BoolVar(&f.open, "open", false, "Open the rendered URL in the default browser after success")
 	c.Flags().BoolVar(&f.noRetry, "no-retry", false, "Disable automatic retries on 429 / 5xx")
-	c.Flags().IntVar(&f.maxRetries, "max-retries", 3, "Maximum retry attempts on 429 / 5xx")
+	c.Flags().IntVar(&f.maxRetries, "max-retries", api.DefaultRetryConfig().MaxRetries, "Maximum retry attempts on 429 / 5xx")
 	c.Flags().StringVar(&f.apiSecret, "api-secret", "", "Per-call override of the API secret (else read from config / env)")
 
 	return c
@@ -308,7 +309,7 @@ func buildRenderClient(f *renderFlags) (api.Client, *output.CLIError) {
 	})
 	if rerr != nil {
 		var cli *output.CLIError
-		if asCLIError(rerr, &cli) {
+		if errors.As(rerr, &cli) {
 			return nil, cli
 		}
 		return nil, output.NewCLIError(output.ErrUsage, rerr.Error(), "")
@@ -322,27 +323,10 @@ func buildRenderClient(f *renderFlags) (api.Client, *output.CLIError) {
 	c := api.NewHTTPClient(host, resolved.APIKey, resolved.APISecret)
 	if f.noRetry {
 		c.Retry = api.NoRetryConfig()
-	} else if f.maxRetries != 3 {
+	} else {
 		c.Retry.MaxRetries = f.maxRetries
 	}
 	return c, nil
-}
-
-// asCLIError is a thin wrapper around errors.As to keep call sites compact.
-func asCLIError(err error, target **output.CLIError) bool {
-	for cur := err; cur != nil; {
-		if cli, ok := cur.(*output.CLIError); ok {
-			*target = cli
-			return true
-		}
-		type unwrapper interface{ Unwrap() error }
-		u, ok := cur.(unwrapper)
-		if !ok {
-			break
-		}
-		cur = u.Unwrap()
-	}
-	return false
 }
 
 // summariseRenderResp builds the human-readable summary line.
