@@ -297,6 +297,95 @@ func TestHTTPClient_Render_400_ApiKeyNotFound_MapsToAuth(t *testing.T) {
 	}
 }
 
+// When the API response includes data.response.statusCode, propagate it
+// through Response.Data so the render command can surface it in the
+// envelope. The Urlbox API nests upstream status under "response" (see
+// urlbox-mono apps/api/src/lib/utils.ts:86-122).
+func TestHTTPClient_Render_UpstreamStatus_Propagates(t *testing.T) {
+	m := apitest.New(apitest.SuccessJSON(`{
+		"renderUrl": "https://renders.urlbox.com/x.png",
+		"size": 245632,
+		"renderTime": 1234,
+		"width": 1920,
+		"height": 1080,
+		"response": {"statusCode": 401}
+	}`))
+	t.Cleanup(m.Close)
+	c := newTestClient(t, m)
+	resp, err := c.Render(context.Background(), map[string]any{"url": "https://example.com"})
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	if resp.Data["upstreamOk"] != false {
+		t.Errorf("upstreamOk=%v, want false (page returned 401)", resp.Data["upstreamOk"])
+	}
+	if status, _ := resp.Data["upstreamStatus"].(float64); status != 401 {
+		t.Errorf("upstreamStatus=%v, want 401", resp.Data["upstreamStatus"])
+	}
+}
+
+func TestHTTPClient_Render_UpstreamStatusOK_DefaultsTrue(t *testing.T) {
+	m := apitest.New(apitest.SuccessJSON(`{
+		"renderUrl": "https://renders.urlbox.com/x.png",
+		"size": 245632,
+		"response": {"statusCode": 200}
+	}`))
+	t.Cleanup(m.Close)
+	c := newTestClient(t, m)
+	resp, err := c.Render(context.Background(), map[string]any{"url": "https://example.com"})
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	if resp.Data["upstreamOk"] != true {
+		t.Errorf("upstreamOk=%v, want true (page returned 200)", resp.Data["upstreamOk"])
+	}
+}
+
+// statusCodeInitial captures the first request's code before any redirects.
+// A 401-then-302-then-200 login-wall chain must read as upstreamOk=false
+// because the initial request failed even if the final landing was 200.
+func TestHTTPClient_Render_UpstreamStatusInitial_TaintsOk(t *testing.T) {
+	m := apitest.New(apitest.SuccessJSON(`{
+		"renderUrl": "https://renders.urlbox.com/x.png",
+		"size": 245632,
+		"response": {"statusCode": 200, "statusCodeInitial": 401}
+	}`))
+	t.Cleanup(m.Close)
+	c := newTestClient(t, m)
+	resp, err := c.Render(context.Background(), map[string]any{"url": "https://example.com"})
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	if resp.Data["upstreamOk"] != false {
+		t.Errorf("upstreamOk=%v, want false (initial 401 redirected to 200)", resp.Data["upstreamOk"])
+	}
+	if status, _ := resp.Data["upstreamStatus"].(float64); status != 200 {
+		t.Errorf("upstreamStatus=%v, want 200 (final code)", resp.Data["upstreamStatus"])
+	}
+	if initial, _ := resp.Data["upstreamStatusInitial"].(float64); initial != 401 {
+		t.Errorf("upstreamStatusInitial=%v, want 401", resp.Data["upstreamStatusInitial"])
+	}
+}
+
+func TestHTTPClient_Render_NoResponseObject_OmitsField(t *testing.T) {
+	// When the API doesn't include data.response (engine error, empty
+	// render), we don't lie — both upstreamOk and upstreamStatus are
+	// absent from Data.
+	m := apitest.New(apitest.SuccessJSON(`{
+		"renderUrl": "https://renders.urlbox.com/x.png",
+		"size": 245632
+	}`))
+	t.Cleanup(m.Close)
+	c := newTestClient(t, m)
+	resp, err := c.Render(context.Background(), map[string]any{"url": "https://example.com"})
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	if _, ok := resp.Data["upstreamOk"]; ok {
+		t.Errorf("upstreamOk should be absent when the API doesn't expose response.statusCode")
+	}
+}
+
 func TestHTTPClient_Render_NonJSONErrorBody_FallsBackToBodyString(t *testing.T) {
 	m := apitest.New(apitest.ScriptedResponse{Status: http.StatusBadRequest, Body: `not json at all`})
 	t.Cleanup(m.Close)

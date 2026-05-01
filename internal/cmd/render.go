@@ -438,13 +438,21 @@ func buildRenderClient(f *renderFlags) (api.Client, *output.CLIError) {
 
 // summariseRenderResp builds the human-readable summary line.
 func summariseRenderResp(resp *api.Response) string {
+	upstream := ""
+	if ok, present := resp.Data["upstreamOk"].(bool); present && !ok {
+		if status, _ := resp.Data["upstreamStatus"].(float64); status > 0 {
+			upstream = fmt.Sprintf(" (warning: upstream returned HTTP %d — likely captcha / login wall / blocked)", int(status))
+		} else {
+			upstream = " (warning: upstream returned an error status)"
+		}
+	}
 	if id, ok := resp.Data["renderId"].(string); ok {
-		return fmt.Sprintf("Render queued (renderId: %s)", id)
+		return fmt.Sprintf("Render queued (renderId: %s)%s", id, upstream)
 	}
 	if u, ok := resp.Data["renderUrl"].(string); ok {
-		return "Rendered: " + u
+		return "Rendered: " + u + upstream
 	}
-	return "Render complete"
+	return "Render complete" + upstream
 }
 
 // writeRenderEnvelope picks the right formatter (json/text/quiet) and

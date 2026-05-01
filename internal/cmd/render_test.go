@@ -615,6 +615,36 @@ func TestRender_HasAPISecretFlag(t *testing.T) {
 	}
 }
 
+func TestRender_UpstreamError_FlagsInSummary(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("URLBOX_API_SECRET", "sec_test")
+	m := apitest.New(apitest.SuccessJSON(`{
+		"renderUrl": "https://renders.urlbox.com/x.png",
+		"size": 176000,
+		"response": {"statusCode": 401}
+	}`))
+	t.Cleanup(m.Close)
+	t.Setenv(api.EnvAPIHost, m.URL())
+
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{"render", "https://reuters.example", "--output-format", "json"}, &stdout, &stderr)
+	if exit != 0 {
+		t.Fatalf("exit=%d stderr=%s", exit, stderr.String())
+	}
+	var env map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("not JSON: %v", err)
+	}
+	summary, _ := env["summary"].(string)
+	if !strings.Contains(summary, "upstream") || !strings.Contains(summary, "401") {
+		t.Errorf("summary should warn about upstream 401; got %q", summary)
+	}
+	data := env["data"].(map[string]any)
+	if data["upstreamOk"] != false {
+		t.Errorf("data.upstreamOk=%v, want false", data["upstreamOk"])
+	}
+}
+
 // Regression guard: --wait-until's help text must list the real enum values
 // from the schema, not the Puppeteer-style guesses we shipped in v0.7.0.
 func TestRender_WaitUntilHelp_ListsRealEnumValues(t *testing.T) {

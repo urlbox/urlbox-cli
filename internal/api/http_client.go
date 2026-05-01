@@ -134,6 +134,23 @@ func (c *HTTPClient) do(ctx context.Context, method, path string, body any) (*Re
 			return nil, output.NewCLIError(output.ErrServer, "failed to parse API response", err.Error())
 		}
 	}
+
+	// If the API surfaced the upstream HTTP status (under data.response per
+	// urlbox-mono apps/api/src/lib/utils.ts:86-122), promote it to top-level
+	// agent-friendly fields. statusCodeInitial captures the first request's
+	// code before redirects — a 401→302→200 chain must mark upstreamOk=false.
+	if respObj, ok := data["response"].(map[string]any); ok {
+		if status, ok := respObj["statusCode"].(float64); ok {
+			data["upstreamStatus"] = status
+			ok2xx3xx := status >= 200 && status < 400
+			if initial, ok := respObj["statusCodeInitial"].(float64); ok {
+				data["upstreamStatusInitial"] = initial
+				ok2xx3xx = ok2xx3xx && initial >= 200 && initial < 400
+			}
+			data["upstreamOk"] = ok2xx3xx
+		}
+	}
+
 	return &Response{OK: true, Data: data}, nil
 }
 
