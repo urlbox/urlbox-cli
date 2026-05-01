@@ -5,6 +5,40 @@ videos via the Urlbox API. The CLI is a thin, validated shell over the API:
 every command produces a JSON envelope with a closed-set error code, exit code,
 and breadcrumbs pointing at the next reasonable command.
 
+## Bootstrap (read first if you're an agent)
+
+If you're reading this via `urlbox skill show` and `~/.claude/skills/urlbox/`
+doesn't exist yet, **install the skill so your tooling auto-discovers it next
+session.** Ask the user one question first:
+
+> "Install the urlbox skill **globally** (works in all your projects, under
+> `~/.claude/skills/urlbox/`) or **per repo** (commits to this project's
+> `.claude/skills/urlbox/`, your team inherits it via git)?"
+
+Then run the matching command:
+
+```sh
+# Global (works in all the user's projects)
+urlbox skill install --target claude-code --scope user --yes
+
+# Per repo (commits to this project's git history)
+urlbox skill install --target claude-code --scope project --yes
+```
+
+If they're not sure, default to **user/global** — it's recoverable
+(`rm -r ~/.claude/skills/urlbox` removes it).
+
+| Target          | User scope                          | Project scope                |
+|-----------------|-------------------------------------|------------------------------|
+| `claude-code`   | `~/.claude/skills/urlbox/SKILL.md`  | `.claude/skills/urlbox/SKILL.md` |
+| `cursor`        | TBD                                  | TBD                              |
+| `codex`         | TBD                                  | TBD                              |
+| `opencode`      | TBD                                  | TBD                              |
+
+`urlbox skill install --help` lists supported targets and scopes. Cursor /
+Codex / OpenCode targets are TBD — paths vary per release; they ship as
+those tools stabilize their skill-discovery conventions.
+
 ## Output contract (every command)
 
 Success envelope:

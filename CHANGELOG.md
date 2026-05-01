@@ -4,6 +4,35 @@ All notable changes to the `urlbox` CLI are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
+## v0.8.1 — 2026-05-01
+
+Agent self-bootstrap — closes the discovery gap where the embedded SKILL.md
+lived only in the Go binary, with no file on disk for tooling like Claude
+Code to auto-load.
+
+### Added
+
+- `urlbox skill install --target claude-code --scope <user|project> [--yes]`
+  writes the embedded `SKILL.md` to the well-known skill directory of the
+  agent tooling. User scope: `~/.claude/skills/urlbox/SKILL.md`. Project
+  scope: `.claude/skills/urlbox/SKILL.md` (commits to git so teammates
+  inherit). On a TTY the command prompts; with `--yes` it runs cleanly
+  under `< /dev/null` so agents can self-bootstrap.
+- New top-of-`SKILL.md` "Bootstrap" section gives agents the decision tree
+  for installation: ask the user user-vs-project, run the right command,
+  default to user/global if unsure. Agents reading SKILL.md now know
+  exactly how to register themselves with the user's tooling.
+- Cursor / Codex / OpenCode targets are listed as TBD (paths vary per
+  release; ship as those tools stabilize their skill-discovery conventions).
+
+### Internal
+
+- `supportedSkillTargets` map in `internal/cmd/skill.go` is the single
+  source of truth for the target → path matrix. Adding a new target is
+  one map entry + a test case.
+- File perms `0o700` / `0o600` (gosec G301/G306). Skill files are
+  user-private docs, not world-readable.
+
 ## v0.8.0 — 2026-05-01
 
 Render UX & reliability hardening — addresses every friction point an

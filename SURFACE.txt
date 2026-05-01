@@ -169,6 +169,14 @@ urlbox skill --agent
 urlbox skill --jq
 urlbox skill --output-format
 urlbox skill --profile
+urlbox skill install
+urlbox skill install --agent
+urlbox skill install --jq
+urlbox skill install --output-format
+urlbox skill install --profile
+urlbox skill install --scope
+urlbox skill install --target
+urlbox skill install --yes
 urlbox skill show
 urlbox skill show --agent
 urlbox skill show --jq
