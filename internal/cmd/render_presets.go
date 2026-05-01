@@ -27,6 +27,12 @@ var builtInPresets = map[string]map[string]any{
 		"format":        "pdf",
 		"pdf_page_size": "A4",
 	},
+	"article": {
+		"block_ads":  true,
+		"retina":     true,
+		"wait_until": "mostrequestsfinished",
+		"full_page":  false,
+	},
 }
 
 // applyPreset returns a fresh copy of the named preset's defaults, or nil

@@ -67,6 +67,40 @@ func TestAuth_OldAPIKeyFlag_RemovedFromHelp(t *testing.T) {
 	}
 }
 
+// Regression guard: --help and the missing-secret error envelope must both
+// point users at the dashboard URL where they can copy their API secret.
+// Field-report observation: agents (and humans) were inventing wrong URLs
+// (urlbox.com/dashboard/api-secrets, etc.) because the CLI never said where
+// to find the secret. Pinning the canonical pointer here.
+func TestAuth_HelpAndErrorPointAtDashboardURL(t *testing.T) {
+	const wantURL = "urlbox.com/dashboard/projects"
+
+	var stdout, stderr bytes.Buffer
+	cmd.Execute([]string{"auth", "--help"}, &stdout, &stderr)
+	help := stdout.String() + stderr.String()
+	if !strings.Contains(help, wantURL) {
+		t.Errorf("--help should point at %q so users know where to grab their secret; got:\n%s", wantURL, help)
+	}
+
+	// Now exercise the missing-secret path and check the error envelope's hint.
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("URLBOX_API_SECRET", "")
+	stdout.Reset()
+	stderr.Reset()
+	exit := cmd.Execute([]string{"auth", "--output-format", "json"}, &stdout, &stderr)
+	if exit == 0 {
+		t.Fatal("expected non-zero exit on missing --api-secret")
+	}
+	var env map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("not JSON: %v\nstdout: %s", err, stdout.String())
+	}
+	hint, _ := env["hint"].(string)
+	if !strings.Contains(hint, wantURL) {
+		t.Errorf("missing-secret hint should point at %q; got %q", wantURL, hint)
+	}
+}
+
 func TestAuth_OutputEnvelopeMasksSecret(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("URLBOX_API_SECRET", "")

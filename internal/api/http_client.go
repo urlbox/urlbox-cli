@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -109,8 +110,15 @@ func (c *HTTPClient) do(ctx context.Context, method, path string, body any) (*Re
 
 	resp, err := RetryDo(ctx, c.Retry, send)
 	if err != nil {
+		// Classify a deadline as ErrTimeout so retry.go can short-circuit
+		// AND the render command can refine the hint with render-specific text.
+		code := output.ErrNetwork
+		if errors.Is(err, context.DeadlineExceeded) ||
+			strings.Contains(err.Error(), context.DeadlineExceeded.Error()) {
+			code = output.ErrTimeout
+		}
 		return nil, output.NewCLIError(
-			output.ErrNetwork,
+			code,
 			err.Error(),
 			"Check your internet connection and the API host (URLBOX_API_HOST). Run `urlbox doctor`.",
 		)
@@ -134,6 +142,32 @@ func (c *HTTPClient) do(ctx context.Context, method, path string, body any) (*Re
 			return nil, output.NewCLIError(output.ErrServer, "failed to parse API response", err.Error())
 		}
 	}
+
+	// If the API surfaced the upstream HTTP status (under data.response per
+	// urlbox-mono apps/api/src/lib/utils.ts:86-122), promote it to top-level
+	// agent-friendly fields. statusCodeInitial captures the first request's
+	// code before redirects — a 401→302→200 chain must mark upstreamOk=false.
+	if respObj, ok := data["response"].(map[string]any); ok {
+		if status, ok := respObj["statusCode"].(float64); ok {
+			data["upstreamStatus"] = status
+			ok2xx3xx := status >= 200 && status < 400
+			if initial, ok := respObj["statusCodeInitial"].(float64); ok {
+				// initial taints upstreamOk regardless of equality with the
+				// final status — a 401 first hop is failure even if the
+				// chain settled to 200. But only surface the field when it
+				// actually differs from the final status; otherwise it's
+				// noise.
+				if initial < 200 || initial >= 400 {
+					ok2xx3xx = false
+				}
+				if initial != status {
+					data["upstreamStatusInitial"] = initial
+				}
+			}
+			data["upstreamOk"] = ok2xx3xx
+		}
+	}
+
 	return &Response{OK: true, Data: data}, nil
 }
 

@@ -4,6 +4,90 @@ All notable changes to the `urlbox` CLI are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
+## v0.8.0 — 2026-05-01
+
+Render UX & reliability hardening — addresses every friction point an
+agentic field test of v0.7.0 surfaced.
+
+### Breaking
+
+- `--timeout` flag changed type from `int` (milliseconds, mapped to the
+  Urlbox API's hard page-timeout option) to `duration` (the CLI's
+  per-attempt render budget — see Added below). Old invocations like
+  `--timeout 30000` will fail at flag parsing because `30000` is not a
+  valid duration string. The hard page-timeout API option is still
+  reachable via `--json '{"timeout": 30000}'`. Acceptable break: zero
+  reported v0.7.0 users.
+
+### Fixed
+
+- `--wait-until` help text now lists the API's real enum values
+  (`domloaded`, `mostrequestsfinished`, `requestsfinished`, `loaded`).
+  v0.7.0 listed Puppeteer-style values that the API rejects — a 100%
+  failure mode for any agent that trusted `--help`.
+- `--output` envelopes now include `upstreamOk` and `upstreamStatus`
+  when the API surfaces the rendered page's HTTP status. Catches the
+  silent-failure mode where Reuters returned a 176 KB Datadome captcha
+  PNG and the CLI reported `ok: true`.
+- Render timeouts now produce a dedicated `code: "timeout"` envelope
+  with an actionable hint listing three recovery paths: retry the same
+  command, raise `--timeout`, or switch to `--async --webhook-url`.
+  v0.7.0 returned `code: "network"` with the misleading "Check your
+  internet connection" hint.
+- Heavy `--full-page` renders no longer eat their entire retry budget
+  on the first attempt. v0.7.0 wrapped runRender in a fixed 60s context
+  with auto-retry on timeout — but each retry inherited a near-dead
+  context and failed immediately. v0.8.0 drops auto-retry-on-timeout
+  in favor of fail-fast + an honest hint, putting the recovery decision
+  in the caller's hands.
+- `schema/render.json` now accepts the five `video_scroll*` fields the
+  dashboard exposes (`video_scroll`, `video_scroll_back`,
+  `video_scroll_distance`, `video_scroll_duration`,
+  `video_scroll_back_duration`). v0.7.0 had `additionalProperties: false`
+  blocking them. Root cause: the schema-sync pipeline lives on
+  urlbox-mono's `feature/urlbox-cli` branch and never landed on main; the
+  dashboard later refactored its option metadata into per-component files,
+  breaking the original allowlist source. Hand-patched until the broader
+  sync rebuild lands.
+- `urlbox auth` now points users at the dashboard URL where they can
+  copy their API secret (https://urlbox.com/dashboard/projects). The URL
+  appears in `--help`, the interactive pre-prompt, and the missing-secret
+  error envelope's hint. Field report: agents were inventing wrong URLs
+  ("urlbox.com/dashboard/api-secrets") because the CLI never said where
+  the secret actually lives.
+- `skills/SKILL.md` now teaches the `--json` fallback prominently. v0.7.0
+  buried the "any field not in a flag is settable via --json" guidance
+  deep in the render section; agents bounced off "no flag for that field"
+  walls. New section "Field not exposed by a flag? Use `--json`" lands
+  right after Discovery, with a decision tree and worked examples.
+
+### Added
+
+- `urlbox render --timeout duration` (default `60s`) — per-attempt
+  budget for the render call. Raise for heavy pages, or prefer
+  `--async --webhook-url` for very long renders.
+- `urlbox render --preset article` — built-in preset for news/article
+  workflows. Bundles `--block-ads --retina --wait-until mostrequestsfinished`
+  and explicitly disables `--full-page` (heavy-page timeouts are the
+  most common failure mode).
+- New error code `timeout` (exit code 11, same family as `network`).
+  Agents can branch on the `code` field to distinguish a render that
+  exceeded its budget from a connection problem.
+
+### Internal
+
+- New `internal/api.EnumValuesFor(field)` helper reads the embedded
+  render schema once and returns the comma-separated enum list. Used
+  by the `--wait-until` help text; future enum-bound flags should
+  use it too.
+- New `internal/cmd.networkHint(err, isRenderCall, timeout)` classifies
+  network-class errors and returns the right hint for the call site,
+  echoing the actual timeout value so agents see exactly how long they
+  waited.
+- `internal/api.RetryDo` short-circuits on `output.ErrTimeout` — the
+  retry budget is reserved for transient failures (5xx / network blip),
+  not deadline-exhausted attempts.
+
 ## v0.7.0 — 2026-05-01
 
 The `urlbox render` command ships. The CLI can now actually render screenshots,

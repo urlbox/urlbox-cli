@@ -15,12 +15,14 @@ const (
 	ErrConflict   ErrorCode = "conflict"
 	ErrServer     ErrorCode = "server"
 	ErrNetwork    ErrorCode = "network"
+	ErrTimeout    ErrorCode = "timeout"
 )
 
 var validErrorCodes = map[ErrorCode]bool{
 	ErrUsage: true, ErrValidation: true, ErrAuth: true,
 	ErrForbidden: true, ErrNotFound: true, ErrRateLimit: true,
 	ErrConflict: true, ErrServer: true, ErrNetwork: true,
+	ErrTimeout: true,
 }
 
 var exitCodeMap = map[ErrorCode]int{
@@ -33,11 +35,21 @@ var exitCodeMap = map[ErrorCode]int{
 	ErrConflict:   7,
 	ErrServer:     10,
 	ErrNetwork:    11,
+	ErrTimeout:    11,
 }
 
 // IsValidErrorCode reports whether code is in the closed set.
 func IsValidErrorCode(code ErrorCode) bool {
 	return validErrorCodes[code]
+}
+
+// ExitCode returns the process exit code for this error code.
+// Unknown codes default to 10 (server-class).
+func (c ErrorCode) ExitCode() int {
+	if code, ok := exitCodeMap[c]; ok {
+		return code
+	}
+	return 10
 }
 
 // CLIError carries a machine-readable code and optional agent hint.
@@ -56,10 +68,7 @@ func (e *CLIError) Error() string { return e.Message }
 
 // ExitCode returns the process exit code for this error.
 func (e *CLIError) ExitCode() int {
-	if code, ok := exitCodeMap[e.Code]; ok {
-		return code
-	}
-	return 10
+	return e.Code.ExitCode()
 }
 
 // NewCLIError creates a new CLIError.

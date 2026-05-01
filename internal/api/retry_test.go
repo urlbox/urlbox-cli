@@ -5,12 +5,14 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/urlbox/urlbox-cli/internal/api"
+	"github.com/urlbox/urlbox-cli/internal/output"
 )
 
 // recordingSleeper captures every Sleep duration without actually sleeping.
@@ -247,5 +249,61 @@ func TestRetryDo_4xxNot429_ReturnsImmediately(t *testing.T) {
 	}
 	if calls != 1 {
 		t.Errorf("calls=%d, want 1 (4xx is not retryable except 429)", calls)
+	}
+}
+
+// Timeouts must NOT retry — heavy renders are slow on every attempt;
+// retrying just burns more time. Agent picks the recovery path.
+func TestRetry_DoesNotRetryOnTimeout(t *testing.T) {
+	var hits int32
+	slow := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
+		atomic.AddInt32(&hits, 1)
+		time.Sleep(200 * time.Millisecond)
+	}))
+	t.Cleanup(slow.Close)
+	c := api.NewHTTPClient(slow.URL, "", "sec_test")
+	c.HTTP.Timeout = 50 * time.Millisecond
+	cfg := api.DefaultRetryConfig()
+	cfg.Sleep = func(time.Duration) {}
+	c.Retry = cfg
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_, err := c.Render(ctx, map[string]any{"url": "https://example.com"})
+
+	var cli *output.CLIError
+	if !errors.As(err, &cli) || cli.Code != output.ErrTimeout {
+		t.Fatalf("err=%v, want ErrTimeout", err)
+	}
+	if got := atomic.LoadInt32(&hits); got != 1 {
+		t.Errorf("server hit %d times, want 1 (no retry on timeout)", got)
+	}
+}
+
+// Regression guard: 5xx retries still happen — only timeouts are excluded.
+func TestRetry_StillRetriesOn5xx(t *testing.T) {
+	var hits int32
+	flaky := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		n := atomic.AddInt32(&hits, 1)
+		if n < 3 {
+			w.WriteHeader(503)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"renderUrl":"https://x.com/x.png","size":1024}`))
+	}))
+	t.Cleanup(flaky.Close)
+	c := api.NewHTTPClient(flaky.URL, "", "sec_test")
+	cfg := api.DefaultRetryConfig()
+	cfg.Sleep = func(time.Duration) {}
+	cfg.Jitter = 0
+	c.Retry = cfg
+
+	_, err := c.Render(context.Background(), map[string]any{"url": "https://example.com"})
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	if got := atomic.LoadInt32(&hits); got != 3 {
+		t.Errorf("server hit %d times, want 3 (5xx retry budget unchanged)", got)
 	}
 }

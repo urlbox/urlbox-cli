@@ -111,3 +111,28 @@ func TestValidatePayload_FailsSchemaTypeMismatch(t *testing.T) {
 		t.Errorf("hint should mention width; got: %s", err.Hint)
 	}
 }
+
+// Regression guard: the dashboard exposes video_scroll (+ four supporting
+// fields). The CLI's schema must accept them so users can drive
+// video_scroll renders end-to-end. See urlbox-mono
+// packages/types/src/render/render.types.ts:1277-1292 for API definitions.
+//
+// Background: a one-shot generation from feature/urlbox-cli left these
+// fields out of schema/render.json. The auto-PR sync workflow that should
+// have caught this never landed on urlbox-mono main (the dashboard was
+// refactored and the allowlist source moved). v0.8.1 hand-patches the
+// gap; the broader sync-pipeline rebuild is tracked separately.
+func TestValidatePayload_AcceptsVideoScrollFields(t *testing.T) {
+	payload := []byte(`{
+		"url": "https://example.com",
+		"format": "mp4",
+		"video_scroll": true,
+		"video_scroll_back": true,
+		"video_scroll_distance": 800,
+		"video_scroll_duration": 900,
+		"video_scroll_back_duration": 600
+	}`)
+	if _, err := validation.ValidatePayload(payload); err != nil {
+		t.Fatalf("ValidatePayload rejected video_scroll fields: %+v", err)
+	}
+}

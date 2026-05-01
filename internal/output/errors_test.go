@@ -75,6 +75,15 @@ func TestCLIError_CanBeUnwrappedWithErrorsAs(t *testing.T) {
 	}
 }
 
+func TestErrTimeout_HasCodeAndExit(t *testing.T) {
+	if string(output.ErrTimeout) != "timeout" {
+		t.Errorf("ErrTimeout=%q, want %q", output.ErrTimeout, "timeout")
+	}
+	if output.ErrTimeout.ExitCode() != 11 {
+		t.Errorf("ErrTimeout.ExitCode=%d, want 11", output.ErrTimeout.ExitCode())
+	}
+}
+
 func TestNewCLIError_SetsAllFields(t *testing.T) {
 	err := output.NewCLIError(output.ErrNotFound, "not found", "check the ID")
 	if err.Code != output.ErrNotFound {

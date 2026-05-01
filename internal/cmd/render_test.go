@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/urlbox/urlbox-cli/internal/api"
 	"github.com/urlbox/urlbox-cli/internal/api/apitest"
@@ -395,6 +396,37 @@ func TestRender_Preset_OverridableByFlag(t *testing.T) {
 	}
 }
 
+func TestRender_PresetArticle_FillsNewsDefaults(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	fc := &fakeClient{resp: &api.Response{OK: true}}
+	cmd.SetClientForTest(fc)
+	t.Cleanup(cmd.ResetClientForTest)
+
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{
+		"render", "https://news.example",
+		"--preset", "article",
+		"--dry-run", "--output-format", "json",
+	}, &stdout, &stderr)
+	if exit != 0 {
+		t.Fatalf("exit=%d stderr=%s", exit, stderr.String())
+	}
+	var env map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("not JSON: %v", err)
+	}
+	data := env["data"].(map[string]any)
+	if data["block_ads"] != true {
+		t.Errorf("block_ads=%v, want true", data["block_ads"])
+	}
+	if data["retina"] != true {
+		t.Errorf("retina=%v, want true", data["retina"])
+	}
+	if data["wait_until"] != "mostrequestsfinished" {
+		t.Errorf("wait_until=%v, want mostrequestsfinished", data["wait_until"])
+	}
+}
+
 func TestRender_UnknownPreset_UsageError(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	var stdout, stderr bytes.Buffer
@@ -612,5 +644,103 @@ func TestRender_HasAPISecretFlag(t *testing.T) {
 	}
 	if strings.Contains(help, "--api-key") {
 		t.Error("--api-key should not be on render (renamed in v0.6.0)")
+	}
+}
+
+func TestRender_UpstreamError_FlagsInSummary(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("URLBOX_API_SECRET", "sec_test")
+	m := apitest.New(apitest.SuccessJSON(`{
+		"renderUrl": "https://renders.urlbox.com/x.png",
+		"size": 176000,
+		"response": {"statusCode": 401}
+	}`))
+	t.Cleanup(m.Close)
+	t.Setenv(api.EnvAPIHost, m.URL())
+
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{"render", "https://reuters.example", "--output-format", "json"}, &stdout, &stderr)
+	if exit != 0 {
+		t.Fatalf("exit=%d stderr=%s", exit, stderr.String())
+	}
+	var env map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("not JSON: %v", err)
+	}
+	summary, _ := env["summary"].(string)
+	if !strings.Contains(summary, "upstream") || !strings.Contains(summary, "401") {
+		t.Errorf("summary should warn about upstream 401; got %q", summary)
+	}
+	data := env["data"].(map[string]any)
+	if data["upstreamOk"] != false {
+		t.Errorf("data.upstreamOk=%v, want false", data["upstreamOk"])
+	}
+}
+
+func TestRender_Timeout_FastFails_WithRecoveryHint(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("URLBOX_API_SECRET", "sec_test")
+	slow := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
+		time.Sleep(2 * time.Second)
+	}))
+	t.Cleanup(slow.Close)
+	t.Setenv(api.EnvAPIHost, slow.URL)
+
+	var stdout, stderr bytes.Buffer
+	start := time.Now()
+	exit := cmd.Execute([]string{
+		"render", "https://example.com",
+		"--timeout", "100ms",
+		"--no-retry",
+		"--output-format", "json",
+	}, &stdout, &stderr)
+	elapsed := time.Since(start)
+
+	if exit != 11 {
+		t.Errorf("exit=%d, want 11 (network/timeout class)", exit)
+	}
+	if elapsed > 1*time.Second {
+		t.Errorf("elapsed=%v, want <1s (no auto-retry on timeout)", elapsed)
+	}
+	var env map[string]any
+	_ = json.Unmarshal(stdout.Bytes(), &env)
+	if env["code"] != "timeout" {
+		t.Fatalf("code=%v, want \"timeout\"", env["code"])
+	}
+	hint, _ := env["hint"].(string)
+	for _, want := range []string{"retry the same command", "--timeout", "--async"} {
+		if !strings.Contains(hint, want) {
+			t.Errorf("hint missing %q; got %q", want, hint)
+		}
+	}
+}
+
+func TestRender_TimeoutFlag_DefaultDocumentedInHelp(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	cmd.Execute([]string{"render", "--help"}, &stdout, &stderr)
+	help := stdout.String() + stderr.String()
+	if !strings.Contains(help, "--timeout") {
+		t.Errorf("--help missing --timeout flag")
+	}
+	if !strings.Contains(help, "1m0s") && !strings.Contains(help, "60s") {
+		t.Errorf("--help should document the 60s default; got %q", help)
+	}
+}
+
+// Regression guard: --wait-until's help text must list the real enum values
+// from the schema, not the Puppeteer-style guesses we shipped in v0.7.0.
+func TestRender_WaitUntilHelp_ListsRealEnumValues(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	cmd.Execute([]string{"render", "--help"}, &stdout, &stderr)
+	help := stdout.String() + stderr.String()
+	for _, want := range []string{"domloaded", "mostrequestsfinished"} {
+		if !strings.Contains(help, want) {
+			t.Errorf("--help missing %q (the API's real enum value)", want)
+		}
+	}
+	for _, badGuess := range []string{"networkidle0", "domcontentloaded"} {
+		if strings.Contains(help, badGuess) {
+			t.Errorf("--help still contains Puppeteer-style %q (the API rejects this)", badGuess)
+		}
 	}
 }
