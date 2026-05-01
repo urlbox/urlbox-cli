@@ -614,3 +614,21 @@ func TestRender_HasAPISecretFlag(t *testing.T) {
 		t.Error("--api-key should not be on render (renamed in v0.6.0)")
 	}
 }
+
+// Regression guard: --wait-until's help text must list the real enum values
+// from the schema, not the Puppeteer-style guesses we shipped in v0.7.0.
+func TestRender_WaitUntilHelp_ListsRealEnumValues(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	cmd.Execute([]string{"render", "--help"}, &stdout, &stderr)
+	help := stdout.String() + stderr.String()
+	for _, want := range []string{"domloaded", "mostrequestsfinished"} {
+		if !strings.Contains(help, want) {
+			t.Errorf("--help missing %q (the API's real enum value)", want)
+		}
+	}
+	for _, badGuess := range []string{"networkidle0", "domcontentloaded"} {
+		if strings.Contains(help, badGuess) {
+			t.Errorf("--help still contains Puppeteer-style %q (the API rejects this)", badGuess)
+		}
+	}
+}

@@ -130,7 +130,8 @@ func attachRenderFlags(c *cobra.Command, f *renderFlags) {
 	c.Flags().BoolVar(&f.blockAds, "block-ads", false, "Block ads via uBlock filterlists")
 	c.Flags().BoolVar(&f.darkMode, "dark-mode", false, "Force prefers-color-scheme: dark")
 	c.Flags().BoolVar(&f.retina, "retina", false, "2x device pixel ratio")
-	c.Flags().StringVar(&f.waitUntil, "wait-until", "", "Page-ready signal (load, domcontentloaded, networkidle0, ...)")
+	c.Flags().StringVar(&f.waitUntil, "wait-until", "",
+		"Page-ready signal: "+api.EnumValuesFor("wait_until"))
 	c.Flags().StringVar(&f.userAgent, "user-agent", "", "Override the browser User-Agent")
 	c.Flags().StringVar(&f.webhookURL, "webhook-url", "", "POST the result to this URL when async render completes")
 	c.Flags().BoolVar(&f.async, "async", false, "Queue the render and return a renderId")
