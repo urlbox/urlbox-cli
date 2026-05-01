@@ -67,6 +67,35 @@ urlbox doctor --agent
 urlbox doctor --jq
 urlbox doctor --output-format
 urlbox doctor --profile
+urlbox render [url]
+urlbox render [url] --agent
+urlbox render [url] --api-secret
+urlbox render [url] --async
+urlbox render [url] --block-ads
+urlbox render [url] --curl
+urlbox render [url] --dark-mode
+urlbox render [url] --delay
+urlbox render [url] --dry-run
+urlbox render [url] --format
+urlbox render [url] --full-page
+urlbox render [url] --height
+urlbox render [url] --jq
+urlbox render [url] --json
+urlbox render [url] --max-retries
+urlbox render [url] --no-retry
+urlbox render [url] --open
+urlbox render [url] --output
+urlbox render [url] --output-format
+urlbox render [url] --preset
+urlbox render [url] --profile
+urlbox render [url] --quality
+urlbox render [url] --retina
+urlbox render [url] --selector
+urlbox render [url] --timeout
+urlbox render [url] --user-agent
+urlbox render [url] --wait-until
+urlbox render [url] --webhook-url
+urlbox render [url] --width
 urlbox schema
 urlbox schema --agent
 urlbox schema --jq

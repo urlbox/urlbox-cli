@@ -1,0 +1,278 @@
+package cmd_test
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/urlbox/urlbox-cli/internal/api"
+	"github.com/urlbox/urlbox-cli/internal/cmd"
+)
+
+// fakeClient satisfies api.Client without making HTTP calls. Tests inspect
+// lastOpts to confirm the merged payload that was dispatched (or assert it
+// stayed nil under --dry-run).
+type fakeClient struct {
+	lastOpts map[string]any
+	resp     *api.Response
+	err      error
+}
+
+func (f *fakeClient) Render(_ context.Context, opts map[string]any) (*api.Response, error) {
+	f.lastOpts = opts
+	return f.resp, f.err
+}
+
+func (f *fakeClient) RenderAsync(_ context.Context, opts map[string]any) (*api.Response, error) {
+	f.lastOpts = opts
+	return f.resp, f.err
+}
+
+func (f *fakeClient) Status(_ context.Context, _ string) (*api.Response, error) {
+	return f.resp, f.err
+}
+
+func TestRender_PositionalURL_MapsToURLOption(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	fc := &fakeClient{resp: &api.Response{OK: true, Data: map[string]any{"renderId": "ps_x"}}}
+	cmd.SetClientForTest(fc)
+	t.Cleanup(cmd.ResetClientForTest)
+
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{"render", "https://example.com", "--format", "png", "--dry-run", "--output-format", "json"}, &stdout, &stderr)
+	if exit != 0 {
+		t.Fatalf("exit=%d stderr=%s stdout=%s", exit, stderr.String(), stdout.String())
+	}
+
+	var env map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("not JSON: %v\n%s", err, stdout.String())
+	}
+	data, ok := env["data"].(map[string]any)
+	if !ok {
+		t.Fatalf("data missing: %v", env["data"])
+	}
+	if data["url"] != "https://example.com" {
+		t.Errorf("url=%v, want https://example.com", data["url"])
+	}
+	if data["format"] != "png" {
+		t.Errorf("format=%v, want png", data["format"])
+	}
+}
+
+func TestRender_FlagOverridesJSON(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	fc := &fakeClient{resp: &api.Response{OK: true}}
+	cmd.SetClientForTest(fc)
+	t.Cleanup(cmd.ResetClientForTest)
+
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{
+		"render",
+		"--json", `{"url":"https://json.example","format":"pdf","width":800}`,
+		"--format", "png",
+		"--dry-run",
+		"--output-format", "json",
+	}, &stdout, &stderr)
+	if exit != 0 {
+		t.Fatalf("exit=%d stderr=%s", exit, stderr.String())
+	}
+
+	var env map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("not JSON: %v", err)
+	}
+	data := env["data"].(map[string]any)
+	if data["format"] != "png" {
+		t.Errorf("flag should win: format=%v", data["format"])
+	}
+	if data["url"] != "https://json.example" {
+		t.Errorf("json url should pass through: %v", data["url"])
+	}
+	if data["width"].(float64) != 800 {
+		t.Errorf("json width should pass through: %v", data["width"])
+	}
+}
+
+func TestRender_JSON_Stdin(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	fc := &fakeClient{resp: &api.Response{OK: true}}
+	cmd.SetClientForTest(fc)
+	t.Cleanup(cmd.ResetClientForTest)
+
+	cmd.SetStdinForTest(strings.NewReader(`{"url":"https://stdin.example","format":"pdf"}`))
+	t.Cleanup(cmd.ResetStdinForTest)
+
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{"render", "--json", "-", "--dry-run", "--output-format", "json"}, &stdout, &stderr)
+	if exit != 0 {
+		t.Fatalf("exit=%d stderr=%s", exit, stderr.String())
+	}
+	var env map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("not JSON: %v", err)
+	}
+	if env["data"].(map[string]any)["url"] != "https://stdin.example" {
+		t.Errorf("stdin url not picked up: %v", env["data"])
+	}
+}
+
+func TestRender_JSON_File(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	dir := t.TempDir()
+	f := filepath.Join(dir, "opts.json")
+	if err := os.WriteFile(f, []byte(`{"url":"https://file.example"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	fc := &fakeClient{resp: &api.Response{OK: true}}
+	cmd.SetClientForTest(fc)
+	t.Cleanup(cmd.ResetClientForTest)
+
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{"render", "--json", "@" + f, "--dry-run", "--output-format", "json"}, &stdout, &stderr)
+	if exit != 0 {
+		t.Fatalf("exit=%d stderr=%s", exit, stderr.String())
+	}
+	var env map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("not JSON: %v", err)
+	}
+	if env["data"].(map[string]any)["url"] != "https://file.example" {
+		t.Errorf("file url not picked up: %v", env["data"])
+	}
+}
+
+func TestRender_NoURL_NoJSON_UsageError(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{"render", "--output-format", "json"}, &stdout, &stderr)
+	if exit != 1 {
+		t.Fatalf("exit=%d, want 1 (usage); stdout=%s stderr=%s", exit, stdout.String(), stderr.String())
+	}
+	var env map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("not JSON: %v", err)
+	}
+	if env["code"] != "usage" {
+		t.Errorf("code=%v, want usage", env["code"])
+	}
+	errStr, _ := env["error"].(string)
+	if !strings.Contains(errStr, "url") {
+		t.Errorf("error should mention url: %v", env["error"])
+	}
+}
+
+func TestRender_ValidationError_FromValidatePayload(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	var stdout, stderr bytes.Buffer
+	// Invalid payload: format must be a string per the schema, not a number.
+	exit := cmd.Execute([]string{
+		"render",
+		"--json", `{"url":"https://example.com","format":42}`,
+		"--dry-run",
+		"--output-format", "json",
+	}, &stdout, &stderr)
+	if exit != 2 {
+		t.Fatalf("exit=%d, want 2 (validation); stdout=%s", exit, stdout.String())
+	}
+	var env map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("not JSON: %v", err)
+	}
+	if env["code"] != "validation" {
+		t.Errorf("code=%v, want validation", env["code"])
+	}
+}
+
+func TestRender_FuzzyCorrection_OnUnknownOption(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{
+		"render",
+		"--json", `{"url":"https://example.com","fromat":"png"}`,
+		"--dry-run",
+		"--output-format", "json",
+	}, &stdout, &stderr)
+	if exit != 2 {
+		t.Fatalf("exit=%d, want 2; stdout=%s", exit, stdout.String())
+	}
+	var env map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("not JSON: %v", err)
+	}
+	hint, _ := env["hint"].(string)
+	if !strings.Contains(hint, "format") {
+		t.Errorf("hint should suggest 'format'; got %q", hint)
+	}
+}
+
+func TestRender_BadJSON_UsageOrValidationError(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{
+		"render",
+		"--json", `{"not closed`,
+		"--dry-run",
+		"--output-format", "json",
+	}, &stdout, &stderr)
+	if exit != 1 && exit != 2 {
+		t.Fatalf("exit=%d, want 1 or 2; stdout=%s", exit, stdout.String())
+	}
+}
+
+func TestRender_BothPositionalAndJSON_FlagWins(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	fc := &fakeClient{resp: &api.Response{OK: true}}
+	cmd.SetClientForTest(fc)
+	t.Cleanup(cmd.ResetClientForTest)
+
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{
+		"render", "https://positional.example",
+		"--json", `{"url":"https://json.example"}`,
+		"--dry-run", "--output-format", "json",
+	}, &stdout, &stderr)
+	if exit != 0 {
+		t.Fatalf("exit=%d", exit)
+	}
+	var env map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("not JSON: %v", err)
+	}
+	url := env["data"].(map[string]any)["url"]
+	if url != "https://positional.example" {
+		t.Errorf("url=%v, want https://positional.example (positional is in flags tier, last writer wins)", url)
+	}
+}
+
+// Confirm --dry-run doesn't reach the client.
+func TestRender_DryRun_DoesNotInvokeClient(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	fc := &fakeClient{resp: &api.Response{OK: true}}
+	cmd.SetClientForTest(fc)
+	t.Cleanup(cmd.ResetClientForTest)
+
+	var stdout, stderr bytes.Buffer
+	cmd.Execute([]string{"render", "https://example.com", "--dry-run", "--output-format", "json"}, &stdout, &stderr)
+	if fc.lastOpts != nil {
+		t.Errorf("client was called on --dry-run: %v", fc.lastOpts)
+	}
+}
+
+// SURFACE.txt regression guard: --api-secret flag must be on render (per-call override).
+func TestRender_HasAPISecretFlag(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	cmd.Execute([]string{"render", "--help"}, &stdout, &stderr)
+	help := stdout.String() + stderr.String()
+	if !strings.Contains(help, "--api-secret") {
+		t.Error("--api-secret flag missing from render --help")
+	}
+	if strings.Contains(help, "--api-key") {
+		t.Error("--api-key should not be on render (renamed in v0.6.0)")
+	}
+}
