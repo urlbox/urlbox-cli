@@ -74,13 +74,25 @@ func TestResolveOutputPath_RejectsNullByte(t *testing.T) {
 	}
 }
 
+// canonical returns the EvalSymlinks form of dir. resolveOutputPath returns
+// canonical paths (post-EvalSymlinks), so test assertions compare against
+// canonical too — otherwise macOS `/var` vs `/private/var` makes them flake.
+func canonical(t *testing.T, dir string) string {
+	t.Helper()
+	r, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		return dir
+	}
+	return r
+}
+
 func TestResolveOutputPath_AcceptsSimpleFilename(t *testing.T) {
 	cwd := t.TempDir()
 	got, err := resolveOutputPath("out.png", cwd)
 	if err != nil {
 		t.Fatalf("err=%v", err)
 	}
-	want := filepath.Join(cwd, "out.png")
+	want := filepath.Join(canonical(t, cwd), "out.png")
 	if got != want {
 		t.Errorf("got=%q, want %q", got, want)
 	}
@@ -92,7 +104,7 @@ func TestResolveOutputPath_AcceptsRelativeSubdir(t *testing.T) {
 	if err != nil {
 		t.Fatalf("err=%v", err)
 	}
-	want := filepath.Join(cwd, "renders", "out.png")
+	want := filepath.Join(canonical(t, cwd), "renders", "out.png")
 	if got != want {
 		t.Errorf("got=%q, want %q", got, want)
 	}
@@ -105,8 +117,9 @@ func TestResolveOutputPath_AcceptsAbsoluteUnderCWD(t *testing.T) {
 	if err != nil {
 		t.Fatalf("err=%v", err)
 	}
-	if got != inside {
-		t.Errorf("got=%q, want %q", got, inside)
+	want := filepath.Join(canonical(t, cwd), "out.png")
+	if got != want {
+		t.Errorf("got=%q, want %q", got, want)
 	}
 }
 
@@ -116,7 +129,7 @@ func TestResolveOutputPath_AcceptsDotSlashFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("err=%v", err)
 	}
-	want := filepath.Join(cwd, "out.png")
+	want := filepath.Join(canonical(t, cwd), "out.png")
 	if got != want {
 		t.Errorf("got=%q, want %q (./ prefix should normalize away)", got, want)
 	}
@@ -129,5 +142,62 @@ func TestResolveOutputPath_RejectsTrailingSlash(t *testing.T) {
 	_, err := resolveOutputPath("output/", t.TempDir())
 	if err == nil {
 		t.Fatal("expected error for trailing slash")
+	}
+}
+
+func TestResolveOutputPath_RejectsSymlinkParentEscape(t *testing.T) {
+	// An attacker who can write into CWD could plant a symlink that
+	// redirects --output writes to arbitrary paths (e.g. /etc/passwd).
+	// EvalSymlinks must catch this.
+	cwd := t.TempDir()
+	target := t.TempDir() // Some "outside" dir we want to protect.
+	link := filepath.Join(cwd, "evil-link")
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("symlinks not supported on this filesystem: %v", err)
+	}
+	_, err := resolveOutputPath("evil-link/foo.png", cwd)
+	if err == nil {
+		t.Fatal("expected rejection: writing through a symlink that points outside CWD")
+	}
+	if string(err.Code) != "validation" {
+		t.Errorf("code=%v, want validation", err.Code)
+	}
+}
+
+func TestResolveOutputPath_AcceptsSymlinkInsideCWD(t *testing.T) {
+	// Symlinks that stay under CWD are fine — only escapes are rejected.
+	cwd := t.TempDir()
+	innerDir := filepath.Join(cwd, "real-dir")
+	if err := os.Mkdir(innerDir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(cwd, "alias")
+	if err := os.Symlink(innerDir, link); err != nil {
+		t.Skipf("symlinks not supported on this filesystem: %v", err)
+	}
+	_, err := resolveOutputPath("alias/foo.png", cwd)
+	if err != nil {
+		t.Errorf("symlink to a dir under CWD should be accepted, got %v", err)
+	}
+}
+
+func TestResolveOutputPath_BareTilde_ExpandsToHome(t *testing.T) {
+	// A bare `~` should expand to $HOME (then sandbox-check against CWD),
+	// not silently become a literal filename "~". This is the same
+	// behavior as `~/path` — bare ~ is just the no-suffix case.
+	cwd := t.TempDir()
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		t.Skip("no home dir on this machine")
+	}
+	if strings.HasPrefix(cwd, home) {
+		t.Skip("CWD is under HOME; rejection wouldn't trigger")
+	}
+	_, perr := resolveOutputPath("~", cwd)
+	if perr == nil {
+		t.Fatal("expected rejection: bare ~ resolves to $HOME, which is outside CWD")
+	}
+	if string(perr.Code) != "validation" {
+		t.Errorf("code=%v, want validation", perr.Code)
 	}
 }

@@ -8,9 +8,15 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/urlbox/urlbox-cli/internal/output"
 )
+
+// downloadMaxDuration caps how long a single render-bytes download can
+// run. Server-side render time + retries are budgeted by the API call's
+// context; this is just the streaming-read leg.
+const downloadMaxDuration = 5 * time.Minute
 
 // resolveOutputPath canonicalizes the user-supplied --output path and
 // asserts it stays under baseDir (typically the CWD). Returns the
@@ -52,26 +58,45 @@ func resolveOutputPath(userPath, baseDir string) (string, *output.CLIError) {
 		)
 	}
 
-	// Expand `~` against $HOME. Go's filepath doesn't do this; agents
-	// commonly pass it.
+	// Canonicalize baseDir up front (resolves macOS /var → /private/var,
+	// any symlinks in the chain) so the rest of the function works in
+	// canonical space.
+	canonicalBase := filepath.Clean(baseDir)
+	if resolved, err := filepath.EvalSymlinks(canonicalBase); err == nil {
+		canonicalBase = resolved
+	}
+
+	// Expand `~` and `~/...` against $HOME. Go's filepath doesn't do this;
+	// agents commonly pass it. Bare `~` resolves to $HOME (not a literal
+	// filename "~", which would surprise users).
 	expanded := userPath
-	if strings.HasPrefix(userPath, "~/") {
-		home, err := os.UserHomeDir()
-		if err == nil {
+	switch {
+	case userPath == "~":
+		if home, err := os.UserHomeDir(); err == nil {
+			expanded = home
+		}
+	case strings.HasPrefix(userPath, "~/"):
+		if home, err := os.UserHomeDir(); err == nil {
 			expanded = filepath.Join(home, userPath[2:])
 		}
 	}
 
-	// If the path is relative, anchor it on baseDir.
+	// Anchor relative paths on the *canonical* base so the sandbox check
+	// compares apples to apples.
 	if !filepath.IsAbs(expanded) {
-		expanded = filepath.Join(baseDir, expanded)
+		expanded = filepath.Join(canonicalBase, expanded)
 	}
 	cleaned := filepath.Clean(expanded)
 
-	// Sandbox check via filepath.Rel: if the result starts with `..`,
-	// the cleaned path escapes baseDir.
-	cleanedBase := filepath.Clean(baseDir)
-	rel, err := filepath.Rel(cleanedBase, cleaned)
+	// EvalSymlinks the deepest existing ancestor so a planted symlink in
+	// baseDir can't redirect the write outside. Walk up until we find an
+	// existing dir (the user's --output may target a file in a directory
+	// that doesn't exist yet — we'll mkdir it on save).
+	cleaned = canonicalizeExistingPrefix(cleaned)
+
+	// Sandbox check via filepath.Rel: if the result starts with `..`, the
+	// cleaned path escapes baseDir.
+	rel, err := filepath.Rel(canonicalBase, cleaned)
 	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
 		return "", output.NewCLIError(
 			output.ErrValidation,
@@ -82,11 +107,57 @@ func resolveOutputPath(userPath, baseDir string) (string, *output.CLIError) {
 	return cleaned, nil
 }
 
+// canonicalizeExistingPrefix walks up `path` until it finds an existing
+// directory, EvalSymlinks that directory, and reattaches the unresolved
+// suffix. Defends against symlink-based sandbox escapes where an attacker
+// plants `link → /etc` in baseDir and the user passes `--output link/foo.png`.
+//
+// If no ancestor exists, returns the cleaned input unchanged — the caller's
+// sandbox check is the final line of defense.
+//
+// Note: this defends against parent-symlinks. A leaf-symlink (the FILE
+// itself is a symlink) would still let O_TRUNC follow it. Hardening that
+// needs O_NOFOLLOW or an Lstat probe; deferred.
+func canonicalizeExistingPrefix(path string) string {
+	suffix := ""
+	current := path
+	for {
+		if info, err := os.Stat(current); err == nil && info.IsDir() {
+			resolved, err := filepath.EvalSymlinks(current)
+			if err != nil {
+				return path
+			}
+			if suffix == "" {
+				return resolved
+			}
+			return filepath.Join(resolved, suffix)
+		}
+		parent := filepath.Dir(current)
+		if parent == current {
+			// Reached filesystem root without finding an existing ancestor.
+			return path
+		}
+		if suffix == "" {
+			suffix = filepath.Base(current)
+		} else {
+			suffix = filepath.Join(filepath.Base(current), suffix)
+		}
+		current = parent
+	}
+}
+
 // downloadTo streams the body of url to dst. The parent directory is
-// created (mode 0o755) if missing. Errors are wrapped as ErrNetwork
+// created (mode 0o750) if missing. Errors are wrapped as ErrNetwork
 // (transport failures) or ErrServer (non-2xx response).
+//
+// The download is bounded by downloadMaxDuration even if the caller's
+// context has no deadline — a stalled CDN connection mustn't hang the
+// CLI indefinitely.
 func downloadTo(ctx context.Context, url, dst string) *output.CLIError {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, http.NoBody)
+	dlCtx, cancel := context.WithTimeout(ctx, downloadMaxDuration)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(dlCtx, http.MethodGet, url, http.NoBody)
 	if err != nil {
 		return output.NewCLIError(output.ErrUsage, "invalid render URL: "+err.Error(), "")
 	}
