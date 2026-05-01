@@ -48,3 +48,41 @@ func TestSkill_NoArgs_ShowsHelp(t *testing.T) {
 		t.Fatalf("exit=%d", exit)
 	}
 }
+
+// Regression guard: SKILL.md must mention every render-adjacent command and
+// every render-related flag the agent needs to know about. If a future
+// commit removes a section silently, this test catches it.
+func TestSkill_DocumentsRenderSurface(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{"skill", "show"}, &stdout, &stderr)
+	if exit != 0 {
+		t.Fatalf("exit=%d stderr=%s", exit, stderr.String())
+	}
+	body := stdout.String()
+	required := []string{
+		// Command surface
+		"urlbox render",
+		"urlbox screenshot",
+		"urlbox pdf",
+		"urlbox video",
+		// Flags / modes
+		"--json",
+		"--dry-run",
+		"--curl",
+		"--output",
+		"--open",
+		"--preset",
+		"--async",
+		// Reliability
+		"retry",
+		// Closed error-code set
+		"validation",
+		"rate_limit",
+		"network",
+	}
+	for _, s := range required {
+		if !strings.Contains(body, s) {
+			t.Errorf("SKILL.md missing %q (regression: a section was removed silently)", s)
+		}
+	}
+}

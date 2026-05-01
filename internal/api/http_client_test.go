@@ -270,6 +270,33 @@ func TestHTTPClient_Render_4xxOther_MapsToUsage(t *testing.T) {
 	}
 }
 
+// The real Urlbox API returns 400 (not 401) with a NESTED error body for
+// auth failures: {"error": {"code": "ApiKeyNotFound", "message": "..."}}.
+// We must still map this to ErrAuth based on the inner code, even though
+// the HTTP status code alone would route to ErrUsage.
+func TestHTTPClient_Render_400_ApiKeyNotFound_MapsToAuth(t *testing.T) {
+	m := apitest.New(apitest.ScriptedResponse{
+		Status: http.StatusBadRequest,
+		Body:   `{"error":{"code":"ApiKeyNotFound","message":"Api Key does not exist"},"requestId":"x"}`,
+	})
+	t.Cleanup(m.Close)
+	c := newTestClient(t, m)
+	_, err := c.Render(context.Background(), map[string]any{"url": "https://example.com"})
+	var cli *output.CLIError
+	if !errors.As(err, &cli) {
+		t.Fatalf("err=%v, want *output.CLIError", err)
+	}
+	if cli.Code != output.ErrAuth {
+		t.Errorf("Code=%q, want %q (ApiKey* code on 400 should re-route to auth)", cli.Code, output.ErrAuth)
+	}
+	if !strings.Contains(cli.Message, "Api Key does not exist") {
+		t.Errorf("Message=%q should lift the nested error.message", cli.Message)
+	}
+	if !strings.Contains(cli.Hint, "urlbox auth") {
+		t.Errorf("Hint=%q, want pointer to `urlbox auth`", cli.Hint)
+	}
+}
+
 func TestHTTPClient_Render_NonJSONErrorBody_FallsBackToBodyString(t *testing.T) {
 	m := apitest.New(apitest.ScriptedResponse{Status: http.StatusBadRequest, Body: `not json at all`})
 	t.Cleanup(m.Close)

@@ -16,11 +16,17 @@ import (
 	"github.com/urlbox/urlbox-cli/internal/version"
 )
 
-// Endpoint paths locked from urlbox-mono spec (apps/api/src/modules/render/render.routes.ts).
+// Endpoint paths locked from urlbox-mono spec
+// (apps/api/src/modules/render/render.routes.ts). Exported so callers like
+// `urlbox render --curl` can reference the same paths the HTTPClient uses.
 const (
-	pathSync   = "/v1/screenshot"
-	pathAsync  = "/v1/screenshot/async"
-	pathStatus = "/v1/render/" // append the URL-escaped renderID
+	// PathSync is the synchronous render endpoint.
+	PathSync = "/v1/screenshot"
+	// PathAsync is the asynchronous render endpoint (returns 201 + renderId).
+	PathAsync = "/v1/screenshot/async"
+	// PathStatus is the prefix for render-status lookups; append the
+	// URL-escaped renderID.
+	PathStatus = "/v1/render/"
 )
 
 // HTTPClient is the production api.Client implementation.
@@ -56,18 +62,18 @@ func NewHTTPClient(baseURL, apiKey, apiSecret string) *HTTPClient {
 
 // Render performs a synchronous render. POST /v1/screenshot.
 func (c *HTTPClient) Render(ctx context.Context, opts map[string]any) (*Response, error) {
-	return c.do(ctx, http.MethodPost, pathSync, opts)
+	return c.do(ctx, http.MethodPost, PathSync, opts)
 }
 
 // RenderAsync queues a render. POST /v1/screenshot/async. Returns 201 with
 // {status, renderId, statusUrl}.
 func (c *HTTPClient) RenderAsync(ctx context.Context, opts map[string]any) (*Response, error) {
-	return c.do(ctx, http.MethodPost, pathAsync, opts)
+	return c.do(ctx, http.MethodPost, PathAsync, opts)
 }
 
 // Status returns the latest state of an async render. GET /v1/render/<renderID>.
 func (c *HTTPClient) Status(ctx context.Context, renderID string) (*Response, error) {
-	return c.do(ctx, http.MethodGet, pathStatus+url.PathEscape(renderID), nil)
+	return c.do(ctx, http.MethodGet, PathStatus+url.PathEscape(renderID), nil)
 }
 
 // do is the single request entry point: build, send (through retry), parse.
@@ -133,12 +139,14 @@ func (c *HTTPClient) do(ctx context.Context, method, path string, body any) (*Re
 
 // mapStatusToCLIError maps a non-2xx response to a typed *output.CLIError.
 // 401 → auth, 403 → forbidden, 404 → not_found, 409 → conflict,
-// 429 → rate_limit, 5xx → server, 4xx (other) → usage with the API's
-// error message lifted into Message.
+// 429 → rate_limit, 5xx → server, 4xx (other) → usage. The API's error
+// message is lifted into Message; for 400 the error code is also
+// inspected — auth-related codes (ApiKeyNotFound, ApiKeyInvalid, ...)
+// re-route to ErrAuth even though the HTTP status is 400.
 func mapStatusToCLIError(resp *http.Response, body []byte) *output.CLIError {
-	apiMsg := extractAPIErrorMessage(body)
+	apiMsg, apiCode := extractAPIError(body)
 	switch {
-	case resp.StatusCode == http.StatusUnauthorized:
+	case resp.StatusCode == http.StatusUnauthorized || isAuthErrorCode(apiCode):
 		msg := apiMsg
 		if msg == "" {
 			msg = "API rejected the request: not authenticated"
@@ -189,21 +197,48 @@ func mapStatusToCLIError(resp *http.Response, body []byte) *output.CLIError {
 	}
 }
 
-// extractAPIErrorMessage tries to read an `error` or `message` field from a
-// JSON error body. Falls back to the trimmed body string if it isn't JSON
-// (some upstream errors return plain text).
-func extractAPIErrorMessage(body []byte) string {
+// isAuthErrorCode returns true when the API error code names an auth
+// failure. Urlbox's HTTP status for these is sometimes 400 (e.g.
+// ApiKeyNotFound) rather than 401, so we inspect the body code too.
+func isAuthErrorCode(code string) bool {
+	if code == "" {
+		return false
+	}
+	return strings.HasPrefix(code, "ApiKey") ||
+		strings.HasPrefix(code, "Auth") ||
+		strings.HasPrefix(code, "Unauthorized")
+}
+
+// extractAPIError reads an Urlbox-shaped JSON error body and returns
+// (message, code). Both shapes are supported:
+//
+//   - flat:   {"error": "string message"}
+//   - nested: {"error": {"code": "ApiKeyNotFound", "message": "..."}}
+//   - flat:   {"message": "string message"}
+//
+// Non-JSON bodies fall back to (trimmed body string, "").
+func extractAPIError(body []byte) (msg, code string) {
 	trimmed := strings.TrimSpace(string(body))
 	if trimmed == "" {
-		return ""
+		return "", ""
 	}
 	var parsed map[string]any
 	if err := json.Unmarshal(body, &parsed); err == nil {
+		// Urlbox-specific nested shape: {"error": {"code": "...", "message": "..."}}.
+		if errObj, ok := parsed["error"].(map[string]any); ok {
+			if c, ok := errObj["code"].(string); ok {
+				code = c
+			}
+			if m, ok := errObj["message"].(string); ok && m != "" {
+				return m, code
+			}
+		}
+		// Flat-string shapes.
 		for _, k := range []string{"error", "message"} {
 			if v, ok := parsed[k].(string); ok && v != "" {
-				return v
+				return v, code
 			}
 		}
 	}
-	return trimmed
+	return trimmed, code
 }
