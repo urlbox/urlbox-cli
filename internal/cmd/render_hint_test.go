@@ -56,3 +56,21 @@ func TestNetworkHint_WrappedDeadlineExceeded_StillClassified(t *testing.T) {
 		t.Errorf("wrapped DeadlineExceeded should still classify as timeout; got %q", h)
 	}
 }
+
+func TestSuggestLongerTimeout_FloorAndCap(t *testing.T) {
+	cases := []struct {
+		in, want time.Duration
+	}{
+		{100 * time.Millisecond, 30 * time.Second}, // floor — Round() would otherwise yield 0s
+		{5 * time.Second, 30 * time.Second},        // floor — 15s rounded still under 30s floor
+		{60 * time.Second, 3 * time.Minute},        // 3× normal case
+		{4 * time.Minute, 10 * time.Minute},        // cap
+		{1 * time.Hour, 10 * time.Minute},          // cap
+	}
+	for _, tc := range cases {
+		got := suggestLongerTimeout(tc.in)
+		if got != tc.want {
+			t.Errorf("suggestLongerTimeout(%v)=%v, want %v", tc.in, got, tc.want)
+		}
+	}
+}

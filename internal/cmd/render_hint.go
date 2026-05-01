@@ -32,11 +32,16 @@ func networkHint(err error, isRenderCall bool, timeout time.Duration) string {
 }
 
 // suggestLongerTimeout returns a "try N" value 3× the current timeout,
-// capped at 10m. Embedded in the hint so agents don't have to guess.
+// floored at 30s and capped at 10m. The floor avoids the degenerate
+// "try --timeout 0s" hint when the test or caller passes a sub-second
+// timeout (Round(time.Second) on a 300ms value yields 0s).
 func suggestLongerTimeout(current time.Duration) time.Duration {
 	suggested := current * 3
 	if suggested > 10*time.Minute {
 		suggested = 10 * time.Minute
+	}
+	if suggested < 30*time.Second {
+		suggested = 30 * time.Second
 	}
 	return suggested.Round(time.Second)
 }
