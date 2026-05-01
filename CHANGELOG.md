@@ -4,7 +4,7 @@ All notable changes to the `urlbox` CLI are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
-## v0.8.0 — 2026-05-XX
+## v0.8.0 — 2026-05-01
 
 Render UX & reliability hardening — addresses every friction point an
 agentic field test of v0.7.0 surfaced.
