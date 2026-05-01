@@ -1024,6 +1024,75 @@
       "type": "string",
       "description": "If your custom bucket is fronted by a CDN, you can set the host name here."
     },
+    "video_scroll": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "description": "Scroll the page during a video render. Combined with video_scroll_distance and video_scroll_duration to capture scrolling content."
+    },
+    "video_scroll_back": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "description": "After scrolling forward, scroll back to the starting position before ending the video. Use with video_scroll_back_duration to control the timing of the return scroll."
+    },
+    "video_scroll_distance": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        }
+      ],
+      "description": "Total scroll distance in pixels for video_scroll mode.",
+      "default": "800"
+    },
+    "video_scroll_duration": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        }
+      ],
+      "description": "Time in milliseconds to spend scrolling forward when video_scroll is enabled.",
+      "default": "900"
+    },
+    "video_scroll_back_duration": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        }
+      ],
+      "description": "Time in milliseconds to spend scrolling back when video_scroll_back is enabled."
+    },
     "wait_for": {
       "type": "string",
       "description": "Waits for the element specified by this selector to be present in the DOM before taking a screenshot or PDF. \n\nBy default, Urlbox will take a screenshot or PDF if the `wait_for` element is not found after waiting for the time specified by the [`wait_timeout`](#wait_timeout) option.\n\n If you prefer Urlbox to fail the request when the `wait_for` element is not found, pass [`fail_if_selector_missing=true`](#fail_if_selector_missing)",
