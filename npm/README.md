@@ -20,6 +20,8 @@ urlbox video https://example.com --output home.mp4        # alias: --format mp4
 urlbox render https://example.com --dry-run               # preview payload, no API call
 urlbox render https://example.com --curl                  # paste-able curl, secret redacted
 urlbox render https://example.com --open                  # open result in browser
+urlbox render https://example.com --preset article        # news/article preset
+urlbox render https://example.com --timeout 3m            # raise per-attempt budget (default 60s)
 
 # Self-discovery
 urlbox commands --output-format json                      # full command catalog

@@ -44,6 +44,7 @@ Closed-set error codes (and exit codes):
 | conflict     | 7    |
 | server       | 10   |
 | network      | 11   |
+| timeout      | 11   |
 
 ## Output formats
 
@@ -119,6 +120,7 @@ urlbox render --json @opts.json
 urlbox render https://example.com --preset mobile          # iPhone viewport
 urlbox render https://example.com --preset desktop         # 1920x1080
 urlbox render https://example.com --preset pdf-a4          # PDF + A4
+urlbox render https://example.com --preset article         # block ads, retina, mostrequestsfinished (news/article workflows)
 
 # Preview the validated payload without calling the API (no credit burn)
 urlbox render https://example.com --format pdf --dry-run
@@ -132,7 +134,7 @@ urlbox render https://example.com --output screenshot.png
 # Open the result in the browser after rendering
 urlbox render https://example.com --open
 
-# Async: queue and return a renderId; poll with `urlbox status` (Phase 5)
+# Async: queue and return a renderId; poll with `urlbox status` (a future release)
 urlbox render https://example.com --async --webhook-url https://hooks.example/cb
 ```
 
@@ -142,13 +144,32 @@ urlbox render https://example.com --async --webhook-url https://hooks.example/cb
 - `urlbox schema render --jq '.data.properties.url'` — drill into one field.
 - `urlbox render --help --agent` — structured JSON help for any command.
 
-### Reliability
+### Retries
 
-The CLI retries automatically on 429 and 5xx (3 attempts, 1s/2s/4s backoff
-with ±20% jitter, respects `Retry-After`). Disable with `--no-retry`; cap
-attempts with `--max-retries N`. (No circuit breaker in v0.6.0 — deferred
-to v1.0.0+; if a transient outage outlasts the retry budget, you'll see a
-`network` error and can re-run.)
+The CLI retries automatically on 429 / 5xx / generic network errors
+(3 attempts, 1s/2s/4s backoff with ±20% jitter, respects Retry-After).
+Disable with `--no-retry`; cap with `--max-retries N`.
+
+**Timeouts are NOT retried.** A `context.DeadlineExceeded` produces an
+error envelope with `code: "timeout"` (literal string `"timeout"`) and
+a hint listing three recovery paths: retry the same command, raise
+`--timeout`, or switch to `--async --webhook-url`. The agent picks the
+strategy — heavy renders are slow on every attempt, so silent auto-retry
+rarely helps.
+
+### Timeout
+
+`--timeout duration` (default `60s`) sets the per-attempt budget for the
+render call. Raise it for heavy `--full-page` renders or news/article
+sites. For very long renders, prefer `--async --webhook-url <url>` so
+the CLI doesn't block.
+
+### Upstream errors
+
+If the rendered page itself returned an HTTP error (login wall, captcha,
+rate limit), `data.upstreamOk` is `false` and `data.upstreamStatus` carries
+the code. The summary line warns. Don't treat the bytes as authoritative —
+the render likely captured a captcha page rather than the target content.
 
 ### Error codes (closed set)
 
@@ -162,7 +183,8 @@ to v1.0.0+; if a transient outage outlasts the retry budget, you'll see a
 | `rate_limit` | 6    | retry budget exhausted; back off and retry                 |
 | `conflict`   | 7    | request conflicts with in-flight state                     |
 | `server`     | 10   | Urlbox API error; try again later                          |
-| `network`    | 11   | no connection / DNS / timeout; run `urlbox doctor`         |
+| `network`    | 11   | no connection / DNS error; run `urlbox doctor`             |
+| `"timeout"`  | 11   | render exceeded `--timeout` budget; raise it or use `--async` |
 
 ### `urlbox schema render`
 

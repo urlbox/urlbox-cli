@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/urlbox/urlbox-cli/internal/cmd"
+	"github.com/urlbox/urlbox-cli/skills"
 )
 
 func TestSkill_Show_OutputsContent(t *testing.T) {
@@ -52,13 +53,21 @@ func TestSkill_NoArgs_ShowsHelp(t *testing.T) {
 // Regression guard: SKILL.md must mention every render-adjacent command and
 // every render-related flag the agent needs to know about. If a future
 // commit removes a section silently, this test catches it.
+//
+// Sourced from skills.Content (the embedded raw markdown) rather than via
+// `cmd.Execute("skill", "show")` because the JSON output path escapes
+// literal quotes in the markdown — checks like `"timeout"` (closed-set
+// error-code value with quotes) wouldn't survive json-encoding.
 func TestSkill_DocumentsRenderSurface(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	exit := cmd.Execute([]string{"skill", "show"}, &stdout, &stderr)
 	if exit != 0 {
 		t.Fatalf("exit=%d stderr=%s", exit, stderr.String())
 	}
-	body := stdout.String()
+	// Read through Execute to keep the path covered; assert against the
+	// raw embedded markdown so quoted-string checks aren't defeated by
+	// JSON escaping.
+	body := skills.Content
 	required := []string{
 		// Command surface
 		"urlbox render",
@@ -79,6 +88,11 @@ func TestSkill_DocumentsRenderSurface(t *testing.T) {
 		"validation",
 		"rate_limit",
 		"network",
+		// v0.8.0 surface
+		"article",    // new preset
+		"upstreamOk", // new envelope field
+		"--timeout",  // new flag
+		`"timeout"`,  // new closed-set error code value
 	}
 	for _, s := range required {
 		if !strings.Contains(body, s) {

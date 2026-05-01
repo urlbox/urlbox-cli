@@ -367,6 +367,29 @@ func TestHTTPClient_Render_UpstreamStatusInitial_TaintsOk(t *testing.T) {
 	}
 }
 
+// When statusCodeInitial equals the final statusCode, upstreamStatusInitial
+// is noise — omit it. The taint logic still runs (still set via initial), but
+// agents shouldn't see a duplicate field for the common 200/200 chain.
+func TestHTTPClient_Render_UpstreamStatusInitial_OmittedWhenEqual(t *testing.T) {
+	m := apitest.New(apitest.SuccessJSON(`{
+		"renderUrl": "https://renders.urlbox.com/x.png",
+		"size": 245632,
+		"response": {"statusCode": 200, "statusCodeInitial": 200}
+	}`))
+	t.Cleanup(m.Close)
+	c := newTestClient(t, m)
+	resp, err := c.Render(context.Background(), map[string]any{"url": "https://example.com"})
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	if resp.Data["upstreamOk"] != true {
+		t.Errorf("upstreamOk=%v, want true (both 200)", resp.Data["upstreamOk"])
+	}
+	if _, ok := resp.Data["upstreamStatusInitial"]; ok {
+		t.Errorf("upstreamStatusInitial should be absent when initial == final (got %v)", resp.Data["upstreamStatusInitial"])
+	}
+}
+
 func TestHTTPClient_Render_NoResponseObject_OmitsField(t *testing.T) {
 	// When the API doesn't include data.response (engine error, empty
 	// render), we don't lie — both upstreamOk and upstreamStatus are

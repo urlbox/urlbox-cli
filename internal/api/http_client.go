@@ -152,8 +152,17 @@ func (c *HTTPClient) do(ctx context.Context, method, path string, body any) (*Re
 			data["upstreamStatus"] = status
 			ok2xx3xx := status >= 200 && status < 400
 			if initial, ok := respObj["statusCodeInitial"].(float64); ok {
-				data["upstreamStatusInitial"] = initial
-				ok2xx3xx = ok2xx3xx && initial >= 200 && initial < 400
+				// initial taints upstreamOk regardless of equality with the
+				// final status — a 401 first hop is failure even if the
+				// chain settled to 200. But only surface the field when it
+				// actually differs from the final status; otherwise it's
+				// noise.
+				if initial < 200 || initial >= 400 {
+					ok2xx3xx = false
+				}
+				if initial != status {
+					data["upstreamStatusInitial"] = initial
+				}
 			}
 			data["upstreamOk"] = ok2xx3xx
 		}

@@ -89,6 +89,7 @@ urlbox render --json @opts.json
 urlbox render https://example.com --preset mobile          # iPhone viewport
 urlbox render https://example.com --preset desktop         # 1920×1080
 urlbox render https://example.com --preset pdf-a4          # PDF + A4 page
+urlbox render https://example.com --preset article         # block ads, retina, mostrequestsfinished (news/article)
 
 # Preview without calling the API
 urlbox render https://example.com --dry-run
@@ -111,9 +112,22 @@ urlbox render https://example.com --async --webhook-url https://hooks.example/cb
 
 User-supplied flags override the alias defaults: `urlbox screenshot foo.com --format webp`.
 
-**Reliability:** the CLI retries automatically on 429 / 5xx (3 attempts,
-1s/2s/4s backoff with ±20% jitter, respects `Retry-After`). Disable with
-`--no-retry`; cap with `--max-retries N`.
+**Reliability:** the CLI retries automatically on 429 / 5xx / generic
+network errors (3 attempts, 1s/2s/4s backoff with ±20% jitter, respects
+`Retry-After`). Disable with `--no-retry`; cap with `--max-retries N`.
+
+**Timeouts are NOT retried.** A render that exceeds `--timeout duration`
+(default `60s`) produces an error envelope with `code: "timeout"` and a
+hint listing three recovery paths: retry the same command, raise
+`--timeout`, or switch to `--async --webhook-url`. Heavy renders are slow
+on every attempt, so silent auto-retry rarely helps — the agent picks the
+strategy.
+
+**Upstream errors:** when the rendered page itself returned an HTTP error
+(login wall, captcha, rate limit), the success envelope's `data` includes
+`upstreamOk: false` plus `upstreamStatus` (the page's HTTP code). The
+summary line warns. Don't treat the bytes as authoritative — the render
+likely captured a captcha page rather than the target content.
 
 **Output sandbox:** `--output <path>` is canonicalized and asserted to stay
 under the current working directory. Parent escapes (`../`), absolute paths
