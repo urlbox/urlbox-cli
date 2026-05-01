@@ -1,4 +1,4 @@
-.PHONY: build test e2e e2e-verbose lint fmt fmt-check surface-snapshot surface-check ci clean
+.PHONY: build test e2e e2e-verbose lint fmt fmt-check surface-snapshot surface-check ci smoke clean
 
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
@@ -45,6 +45,15 @@ surface-check: build
 	@./bin/urlbox surface | diff SURFACE.txt - || (echo "SURFACE.txt is stale or surface has breaking changes. Run 'make surface-snapshot' to refresh." && exit 1)
 
 ci: fmt-check lint test build surface-check
+
+# Real-API smoke tests — gated behind the `smoke` build tag so `make ci`
+# / `go test ./...` never trigger them. Each render burns one credit on
+# the configured account; run deliberately at release-cut moments.
+#
+# Usage:  URLBOX_API_SECRET=ubx_sk_... make smoke
+smoke:
+	@test -n "$$URLBOX_API_SECRET" || (echo "URLBOX_API_SECRET must be set" && exit 1)
+	go test -tags=smoke -count=1 -timeout=90s -v ./internal/api/...
 
 clean:
 	rm -rf bin/ dist/
