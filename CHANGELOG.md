@@ -59,6 +59,16 @@ PDFs, and videos against `api.urlbox.com`.
   with EvalSymlinks for parent-symlink defense), `downloadTo` (streaming
   download capped at 5 minutes via context.WithTimeout).
 
+### Known limitations
+
+- `--output` sandbox defends against **parent**-symlink escapes (a
+  symlinked directory in the path) but not against a **leaf**-symlink
+  (the destination file itself being a pre-existing symlink). The
+  `O_TRUNC` open would still follow the symlink. Hardening requires
+  `O_NOFOLLOW` or an `Lstat` probe; deferred. Realistic exploit chain
+  is narrow (an attacker would need pre-existing write access to plant
+  the symlink in CWD).
+
 ## v0.6.0 — 2026-04-30
 
 Mostly internal plumbing for the upcoming `urlbox render` command. Two
