@@ -396,6 +396,37 @@ func TestRender_Preset_OverridableByFlag(t *testing.T) {
 	}
 }
 
+func TestRender_PresetArticle_FillsNewsDefaults(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	fc := &fakeClient{resp: &api.Response{OK: true}}
+	cmd.SetClientForTest(fc)
+	t.Cleanup(cmd.ResetClientForTest)
+
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{
+		"render", "https://news.example",
+		"--preset", "article",
+		"--dry-run", "--output-format", "json",
+	}, &stdout, &stderr)
+	if exit != 0 {
+		t.Fatalf("exit=%d stderr=%s", exit, stderr.String())
+	}
+	var env map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("not JSON: %v", err)
+	}
+	data := env["data"].(map[string]any)
+	if data["block_ads"] != true {
+		t.Errorf("block_ads=%v, want true", data["block_ads"])
+	}
+	if data["retina"] != true {
+		t.Errorf("retina=%v, want true", data["retina"])
+	}
+	if data["wait_until"] != "mostrequestsfinished" {
+		t.Errorf("wait_until=%v, want mostrequestsfinished", data["wait_until"])
+	}
+}
+
 func TestRender_UnknownPreset_UsageError(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	var stdout, stderr bytes.Buffer

@@ -63,8 +63,34 @@ func TestApplyPreset_ReturnsCopyNotReference(t *testing.T) {
 
 func TestAvailablePresetNames_StableOrder(t *testing.T) {
 	got := availablePresetNames()
-	want := "desktop, mobile, pdf-a4"
+	want := "article, desktop, mobile, pdf-a4"
 	if got != want {
 		t.Errorf("got=%q, want %q (alphabetical order, comma-separated)", got, want)
+	}
+}
+
+func TestApplyPreset_Article_PinnedValues(t *testing.T) {
+	got := applyPreset("article")
+	if got == nil {
+		t.Fatalf("applyPreset(\"article\") returned nil; expected the preset to exist")
+	}
+	if got["block_ads"] != true {
+		t.Errorf("block_ads=%v, want true", got["block_ads"])
+	}
+	if got["retina"] != true {
+		t.Errorf("retina=%v, want true", got["retina"])
+	}
+	if got["wait_until"] != "mostrequestsfinished" {
+		t.Errorf("wait_until=%v, want mostrequestsfinished", got["wait_until"])
+	}
+	if got["full_page"] != false {
+		t.Errorf("full_page=%v, want false", got["full_page"])
+	}
+}
+
+func TestAvailablePresetNames_IncludesArticle(t *testing.T) {
+	got := availablePresetNames()
+	if !strings.Contains(got, "article") {
+		t.Errorf("availablePresetNames()=%q, want it to contain \"article\"", got)
 	}
 }

@@ -148,7 +148,7 @@ func attachRenderFlags(c *cobra.Command, f *renderFlags) {
 	c.Flags().StringVar(&f.webhookURL, "webhook-url", "", "POST the result to this URL when async render completes")
 	c.Flags().BoolVar(&f.async, "async", false, "Queue the render and return a renderId")
 	c.Flags().StringVar(&f.jsonInput, "json", "", "JSON payload (string, '-' for stdin, or '@path' for file)")
-	c.Flags().StringVar(&f.preset, "preset", "", "Apply a built-in preset (mobile, desktop, pdf-a4)")
+	c.Flags().StringVar(&f.preset, "preset", "", "Apply a built-in preset (article, desktop, mobile, pdf-a4)")
 	c.Flags().StringVarP(&f.output, "output", "o", "", "Save the rendered file to this path (sandboxed to CWD)")
 	c.Flags().BoolVar(&f.dryRun, "dry-run", false, "Validate the merged payload without calling the API")
 	c.Flags().BoolVar(&f.curl, "curl", false, "Print an equivalent curl command instead of calling the API")
