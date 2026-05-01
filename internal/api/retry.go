@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"io"
 	"math/rand/v2"
 	"net/http"
@@ -64,6 +65,14 @@ func RetryDo(ctx context.Context, cfg RetryConfig, do func() (*http.Response, er
 		resp, err := do()
 		if err == nil && !isRetryable(resp.StatusCode) {
 			return resp, nil
+		}
+		// Timeout means the per-attempt budget is exhausted; retrying will
+		// hit it again. Surface the timeout fast so the agent can pick the
+		// recovery (retry / --timeout / --async). Net/http wraps the
+		// context error in url.Error — errors.Is unwraps it.
+		if err != nil && (errors.Is(err, context.DeadlineExceeded) ||
+			strings.Contains(err.Error(), context.DeadlineExceeded.Error())) {
+			return resp, err
 		}
 		if attempt == cfg.MaxRetries {
 			return resp, err

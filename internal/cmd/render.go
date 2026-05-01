@@ -50,13 +50,18 @@ func SetStdinForTest(r io.Reader) { renderStdin = r }
 // ResetStdinForTest restores os.Stdin.
 func ResetStdinForTest() { renderStdin = os.Stdin }
 
+// defaultRenderTimeout is the per-attempt deadline for a render call. On
+// expiry the CLI fails fast with code "timeout" (exit 11) and surfaces the
+// three recovery paths via networkHint — it does not retry.
+const defaultRenderTimeout = 60 * time.Second
+
 // renderFlags carries every convenience flag the render command supports.
 // Booleans here mirror cobra's default-zero pattern; when registering, the
 // merge step uses cmd.Flags().Changed(...) to decide whether to write into
 // the merged options map.
 type renderFlags struct {
 	url, format, selector, waitUntil, userAgent, webhookURL string
-	width, height, delay, timeout, quality                  int
+	width, height, delay, quality                           int
 	fullPage, blockAds, darkMode, retina                    bool
 	async                                                   bool
 	jsonInput                                               string
@@ -66,18 +71,22 @@ type renderFlags struct {
 	noRetry                                                 bool
 	maxRetries                                              int
 	apiSecret                                               string
+	timeout                                                 time.Duration
 }
 
 // flagToOptionKey maps a cobra flag name to the API option key used on the
 // wire. Only flags that produce option-map entries appear here; meta flags
 // like --dry-run, --curl, --output, --preset are handled separately.
+//
+// Note: --timeout is a CLI-level duration flag (per-attempt budget); it is
+// NOT a render-API option. The API's hard-page-timeout (ms) can still be
+// set via --json {"timeout": 30000}.
 var flagToOptionKey = map[string]string{
 	"format":      "format",
 	"width":       "width",
 	"height":      "height",
 	"full-page":   "full_page",
 	"delay":       "delay",
-	"timeout":     "timeout",
 	"selector":    "selector",
 	"quality":     "quality",
 	"block-ads":   "block_ads",
@@ -124,7 +133,10 @@ func attachRenderFlags(c *cobra.Command, f *renderFlags) {
 	c.Flags().IntVar(&f.height, "height", 0, "Viewport height in pixels")
 	c.Flags().BoolVar(&f.fullPage, "full-page", false, "Capture the full scrollable page")
 	c.Flags().IntVar(&f.delay, "delay", 0, "Wait N ms after page load before capture")
-	c.Flags().IntVar(&f.timeout, "timeout", 0, "Hard timeout in ms")
+	c.Flags().DurationVar(&f.timeout, "timeout", defaultRenderTimeout,
+		"Per-attempt timeout for the render call (e.g. 60s, 3m). On timeout, "+
+			"the CLI fails fast — it does not retry. Raise this for heavy pages, "+
+			"or use --async --webhook-url for very long renders.")
 	c.Flags().StringVarP(&f.selector, "selector", "s", "", "CSS selector to capture")
 	c.Flags().IntVarP(&f.quality, "quality", "q", 0, "Output quality (1-100, format-dependent)")
 	c.Flags().BoolVar(&f.blockAds, "block-ads", false, "Block ads via uBlock filterlists")
@@ -255,7 +267,7 @@ func runRender(cmd *cobra.Command, args []string, f *renderFlags) error {
 		return cerr
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), f.timeout)
 	defer cancel()
 
 	var resp *api.Response
@@ -265,6 +277,14 @@ func runRender(cmd *cobra.Command, args []string, f *renderFlags) error {
 		resp, err = client.Render(ctx, validated)
 	}
 	if err != nil {
+		// Refine the hint for timeout/network errors with the render-aware
+		// recovery paths and the actual --timeout value.
+		var cli *output.CLIError
+		if errors.As(err, &cli) {
+			if cli.Code == output.ErrTimeout || cli.Code == output.ErrNetwork {
+				cli.Hint = networkHint(errors.New(cli.Message), true, f.timeout)
+			}
+		}
 		return err
 	}
 
@@ -375,8 +395,6 @@ func applyFlagsToMap(cmd *cobra.Command, f *renderFlags, m map[string]any) {
 			m[optionKey] = f.fullPage
 		case "delay":
 			m[optionKey] = f.delay
-		case "timeout":
-			m[optionKey] = f.timeout
 		case "selector":
 			m[optionKey] = f.selector
 		case "quality":

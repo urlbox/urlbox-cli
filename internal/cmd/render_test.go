@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/urlbox/urlbox-cli/internal/api"
 	"github.com/urlbox/urlbox-cli/internal/api/apitest"
@@ -642,6 +643,56 @@ func TestRender_UpstreamError_FlagsInSummary(t *testing.T) {
 	data := env["data"].(map[string]any)
 	if data["upstreamOk"] != false {
 		t.Errorf("data.upstreamOk=%v, want false", data["upstreamOk"])
+	}
+}
+
+func TestRender_Timeout_FastFails_WithRecoveryHint(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("URLBOX_API_SECRET", "sec_test")
+	slow := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
+		time.Sleep(2 * time.Second)
+	}))
+	t.Cleanup(slow.Close)
+	t.Setenv(api.EnvAPIHost, slow.URL)
+
+	var stdout, stderr bytes.Buffer
+	start := time.Now()
+	exit := cmd.Execute([]string{
+		"render", "https://example.com",
+		"--timeout", "100ms",
+		"--no-retry",
+		"--output-format", "json",
+	}, &stdout, &stderr)
+	elapsed := time.Since(start)
+
+	if exit != 11 {
+		t.Errorf("exit=%d, want 11 (network/timeout class)", exit)
+	}
+	if elapsed > 1*time.Second {
+		t.Errorf("elapsed=%v, want <1s (no auto-retry on timeout)", elapsed)
+	}
+	var env map[string]any
+	_ = json.Unmarshal(stdout.Bytes(), &env)
+	if env["code"] != "timeout" {
+		t.Fatalf("code=%v, want \"timeout\"", env["code"])
+	}
+	hint, _ := env["hint"].(string)
+	for _, want := range []string{"retry the same command", "--timeout", "--async"} {
+		if !strings.Contains(hint, want) {
+			t.Errorf("hint missing %q; got %q", want, hint)
+		}
+	}
+}
+
+func TestRender_TimeoutFlag_DefaultDocumentedInHelp(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	cmd.Execute([]string{"render", "--help"}, &stdout, &stderr)
+	help := stdout.String() + stderr.String()
+	if !strings.Contains(help, "--timeout") {
+		t.Errorf("--help missing --timeout flag")
+	}
+	if !strings.Contains(help, "1m0s") && !strings.Contains(help, "60s") {
+		t.Errorf("--help should document the 60s default; got %q", help)
 	}
 }
 

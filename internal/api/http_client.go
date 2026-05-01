@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -109,8 +110,15 @@ func (c *HTTPClient) do(ctx context.Context, method, path string, body any) (*Re
 
 	resp, err := RetryDo(ctx, c.Retry, send)
 	if err != nil {
+		// Classify a deadline as ErrTimeout so retry.go can short-circuit
+		// AND the render command can refine the hint with render-specific text.
+		code := output.ErrNetwork
+		if errors.Is(err, context.DeadlineExceeded) ||
+			strings.Contains(err.Error(), context.DeadlineExceeded.Error()) {
+			code = output.ErrTimeout
+		}
 		return nil, output.NewCLIError(
-			output.ErrNetwork,
+			code,
 			err.Error(),
 			"Check your internet connection and the API host (URLBOX_API_HOST). Run `urlbox doctor`.",
 		)
