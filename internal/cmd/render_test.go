@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,6 +16,8 @@ import (
 	"github.com/urlbox/urlbox-cli/internal/api/apitest"
 	"github.com/urlbox/urlbox-cli/internal/cmd"
 )
+
+// Note: `must` helper is defined in config_test.go (same package cmd_test).
 
 // fakeClient satisfies api.Client without making HTTP calls. Tests inspect
 // lastOpts to confirm the merged payload that was dispatched (or assert it
@@ -413,6 +418,187 @@ func TestRender_UnknownPreset_UsageError(t *testing.T) {
 		if !strings.Contains(hint, name) {
 			t.Errorf("hint should list available preset %q; got %q", name, hint)
 		}
+	}
+}
+
+// fakeOpener captures the URLs --open passes to the browser layer.
+type fakeOpener struct{ urls []string }
+
+func (f *fakeOpener) Open(url string) error { f.urls = append(f.urls, url); return nil }
+
+func TestRender_FullPipeline_HappyPath(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	m := apitest.New(apitest.SuccessJSON(`{
+		"renderUrl": "https://renders.urlbox.com/x.png",
+		"size": 245632,
+		"renderTime": 1234,
+		"width": 1920,
+		"height": 1080
+	}`))
+	t.Cleanup(m.Close)
+	t.Setenv(api.EnvAPIHost, m.URL())
+	// Need a secret in env so config.Resolve gives us non-empty APISecret.
+	t.Setenv("URLBOX_API_SECRET", "sec_test")
+
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{
+		"render", "https://example.com",
+		"--format", "png",
+		"--output-format", "json",
+	}, &stdout, &stderr)
+	if exit != 0 {
+		t.Fatalf("exit=%d stderr=%s", exit, stderr.String())
+	}
+
+	var env map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("not JSON: %v", err)
+	}
+	if env["ok"] != true {
+		t.Errorf("ok=%v", env["ok"])
+	}
+	data := env["data"].(map[string]any)
+	if data["renderUrl"] != "https://renders.urlbox.com/x.png" {
+		t.Errorf("renderUrl=%v", data["renderUrl"])
+	}
+	bcs, _ := env["breadcrumbs"].([]any)
+	if len(bcs) == 0 {
+		t.Errorf("breadcrumbs empty; want save suggestion")
+	}
+}
+
+func TestRender_OutputSavesFile(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("URLBOX_API_SECRET", "sec_test")
+
+	// Two servers: one for the API, one for the render bytes.
+	blob := []byte("\x89PNG\r\n\x1a\n--fake-png-bytes--")
+	rs := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write(blob)
+	}))
+	t.Cleanup(rs.Close)
+
+	apiSrv := apitest.New(apitest.SuccessJSON(fmt.Sprintf(`{
+		"renderUrl": %q,
+		"size": %d,
+		"renderTime": 1000,
+		"width": 800,
+		"height": 600
+	}`, rs.URL+"/x.png", len(blob))))
+	t.Cleanup(apiSrv.Close)
+	t.Setenv(api.EnvAPIHost, apiSrv.URL())
+
+	tmpDir := t.TempDir()
+	oldwd, _ := os.Getwd()
+	must(t, os.Chdir(tmpDir))
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+	// Capture the *canonical* cwd: macOS resolves /var to /private/var on
+	// chdir, and resolveOutputPath uses that form. Comparing against the
+	// raw t.TempDir() path would fail on macOS.
+	canonicalCWD, _ := os.Getwd()
+
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{
+		"render", "https://example.com",
+		"--output", "out.png",
+		"--output-format", "json",
+	}, &stdout, &stderr)
+	if exit != 0 {
+		t.Fatalf("exit=%d stderr=%s", exit, stderr.String())
+	}
+	saved, err := os.ReadFile(filepath.Join(canonicalCWD, "out.png"))
+	if err != nil {
+		t.Fatalf("file not saved: %v", err)
+	}
+	if !bytes.Equal(saved, blob) {
+		t.Errorf("saved bytes mismatch")
+	}
+
+	var env map[string]any
+	if jerr := json.Unmarshal(stdout.Bytes(), &env); jerr != nil {
+		t.Fatalf("not JSON: %v", jerr)
+	}
+	data := env["data"].(map[string]any)
+	want := filepath.Join(canonicalCWD, "out.png")
+	if data["savedTo"] != want {
+		t.Errorf("savedTo=%v, want %v", data["savedTo"], want)
+	}
+}
+
+func TestRender_OutputPathEscape_ValidationError(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("URLBOX_API_SECRET", "sec_test")
+	m := apitest.New(apitest.SuccessJSON(`{"renderUrl":"https://renders.urlbox.com/x.png","size":100}`))
+	t.Cleanup(m.Close)
+	t.Setenv(api.EnvAPIHost, m.URL())
+
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{
+		"render", "https://example.com",
+		"--output", "../escape.png",
+		"--output-format", "json",
+	}, &stdout, &stderr)
+	if exit != 2 {
+		t.Errorf("exit=%d, want 2 (validation); stdout=%s", exit, stdout.String())
+	}
+}
+
+func TestRender_Open_InvokesOpener(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("URLBOX_API_SECRET", "sec_test")
+	m := apitest.New(apitest.SuccessJSON(`{
+		"renderUrl": "https://renders.urlbox.com/x.png",
+		"size": 100
+	}`))
+	t.Cleanup(m.Close)
+	t.Setenv(api.EnvAPIHost, m.URL())
+
+	fo := &fakeOpener{}
+	cmd.SetOpenerForTest(fo)
+	t.Cleanup(cmd.ResetOpenerForTest)
+
+	var stdout, stderr bytes.Buffer
+	cmd.Execute([]string{
+		"render", "https://example.com",
+		"--open", "--output-format", "json",
+	}, &stdout, &stderr)
+	if len(fo.urls) != 1 || fo.urls[0] != "https://renders.urlbox.com/x.png" {
+		t.Errorf("opener urls=%v, want [https://renders.urlbox.com/x.png]", fo.urls)
+	}
+}
+
+func TestRender_Async_BreadcrumbsIncludeStatus(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("URLBOX_API_SECRET", "sec_test")
+	m := apitest.New(apitest.SuccessJSON(`{
+		"status": "created",
+		"renderId": "ps_abc",
+		"statusUrl": "https://api.urlbox.com/v1/render/ps_abc"
+	}`))
+	t.Cleanup(m.Close)
+	t.Setenv(api.EnvAPIHost, m.URL())
+
+	var stdout, stderr bytes.Buffer
+	cmd.Execute([]string{
+		"render", "https://example.com",
+		"--async", "--output-format", "json",
+	}, &stdout, &stderr)
+	var env map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("not JSON: %v\n%s", err, stdout.String())
+	}
+	bcs, _ := env["breadcrumbs"].([]any)
+	if len(bcs) == 0 {
+		t.Fatalf("async should include breadcrumbs")
+	}
+	bc := bcs[0].(map[string]any)
+	if bc["action"] != "status" {
+		t.Errorf("first breadcrumb action=%v, want status", bc["action"])
+	}
+	cmdStr, _ := bc["cmd"].(string)
+	if !strings.Contains(cmdStr, "ps_abc") {
+		t.Errorf("status breadcrumb should include renderId; got %q", cmdStr)
 	}
 }
 

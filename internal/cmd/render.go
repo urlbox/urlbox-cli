@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/urlbox/urlbox-cli/internal/api"
+	"github.com/urlbox/urlbox-cli/internal/browser"
 	"github.com/urlbox/urlbox-cli/internal/config"
 	"github.com/urlbox/urlbox-cli/internal/output"
 	"github.com/urlbox/urlbox-cli/internal/validation"
@@ -25,6 +26,16 @@ var renderClientOverride api.Client
 // renderStdin is the source for `--json -` reads. Defaults to os.Stdin;
 // tests inject a strings.Reader via SetStdinForTest.
 var renderStdin io.Reader = os.Stdin
+
+// renderOpener is the browser-launcher used by --open. Defaults to the
+// production OSOpener; tests inject a fake via SetOpenerForTest.
+var renderOpener browser.Opener = browser.NewOSOpener()
+
+// SetOpenerForTest swaps in a fake browser.Opener. Pair with t.Cleanup(ResetOpenerForTest).
+func SetOpenerForTest(o browser.Opener) { renderOpener = o }
+
+// ResetOpenerForTest restores the production OSOpener.
+func ResetOpenerForTest() { renderOpener = browser.NewOSOpener() }
 
 // SetClientForTest swaps in a fake api.Client. Pair with t.Cleanup(ResetClientForTest).
 func SetClientForTest(c api.Client) { renderClientOverride = c }
@@ -250,15 +261,62 @@ func runRender(cmd *cobra.Command, args []string, f *renderFlags) error {
 		return err
 	}
 
+	// 9. --output: download the rendered file to a sandboxed local path.
+	// Sandbox checks happen BEFORE the download so a malicious path is
+	// rejected without burning network round-trips.
+	if f.output != "" && !f.async {
+		cwd, _ := os.Getwd()
+		abs, cerr := resolveOutputPath(f.output, cwd)
+		if cerr != nil {
+			return cerr
+		}
+		renderURL, _ := resp.Data["renderUrl"].(string)
+		if renderURL == "" {
+			return output.NewCLIError(
+				output.ErrServer,
+				"API response missing renderUrl",
+				"The render succeeded but the response had no downloadable URL. Check the dashboard.",
+			)
+		}
+		if cerr := downloadTo(ctx, renderURL, abs); cerr != nil {
+			return cerr
+		}
+		resp.Data["savedTo"] = abs
+	}
+
+	// 10. --open: launch the rendered URL in the default browser. Best-effort —
+	// failures are non-fatal because the URL is already in the envelope.
+	if f.open && !f.async {
+		if u, ok := resp.Data["renderUrl"].(string); ok && u != "" {
+			_ = renderOpener.Open(u)
+		}
+	}
+
 	env := output.NewEnvelope(
 		"render",
 		resp.Data,
 		summariseRenderResp(resp),
-		[]output.Breadcrumb{
-			{Action: "open", Cmd: "urlbox dashboard"},
-		},
+		breadcrumbsForResp(resp, f),
 	)
 	return writeRenderEnvelope(cmd, env)
+}
+
+// breadcrumbsForResp returns the right next-step breadcrumbs based on what
+// the user just did (sync vs async, --output present, etc).
+func breadcrumbsForResp(resp *api.Response, f *renderFlags) []output.Breadcrumb {
+	if f.async {
+		id, _ := resp.Data["renderId"].(string)
+		return []output.Breadcrumb{
+			{Action: "status", Cmd: "urlbox status " + id},
+		}
+	}
+	// Sync success. Suggest --output if they didn't already use it.
+	if f.output == "" {
+		return []output.Breadcrumb{
+			{Action: "save", Cmd: "urlbox render <url> --output screenshot.png"},
+		}
+	}
+	return nil
 }
 
 // parseJSONFlag interprets --json's value:
