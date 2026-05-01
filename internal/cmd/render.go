@@ -139,21 +139,44 @@ func runRender(cmd *cobra.Command, args []string, f *renderFlags) error {
 		return perr
 	}
 
-	// 2. Build the merged options map.
+	// 2. Build the merged options map. Merge order is preset < json < flags
+	// (last writer wins), so a preset establishes defaults that any later
+	// layer can override.
 	merged := map[string]any{}
+
+	// 2a. Apply --preset (lowest precedence; defaults that anything overrides).
+	if f.preset != "" {
+		p := applyPreset(f.preset)
+		if p == nil {
+			return output.NewCLIError(
+				output.ErrUsage,
+				"Unknown preset: "+f.preset,
+				"Available presets: "+availablePresetNames()+". See `urlbox render --help`.",
+			)
+		}
+		for k, v := range p {
+			merged[k] = v
+		}
+	}
+
+	// 2b. Apply --json contents (overrides preset).
 	if len(jsonBytes) > 0 {
-		if err := json.Unmarshal(jsonBytes, &merged); err != nil {
+		fromJSON := map[string]any{}
+		if err := json.Unmarshal(jsonBytes, &fromJSON); err != nil {
 			return output.NewCLIError(
 				output.ErrUsage,
 				"failed to parse --json payload",
 				"--json accepts a literal JSON string, '-' (stdin), or '@path' (file). Got: "+err.Error(),
 			)
 		}
+		for k, v := range fromJSON {
+			merged[k] = v
+		}
 	}
 
 	// 3. Apply flag overrides (last writer wins). Only flags the user
 	// actually passed land in the map — otherwise we'd zero out values
-	// that came from --json or a future preset.
+	// that came from --json or a preset.
 	applyFlagsToMap(cmd, f, merged)
 
 	// 4. Require url somewhere.

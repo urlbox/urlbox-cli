@@ -332,6 +332,90 @@ func TestRender_Curl_AsyncFlag_HitsAsyncPath(t *testing.T) {
 	}
 }
 
+func TestRender_Preset_FillsDefaults_OverridableByJSON(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	fc := &fakeClient{resp: &api.Response{OK: true}}
+	cmd.SetClientForTest(fc)
+	t.Cleanup(cmd.ResetClientForTest)
+
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{
+		"render", "https://example.com",
+		"--preset", "mobile",
+		"--json", `{"width":500}`, // overrides preset's width=375
+		"--dry-run", "--output-format", "json",
+	}, &stdout, &stderr)
+	if exit != 0 {
+		t.Fatalf("exit=%d stderr=%s", exit, stderr.String())
+	}
+	var env map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("not JSON: %v", err)
+	}
+	data := env["data"].(map[string]any)
+	if data["width"].(float64) != 500 {
+		t.Errorf("width=%v, want 500 (--json overrides preset)", data["width"])
+	}
+	if data["height"].(float64) != 812 {
+		t.Errorf("height=%v, want 812 (preset default; --json didn't touch height)", data["height"])
+	}
+}
+
+func TestRender_Preset_OverridableByFlag(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	fc := &fakeClient{resp: &api.Response{OK: true}}
+	cmd.SetClientForTest(fc)
+	t.Cleanup(cmd.ResetClientForTest)
+
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{
+		"render", "https://example.com",
+		"--preset", "desktop",
+		"--width", "2560", // overrides preset's 1920
+		"--dry-run", "--output-format", "json",
+	}, &stdout, &stderr)
+	if exit != 0 {
+		t.Fatalf("exit=%d stderr=%s", exit, stderr.String())
+	}
+	var env map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("not JSON: %v", err)
+	}
+	data := env["data"].(map[string]any)
+	if data["width"].(float64) != 2560 {
+		t.Errorf("width=%v, want 2560 (flag overrides preset)", data["width"])
+	}
+	if data["height"].(float64) != 1080 {
+		t.Errorf("height=%v, want 1080 (preset default; flag didn't touch height)", data["height"])
+	}
+}
+
+func TestRender_UnknownPreset_UsageError(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{
+		"render", "https://example.com",
+		"--preset", "nonsense",
+		"--dry-run", "--output-format", "json",
+	}, &stdout, &stderr)
+	if exit != 1 {
+		t.Fatalf("exit=%d, want 1 (usage); stdout=%s", exit, stdout.String())
+	}
+	var env map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("not JSON: %v", err)
+	}
+	if env["code"] != "usage" {
+		t.Errorf("code=%v", env["code"])
+	}
+	hint, _ := env["hint"].(string)
+	for _, name := range []string{"mobile", "desktop", "pdf-a4"} {
+		if !strings.Contains(hint, name) {
+			t.Errorf("hint should list available preset %q; got %q", name, hint)
+		}
+	}
+}
+
 // SURFACE.txt regression guard: --api-secret flag must be on render (per-call override).
 func TestRender_HasAPISecretFlag(t *testing.T) {
 	var stdout, stderr bytes.Buffer
