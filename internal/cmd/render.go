@@ -110,7 +110,15 @@ Use --dry-run to validate the merged payload without making an API call.`,
 			return runRender(cmd, args, f)
 		},
 	}
+	attachRenderFlags(c, f)
+	return c
+}
 
+// attachRenderFlags registers every render-pipeline flag on c, binding into
+// the given *renderFlags. Extracted so the alias commands (screenshot, pdf,
+// video) can register the exact same surface and share runRender — there's
+// no pipeline duplication.
+func attachRenderFlags(c *cobra.Command, f *renderFlags) {
 	c.Flags().StringVarP(&f.format, "format", "f", "", "Output format (png, jpeg, pdf, mp4, webp, ...)")
 	c.Flags().IntVarP(&f.width, "width", "w", 0, "Viewport width in pixels")
 	c.Flags().IntVar(&f.height, "height", 0, "Viewport height in pixels")
@@ -135,8 +143,6 @@ Use --dry-run to validate the merged payload without making an API call.`,
 	c.Flags().BoolVar(&f.noRetry, "no-retry", false, "Disable automatic retries on 429 / 5xx")
 	c.Flags().IntVar(&f.maxRetries, "max-retries", api.DefaultRetryConfig().MaxRetries, "Maximum retry attempts on 429 / 5xx")
 	c.Flags().StringVar(&f.apiSecret, "api-secret", "", "Per-call override of the API secret (else read from config / env)")
-
-	return c
 }
 
 func runRender(cmd *cobra.Command, args []string, f *renderFlags) error {

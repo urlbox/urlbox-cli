@@ -67,6 +67,35 @@ urlbox doctor --agent
 urlbox doctor --jq
 urlbox doctor --output-format
 urlbox doctor --profile
+urlbox pdf [url]
+urlbox pdf [url] --agent
+urlbox pdf [url] --api-secret
+urlbox pdf [url] --async
+urlbox pdf [url] --block-ads
+urlbox pdf [url] --curl
+urlbox pdf [url] --dark-mode
+urlbox pdf [url] --delay
+urlbox pdf [url] --dry-run
+urlbox pdf [url] --format
+urlbox pdf [url] --full-page
+urlbox pdf [url] --height
+urlbox pdf [url] --jq
+urlbox pdf [url] --json
+urlbox pdf [url] --max-retries
+urlbox pdf [url] --no-retry
+urlbox pdf [url] --open
+urlbox pdf [url] --output
+urlbox pdf [url] --output-format
+urlbox pdf [url] --preset
+urlbox pdf [url] --profile
+urlbox pdf [url] --quality
+urlbox pdf [url] --retina
+urlbox pdf [url] --selector
+urlbox pdf [url] --timeout
+urlbox pdf [url] --user-agent
+urlbox pdf [url] --wait-until
+urlbox pdf [url] --webhook-url
+urlbox pdf [url] --width
 urlbox render [url]
 urlbox render [url] --agent
 urlbox render [url] --api-secret
@@ -106,6 +135,35 @@ urlbox schema render --agent
 urlbox schema render --jq
 urlbox schema render --output-format
 urlbox schema render --profile
+urlbox screenshot [url]
+urlbox screenshot [url] --agent
+urlbox screenshot [url] --api-secret
+urlbox screenshot [url] --async
+urlbox screenshot [url] --block-ads
+urlbox screenshot [url] --curl
+urlbox screenshot [url] --dark-mode
+urlbox screenshot [url] --delay
+urlbox screenshot [url] --dry-run
+urlbox screenshot [url] --format
+urlbox screenshot [url] --full-page
+urlbox screenshot [url] --height
+urlbox screenshot [url] --jq
+urlbox screenshot [url] --json
+urlbox screenshot [url] --max-retries
+urlbox screenshot [url] --no-retry
+urlbox screenshot [url] --open
+urlbox screenshot [url] --output
+urlbox screenshot [url] --output-format
+urlbox screenshot [url] --preset
+urlbox screenshot [url] --profile
+urlbox screenshot [url] --quality
+urlbox screenshot [url] --retina
+urlbox screenshot [url] --selector
+urlbox screenshot [url] --timeout
+urlbox screenshot [url] --user-agent
+urlbox screenshot [url] --wait-until
+urlbox screenshot [url] --webhook-url
+urlbox screenshot [url] --width
 urlbox skill
 urlbox skill --agent
 urlbox skill --jq
@@ -121,3 +179,32 @@ urlbox upgrade --agent
 urlbox upgrade --jq
 urlbox upgrade --output-format
 urlbox upgrade --profile
+urlbox video [url]
+urlbox video [url] --agent
+urlbox video [url] --api-secret
+urlbox video [url] --async
+urlbox video [url] --block-ads
+urlbox video [url] --curl
+urlbox video [url] --dark-mode
+urlbox video [url] --delay
+urlbox video [url] --dry-run
+urlbox video [url] --format
+urlbox video [url] --full-page
+urlbox video [url] --height
+urlbox video [url] --jq
+urlbox video [url] --json
+urlbox video [url] --max-retries
+urlbox video [url] --no-retry
+urlbox video [url] --open
+urlbox video [url] --output
+urlbox video [url] --output-format
+urlbox video [url] --preset
+urlbox video [url] --profile
+urlbox video [url] --quality
+urlbox video [url] --retina
+urlbox video [url] --selector
+urlbox video [url] --timeout
+urlbox video [url] --user-agent
+urlbox video [url] --wait-until
+urlbox video [url] --webhook-url
+urlbox video [url] --width
