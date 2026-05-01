@@ -4,6 +4,61 @@ All notable changes to the `urlbox` CLI are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
+## v0.7.0 — 2026-05-01
+
+The `urlbox render` command ships. The CLI can now actually render screenshots,
+PDFs, and videos against `api.urlbox.com`.
+
+### Added
+
+- `urlbox render <url>` — capture a screenshot, PDF, or video via the Urlbox API.
+  Supports ~25 convenience flags (`--format`, `--width`, `--height`, `--full-page`,
+  `--quality`, `--block-ads`, `--dark-mode`, `--retina`, `--wait-until`,
+  `--user-agent`, `--webhook-url`, ...).
+- `--json` accepts a literal JSON payload, `-` for stdin, or `@path` for a
+  file. Merge order is **preset < json < flags** (last writer wins).
+- `--dry-run` validates and prints the merged payload without calling the API
+  (no credit burn).
+- `--curl` prints a copy-pasteable curl command equivalent to the request,
+  with the API secret redacted as `$URLBOX_API_SECRET`.
+- `--output <path>` saves the rendered asset to disk. Path is canonicalized
+  and asserted to stay under the current working directory — parent escapes
+  (`../`), absolute paths outside CWD, and symlinks pointing outside CWD
+  are all rejected with a `validation` error.
+- `--open` launches the rendered URL in the user's default browser
+  (`open` on macOS, `xdg-open` on Linux, `cmd /c start` on Windows).
+- `--async` queues a render and returns immediately with a `renderId`.
+  Pair with `--webhook-url` for production workflows.
+- `--no-retry` / `--max-retries N` control the retry budget.
+- `--preset <name>` for `mobile` (375×812 + iPhone UA), `desktop` (1920×1080),
+  and `pdf-a4` (PDF format + A4 page size). Unknown name returns a usage
+  error listing the available presets.
+- Three thin alias commands sharing the entire render pipeline:
+  - `urlbox screenshot <url>` (also `urlbox shot`) — `--format png` default.
+  - `urlbox pdf <url>` — `--format pdf --full-page` default.
+  - `urlbox video <url>` — `--format mp4` default.
+- New `make smoke` target — Go tests gated behind a `smoke` build tag,
+  exercise the real `api.urlbox.com` (sync render, async queue, auth-fail
+  mapping). Required `URLBOX_API_SECRET` env var; never runs under `make ci`.
+
+### Fixed
+
+- The HTTPClient now correctly handles the API's nested error body
+  (`{"error":{"code":"...","message":"..."}}`) and re-routes any `ApiKey*`
+  error code to the `auth` exit code, regardless of the HTTP status. The
+  previous code only handled flat `{"error":"..."}` strings and missed the
+  re-routing — the smoke test surfaced this.
+
+### Internal
+
+- `internal/api` now exports `PathSync`, `PathAsync`, `PathStatus` so
+  `--curl` and tests reference the same path constants the HTTPClient does.
+- New `internal/browser` package: `Opener` interface + `OSOpener` +
+  `NoopOpener`. Test-injectable via `cmd.SetOpenerForTest`.
+- `internal/cmd/render_output.go`: `resolveOutputPath` (sandbox check
+  with EvalSymlinks for parent-symlink defense), `downloadTo` (streaming
+  download capped at 5 minutes via context.WithTimeout).
+
 ## v0.6.0 — 2026-04-30
 
 Mostly internal plumbing for the upcoming `urlbox render` command. Two

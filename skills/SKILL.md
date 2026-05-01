@@ -85,9 +85,84 @@ silently disappear between versions without a major version bump.
 | `urlbox config profile default`  | Switch the default profile                             |
 | `urlbox config profile delete`   | Delete a non-default profile                           |
 | `urlbox doctor`                  | Diagnose install, config, network, credentials         |
+| `urlbox render <url>`            | Capture a screenshot, PDF, or video of a web page      |
+| `urlbox screenshot <url>`        | Alias for `render --format png` (also `urlbox shot`)   |
+| `urlbox pdf <url>`               | Alias for `render --format pdf --full-page`            |
+| `urlbox video <url>`             | Alias for `render --format mp4`                        |
 | `urlbox schema render`           | Print the JSON Schema for the render request payload   |
 | `urlbox skill`                   | Show this skill content (`urlbox skill show`)          |
 | `urlbox upgrade`                 | Self-update via detected install method                |
+
+## render: capture a URL
+
+`urlbox render <url>` captures a screenshot, PDF, or video. Three input
+modes are supported and merge in this order (later wins):
+**preset → --json → --flag values**.
+
+### Quickstart
+
+```sh
+# Simplest: positional URL, default format (png via screenshot alias)
+urlbox screenshot https://example.com --output home.png
+
+# Explicit render with format flag
+urlbox render https://example.com --format pdf --full-page
+
+# Full payload via --json (preferred for non-trivial config — agents use this)
+urlbox render --json '{"url":"https://example.com","format":"png","width":1920,"full_page":true}'
+
+# --json from stdin or a file
+echo '{"url":"https://example.com"}' | urlbox render --json -
+urlbox render --json @opts.json
+
+# Built-in presets layer in defaults
+urlbox render https://example.com --preset mobile          # iPhone viewport
+urlbox render https://example.com --preset desktop         # 1920x1080
+urlbox render https://example.com --preset pdf-a4          # PDF + A4
+
+# Preview the validated payload without calling the API (no credit burn)
+urlbox render https://example.com --format pdf --dry-run
+
+# Generate a copy-pasteable curl command (secret redacted)
+urlbox render https://example.com --curl
+
+# Save the rendered asset to disk (path sandboxed to CWD)
+urlbox render https://example.com --output screenshot.png
+
+# Open the result in the browser after rendering
+urlbox render https://example.com --open
+
+# Async: queue and return a renderId; poll with `urlbox status` (Phase 5)
+urlbox render https://example.com --async --webhook-url https://hooks.example/cb
+```
+
+### Self-discovery
+
+- `urlbox schema render` — full JSON Schema for valid render options.
+- `urlbox schema render --jq '.data.properties.url'` — drill into one field.
+- `urlbox render --help --agent` — structured JSON help for any command.
+
+### Reliability
+
+The CLI retries automatically on 429 and 5xx (3 attempts, 1s/2s/4s backoff
+with ±20% jitter, respects `Retry-After`). Disable with `--no-retry`; cap
+attempts with `--max-retries N`. (No circuit breaker in v0.6.0 — deferred
+to v1.0.0+; if a transient outage outlasts the retry budget, you'll see a
+`network` error and can re-run.)
+
+### Error codes (closed set)
+
+| Code         | Exit | Meaning                                                    |
+|--------------|------|------------------------------------------------------------|
+| `usage`      | 1    | bad flags / missing url                                    |
+| `validation` | 2    | payload failed schema validation; see `hint` for the fix   |
+| `auth`       | 3    | missing/invalid API secret; run `urlbox auth --api-secret` |
+| `forbidden`  | 4    | account/plan doesn't allow this feature                    |
+| `not_found`  | 5    | endpoint or render ID unknown                              |
+| `rate_limit` | 6    | retry budget exhausted; back off and retry                 |
+| `conflict`   | 7    | request conflicts with in-flight state                     |
+| `server`     | 10   | Urlbox API error; try again later                          |
+| `network`    | 11   | no connection / DNS / timeout; run `urlbox doctor`         |
 
 ### `urlbox schema render`
 
@@ -160,8 +235,7 @@ Saves to `~/.config/urlbox/config.json` (mode 0600), under the default profile
 
 ## Coming next
 
-- `urlbox render <url>` — sync/async screenshot, PDF, video
-- `urlbox status <id>` — async render status
-- `urlbox link <url>` — HMAC-signed render URL (no API call)
+- `urlbox status <id>` — poll an async render to completion.
+- `urlbox link <url>` — generate an HMAC-signed render URL with no API call.
 
 When these arrive, this skill file will gain examples and decision trees.

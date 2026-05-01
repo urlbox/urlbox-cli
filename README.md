@@ -42,26 +42,82 @@ go install github.com/urlbox/urlbox-cli/cmd/urlbox@latest
 ## Quick Start
 
 ```sh
-# Check your installed version
-urlbox --version
-
-# See available commands and flags
-urlbox --help
-
-# List all commands (human-readable)
-urlbox commands
-
-# List all commands (machine-readable JSON, ideal for agents)
-urlbox commands --output-format json
-
-# Configure your API secret
+# One-time: store your API secret
 urlbox auth --api-secret sec_xxxxxxxxxxxx
+
+# Render a URL — saves screenshot.png to the current directory
+urlbox render https://example.com --output screenshot.png
+
+# Aliases: same pipeline, different default format
+urlbox screenshot https://example.com --output home.png    # PNG
+urlbox pdf https://example.com --output home.pdf           # PDF + full page
+urlbox video https://example.com --output home.mp4         # MP4
+
+# Preview the merged payload without making an API call (no credit burn)
+urlbox render https://example.com --format pdf --dry-run
+
+# Generate a copy-pasteable curl command (secret redacted)
+urlbox render https://example.com --curl
 
 # Verify install, config, and credentials
 urlbox doctor
+
+# Self-discovery for agents
+urlbox commands --output-format json    # full command catalog
+urlbox render --help --agent            # structured JSON help
+urlbox schema render                    # JSON Schema of every render option
 ```
 
 ## Commands
+
+### `render`
+
+Capture a URL as a screenshot, PDF, or video.
+
+```sh
+# Simplest — positional URL, format flag, optional output
+urlbox render https://example.com --format png --output home.png
+
+# Full payload via --json (preferred for non-trivial config)
+urlbox render --json '{"url":"https://example.com","format":"pdf","width":1920,"full_page":true}'
+
+# --json from stdin or @file
+echo '{"url":"https://example.com"}' | urlbox render --json -
+urlbox render --json @opts.json
+
+# Built-in presets layer in defaults (preset < json < flags)
+urlbox render https://example.com --preset mobile          # iPhone viewport
+urlbox render https://example.com --preset desktop         # 1920×1080
+urlbox render https://example.com --preset pdf-a4          # PDF + A4 page
+
+# Preview without calling the API
+urlbox render https://example.com --dry-run
+
+# Generate an equivalent curl command (secret redacted as $URLBOX_API_SECRET)
+urlbox render https://example.com --curl
+
+# Open the result in your browser after rendering
+urlbox render https://example.com --open
+
+# Async: queue and return a renderId
+urlbox render https://example.com --async --webhook-url https://hooks.example/cb
+```
+
+**Aliases** (thin wrappers; share the entire render pipeline):
+
+- `urlbox screenshot <url>` (also `urlbox shot`) — pre-sets `--format png`.
+- `urlbox pdf <url>` — pre-sets `--format pdf --full-page`.
+- `urlbox video <url>` — pre-sets `--format mp4`.
+
+User-supplied flags override the alias defaults: `urlbox screenshot foo.com --format webp`.
+
+**Reliability:** the CLI retries automatically on 429 / 5xx (3 attempts,
+1s/2s/4s backoff with ±20% jitter, respects `Retry-After`). Disable with
+`--no-retry`; cap with `--max-retries N`.
+
+**Output sandbox:** `--output <path>` is canonicalized and asserted to stay
+under the current working directory. Parent escapes (`../`), absolute paths
+outside CWD, and symlinks pointing outside CWD are rejected.
 
 ### `auth`
 
@@ -118,13 +174,17 @@ In a terminal, output is a human-readable table. When piped or with `--output-fo
 $ urlbox commands
 Available commands:
 
-  auth      Configure API credentials
-  commands  List all available commands
-  config    Inspect and modify CLI configuration
-  doctor    Check installation, configuration, network, and credentials
-  schema    Print JSON Schemas describing Urlbox API payloads
-  skill     Agent skill content
-  upgrade   Update urlbox to the latest version
+  auth        Configure API credentials
+  commands    List all available commands
+  config      Inspect and modify CLI configuration
+  doctor      Check installation, configuration, network, and credentials
+  pdf         Render a URL as PDF (alias for `render --format pdf --full-page`)
+  render      Render a URL to a screenshot, PDF, video, or other format
+  schema      Print JSON Schemas describing Urlbox API payloads
+  screenshot  Capture a screenshot (alias for `render --format png`)
+  skill       Agent skill content
+  upgrade     Update urlbox to the latest version
+  video       Render a URL as MP4 video (alias for `render --format mp4`)
 
 Use "urlbox <command> --help" for more information about a command.
 ```

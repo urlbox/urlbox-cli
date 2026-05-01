@@ -11,26 +11,27 @@ npm install -g @urlbox/cli
 ## Usage
 
 ```sh
-urlbox --version
-urlbox --help
-urlbox commands                       # list every command + flag
-urlbox commands --output-format json  # machine-readable for agents
-urlbox auth --api-secret sec_xxxxxx   # save your API secret (non-interactive)
-urlbox auth                           # TTY-only: prompt with masked echo
-urlbox config path                    # where the config lives
-urlbox config profile list            # see configured profiles
-urlbox doctor                         # verify install + auth
-urlbox schema render                  # JSON Schema for the render payload
-urlbox skill show                     # one-page agent guide
+urlbox auth --api-secret sec_xxxxxx                       # one-time
+urlbox render https://example.com --output home.png       # capture & save
+urlbox screenshot https://example.com --output home.png   # alias: --format png
+urlbox pdf https://example.com --output home.pdf          # alias: --format pdf --full-page
+urlbox video https://example.com --output home.mp4        # alias: --format mp4
+
+urlbox render https://example.com --dry-run               # preview payload, no API call
+urlbox render https://example.com --curl                  # paste-able curl, secret redacted
+urlbox render https://example.com --open                  # open result in browser
+
+# Self-discovery
+urlbox commands --output-format json                      # full command catalog
+urlbox render --help --agent                              # structured JSON help
+urlbox schema render                                      # JSON Schema of render options
+urlbox skill show                                         # one-page agent guide
+
+# Diagnostics
+urlbox doctor                                             # version + config + auth + reachability
 ```
 
-Discover render options at a glance:
-
-```sh
-urlbox schema render --jq '.data.properties | keys'
-```
-
-All commands support `--output-format json|text|quiet` and a built-in `--jq <expr>` filter (no external `jq` binary needed). Payloads sent via `--json` (Phase 4 onward) are validated client-side against the same schema before any network call — see `urlbox skill show` for the full validation contract.
+All commands support `--output-format json|text|quiet` and a built-in `--jq <expr>` filter (no external `jq` binary needed). Payloads sent via `--json` are validated client-side against the same schema before any network call.
 
 Multi-account workflows use named profiles (`urlbox --profile <name> ...`); see `urlbox config profile --help`.
 
