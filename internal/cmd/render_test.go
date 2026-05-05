@@ -174,6 +174,84 @@ func TestRender_NoURL_NoJSON_UsageError(t *testing.T) {
 	}
 }
 
+// v0.9.0: typed-flag enum values get strict client-side validation at the
+// Cobra layer (this is the explicit contract — fast local feedback). The
+// schema's enum list is the source of truth.
+func TestRender_TypedFlag_WaitUntil_InvalidEnum_ErrorsLocally(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{
+		"render",
+		"https://example.com",
+		"--wait-until", "totally_made_up",
+		"--dry-run",
+		"--output-format", "json",
+	}, &stdout, &stderr)
+	if exit != 2 {
+		t.Fatalf("exit=%d, want 2 (validation); stdout=%s stderr=%s", exit, stdout.String(), stderr.String())
+	}
+	var env map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("not JSON: %v", err)
+	}
+	errStr, _ := env["error"].(string)
+	if !strings.Contains(errStr, "wait-until") {
+		t.Errorf("error should mention --wait-until; got: %q", errStr)
+	}
+	hint, _ := env["hint"].(string)
+	if !strings.Contains(hint, "Allowed:") {
+		t.Errorf("hint should list allowed values; got: %q", hint)
+	}
+}
+
+// Same contract for --format.
+func TestRender_TypedFlag_Format_InvalidEnum_ErrorsLocally(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{
+		"render",
+		"https://example.com",
+		"--format", "xyzzy",
+		"--dry-run",
+		"--output-format", "json",
+	}, &stdout, &stderr)
+	if exit != 2 {
+		t.Fatalf("exit=%d, want 2 (validation); stdout=%s stderr=%s", exit, stdout.String(), stderr.String())
+	}
+	var env map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("not JSON: %v", err)
+	}
+	errStr, _ := env["error"].(string)
+	if !strings.Contains(errStr, "format") {
+		t.Errorf("error should mention --format; got: %q", errStr)
+	}
+}
+
+// Counterpart: --format passed via --json (NOT a typed flag) is passthrough.
+// Confirms the contract split: typed flags are gated, --json is not.
+func TestRender_JSONFormat_BadEnum_PassesThroughToAPI(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{
+		"render",
+		"--json", `{"url":"https://example.com","format":"xyzzy"}`,
+		"--dry-run",
+		"--output-format", "json",
+	}, &stdout, &stderr)
+	if exit != 0 {
+		t.Fatalf("exit=%d, want 0 (passthrough); stdout=%s stderr=%s", exit, stdout.String(), stderr.String())
+	}
+	var env map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("not JSON: %v", err)
+	}
+	data, _ := env["data"].(map[string]any)
+	if data["format"] != "xyzzy" {
+		t.Errorf("expected format=xyzzy verbatim; got %v", data["format"])
+	}
+}
+
 // v0.9.0 schema-as-docs contract: known-key bad type passes through to the
 // API. The CLI no longer gates type errors locally; the API returns
 // structured InvalidOptionsError (Zod tree). Local --dry-run echoes the

@@ -25,12 +25,22 @@ type schemaProperty struct {
 //
 // The schema is parsed once on first call; subsequent calls are concurrency-safe.
 func EnumValuesFor(field string) string {
+	return strings.Join(EnumSliceFor(field), ", ")
+}
+
+// EnumSliceFor returns the slice form of the enum values for a field. Returns
+// nil when the field has no enum or doesn't exist. Used by the Cobra-layer
+// typed-flag validators (v0.9.0 schema-as-docs) that strictly enforce enum
+// values for typed flags like --wait-until and --format.
+func EnumSliceFor(field string) []string {
 	schemaState.once.Do(parseSchema)
 	p, ok := schemaState.props[field]
-	if !ok {
-		return ""
+	if !ok || len(p.Enum) == 0 {
+		return nil
 	}
-	return strings.Join(p.Enum, ", ")
+	out := make([]string, len(p.Enum))
+	copy(out, p.Enum)
+	return out
 }
 
 func parseSchema() {

@@ -218,6 +218,20 @@ func runRender(cmd *cobra.Command, args []string, f *renderFlags) error {
 		)
 	}
 
+	// 4.5. Typed-flag enum validation (v0.9.0 schema-as-docs contract).
+	// Enforces enum values for typed flags only — the same values supplied
+	// via --json passthrough are NOT gated here (the API decides). This is
+	// the explicit split: typed flags get fast local feedback; --json is a
+	// passthrough.
+	for _, ec := range []enumFlagCheck{
+		{schemaField: "format", flagName: "--format", value: f.format},
+		{schemaField: "wait_until", flagName: "--wait-until", value: f.waitUntil},
+	} {
+		if cliErr := validateEnumFlag(ec); cliErr != nil {
+			return cliErr
+		}
+	}
+
 	// 5. Validate the merged payload. Schema-as-documentation contract
 	// (v0.9.0): only local hard errors are size cap / malformed JSON /
 	// control chars / build defects. Unknown keys + bad types pass through
@@ -491,4 +505,44 @@ func writeRenderEnvelope(cmd *cobra.Command, env *output.Envelope) error {
 	}
 	styles := output.NewStylesForWriter(stdout)
 	return output.NewFormatter(format, styles).WriteSuccess(stdout, env)
+}
+
+// enumFlagCheck pairs a typed-flag's user-facing name with the schema field
+// whose enum we enforce against. Used by validateEnumFlag (v0.9.0
+// schema-as-docs).
+type enumFlagCheck struct {
+	schemaField string // e.g. "wait_until"
+	flagName    string // e.g. "--wait-until" (user-facing, included in error)
+	value       string // current value of the flag (empty = flag not set)
+}
+
+// validateEnumFlag returns a validation CLIError when the typed-flag value
+// is non-empty and not in the schema's enum list. When the schema doesn't
+// publish an enum for the field, the check is a no-op (don't reject what
+// we can't validate). Empty values mean the flag wasn't set — also no-op.
+//
+// Equivalent values supplied via --json are NOT subject to this check; the
+// API decides for those (schema-as-docs contract).
+func validateEnumFlag(ec enumFlagCheck) *output.CLIError {
+	if ec.value == "" {
+		return nil
+	}
+	allowed := api.EnumSliceFor(ec.schemaField)
+	if len(allowed) == 0 {
+		return nil
+	}
+	for _, a := range allowed {
+		if a == ec.value {
+			return nil
+		}
+	}
+	hint := "Allowed: " + strings.Join(allowed, ", ")
+	if suggestion, ok := validation.ClosestMatch(ec.value, allowed); ok {
+		hint = `Did you mean "` + suggestion + `"? ` + hint
+	}
+	return output.NewCLIError(
+		output.ErrValidation,
+		ec.flagName+`: invalid value "`+ec.value+`"`,
+		hint,
+	)
 }
