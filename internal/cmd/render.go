@@ -218,8 +218,11 @@ func runRender(cmd *cobra.Command, args []string, f *renderFlags) error {
 		)
 	}
 
-	// 5. Validate the merged payload (size cap, control chars, fuzzy
-	// correction, JSON Schema). Returns the canonical map.
+	// 5. Validate the merged payload. Schema-as-documentation contract
+	// (v0.9.0): only local hard errors are size cap / malformed JSON /
+	// control chars / build defects. Unknown keys + bad types pass through
+	// to the API; fuzzy-matchable typos emit a stderr warning but the
+	// request still goes out verbatim.
 	mergedJSON, err := json.Marshal(merged)
 	if err != nil {
 		return output.NewCLIError(output.ErrUsage, "failed to encode merged payload", err.Error())
@@ -227,6 +230,9 @@ func runRender(cmd *cobra.Command, args []string, f *renderFlags) error {
 	validated, vErr := validation.ValidatePayload(mergedJSON)
 	if vErr != nil {
 		return vErr
+	}
+	for _, w := range validation.LastWarnings() {
+		_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "warning:", w)
 	}
 
 	// 6. --dry-run short-circuits with the validated payload in the envelope.

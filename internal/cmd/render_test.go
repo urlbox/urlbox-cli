@@ -174,29 +174,36 @@ func TestRender_NoURL_NoJSON_UsageError(t *testing.T) {
 	}
 }
 
-func TestRender_ValidationError_FromValidatePayload(t *testing.T) {
+// v0.9.0 schema-as-docs contract: known-key bad type passes through to the
+// API. The CLI no longer gates type errors locally; the API returns
+// structured InvalidOptionsError (Zod tree). Local --dry-run echoes the
+// payload verbatim including format:42.
+func TestRender_KnownKeyBadType_PassesThroughToAPI(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	var stdout, stderr bytes.Buffer
-	// Invalid payload: format must be a string per the schema, not a number.
 	exit := cmd.Execute([]string{
 		"render",
 		"--json", `{"url":"https://example.com","format":42}`,
 		"--dry-run",
 		"--output-format", "json",
 	}, &stdout, &stderr)
-	if exit != 2 {
-		t.Fatalf("exit=%d, want 2 (validation); stdout=%s", exit, stdout.String())
+	if exit != 0 {
+		t.Fatalf("exit=%d, want 0 (passthrough); stdout=%s stderr=%s", exit, stdout.String(), stderr.String())
 	}
 	var env map[string]any
 	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
 		t.Fatalf("not JSON: %v", err)
 	}
-	if env["code"] != "validation" {
-		t.Errorf("code=%v, want validation", env["code"])
+	data, _ := env["data"].(map[string]any)
+	if data["format"] != float64(42) {
+		t.Errorf("expected data.format=42 (verbatim passthrough); got %v", data["format"])
 	}
 }
 
-func TestRender_FuzzyCorrection_OnUnknownOption(t *testing.T) {
+// v0.9.0 schema-as-docs contract: unknown key with a fuzzy match emits a
+// stderr warning but the request still goes through verbatim — agent reads
+// the warning, decides whether to re-run with the suggested fix.
+func TestRender_FuzzyCorrection_WarnsAndPassesThrough(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	var stdout, stderr bytes.Buffer
 	exit := cmd.Execute([]string{
@@ -205,16 +212,24 @@ func TestRender_FuzzyCorrection_OnUnknownOption(t *testing.T) {
 		"--dry-run",
 		"--output-format", "json",
 	}, &stdout, &stderr)
-	if exit != 2 {
-		t.Fatalf("exit=%d, want 2; stdout=%s", exit, stdout.String())
+	if exit != 0 {
+		t.Fatalf("exit=%d, want 0 (passthrough); stdout=%s stderr=%s", exit, stdout.String(), stderr.String())
 	}
+	// Stderr should carry the warning.
+	if !strings.Contains(stderr.String(), "warning:") {
+		t.Errorf("expected 'warning:' prefix on stderr; got: %s", stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "fromat") || !strings.Contains(stderr.String(), "format") {
+		t.Errorf("expected stderr to mention 'fromat' and suggest 'format'; got: %s", stderr.String())
+	}
+	// Payload passes through verbatim (key NOT auto-corrected).
 	var env map[string]any
 	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
 		t.Fatalf("not JSON: %v", err)
 	}
-	hint, _ := env["hint"].(string)
-	if !strings.Contains(hint, "format") {
-		t.Errorf("hint should suggest 'format'; got %q", hint)
+	data, _ := env["data"].(map[string]any)
+	if data["fromat"] != "png" {
+		t.Errorf("expected data.fromat=png (verbatim, not auto-corrected); got %v", data["fromat"])
 	}
 }
 
