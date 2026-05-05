@@ -4,6 +4,75 @@ All notable changes to the `urlbox` CLI are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
+## v0.9.0 — 2026-05-05
+
+Schema-as-documentation. The embedded `schema/render.json` becomes
+informational, the Urlbox API becomes the authoritative validator, and
+`--json` becomes a passthrough that always works for any current or future
+API option.
+
+### BREAKING
+
+- **`--json` no longer gates unknown keys or known-bad types.** Anything
+  passed via `--json` flows to the API verbatim; the API returns structured
+  field-level errors. Previously the CLI rejected unknown keys and bad types
+  locally with `code: "validation"` (exit 2). If you relied on the local
+  rejection — e.g. catching typos in CI — switch to a `--dry-run` followed
+  by `urlbox schema render` introspection, or grep stderr for
+  `^warning:` lines (which still surface fuzzy-matchable typos).
+- **Hand-patched `video_scroll*` schema entries removed.** They were never
+  in the dashboard's docs source (`apps/dashboard/src/lib/options.ts`) and
+  flow through the new `--json` passthrough now. To use them:
+  `urlbox render <url> --json '{"video_scroll": true, "video_scroll_distance": 800}'`.
+
+### Added
+
+- Embedded `schema/render.json` regenerated from urlbox-mono's generator
+  with `additionalProperties: true`. Schema is now strictly informational —
+  it powers typed flags, `--help` text, `urlbox schema render`, and
+  fuzzy-typo suggestions, but does not gate API requests.
+- Stderr warnings for `--json` keys that fuzzy-match a documented option:
+  `warning: unknown option "fromat" — did you mean "format"? (sending
+  verbatim; the API will decide)`. Multiple typos collapse into one summary
+  warning. Keys with no fuzzy match pass silently.
+- Typed-flag enum enforcement at the Cobra layer for `--format` and
+  `--wait-until`. Invalid values error locally with an `Allowed: ...` hint
+  (and a "Did you mean: ..." prefix when fuzzy-matchable). Same `--json`
+  values are passthrough — the contract split is explicit and consistent.
+
+### Changed
+
+- `internal/validation.ValidatePayload` no longer calls `schema.Validate()`.
+  The pipeline now runs: `ResetWarnings → SanitizeRaw (size) → JSON parse →
+  field-sanitize (URL control chars) → recordUnknownKeyWarnings (warn,
+  never error)`. Local hard errors are unchanged.
+- New exported helpers: `validation.ResetWarnings()` and
+  `validation.LastWarnings()` for callers that need to drain warnings to
+  stderr (the render command does this after every `ValidatePayload`).
+- New exported helper: `api.EnumSliceFor(field)` returns the enum values
+  for a schema field as `[]string`. Used by the Cobra-layer enum validator.
+
+### Documentation
+
+- New "Validation contract" section in `SKILL.md`, `README.md`, and
+  `npm/README.md` explaining the typed-flag-vs-`--json` model, the warning
+  behavior, and the local-hard-error list.
+- `TestSkill_DocumentsRenderSurface` extended to pin "Validation contract"
+  and "passthrough" as required strings (regression guard against silent
+  doc regressions).
+
+### Notes
+
+- The CLI release ships independently of the urlbox-mono PR landing the
+  generator and auto-PR workflow. The schema in this release was generated
+  locally from urlbox-mono's generator branch run against `main`. Once the
+  upstream PR merges, future schema regenerations flow automatically (a PR
+  opens in this repo whenever `apps/dashboard/src/lib/options.ts` changes).
+- Schema completeness debt: ~50 options visible in the dashboard UI are
+  not yet in `apps/dashboard/src/lib/options.ts`. They work today via
+  `--json`. The dashboard team backfills as they go; the auto-PR workflow
+  picks them up incrementally.
+
 ## v0.8.1 — 2026-05-01
 
 Agent self-bootstrap — closes the discovery gap where the embedded SKILL.md

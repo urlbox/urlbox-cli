@@ -33,7 +33,9 @@ urlbox skill show                                         # one-page agent guide
 urlbox doctor                                             # version + config + auth + reachability
 ```
 
-All commands support `--output-format json|text|quiet` and a built-in `--jq <expr>` filter (no external `jq` binary needed). Payloads sent via `--json` are validated client-side against the same schema before any network call.
+All commands support `--output-format json|text|quiet` and a built-in `--jq <expr>` filter (no external `jq` binary needed).
+
+**Validation contract (v0.9.0+):** typed flags (`--width`, `--format`, `--wait-until`, ...) are validated locally — fast feedback for type errors and invalid enum values. The `--json` option is a passthrough: the Urlbox API performs all option validation, so any current or future API option works via `--json` without needing a CLI update. If a `--json` key looks like a typo of a documented option, the CLI prints a `warning: ...` to stderr and still sends the request verbatim.
 
 Multi-account workflows use named profiles (`urlbox --profile <name> ...`); see `urlbox config profile --help`.
 

@@ -129,14 +129,23 @@ urlbox render --json '{"url":"https://example.com","video_scroll":true,"video_sc
 urlbox render https://example.com --json '{"video_scroll":true}' --output movie.mp4 --format mp4
 ```
 
-The validator runs locally against the embedded JSON Schema, so
-typos are caught before any API call (saves credits + tightens the
-feedback loop). Unknown keys produce a `code: "validation"` envelope
-with a "did you mean: <closest>" hint.
+As of v0.9.0 the embedded JSON Schema is **documentation, not a gate**:
+`--json` is a passthrough — anything you pass goes to the Urlbox API
+verbatim, and the API is the authoritative validator. Typos that look
+like documented options trigger a stderr warning ("did you mean:
+<closest>?") but the request still goes through; agents read the
+warning and decide whether to re-run with the suggested spelling.
+
+This means **`--json` always works for any current or future API
+option** — no need to wait for a CLI release when the dashboard adds
+something new. The trade-off: errors arrive after a network round-trip
+instead of locally.
 
 **Decision tree for agents:** if the option you need is in
-`urlbox render --help`, use the flag; otherwise reach for `--json '{...}'`.
-Never guess — `urlbox schema render` is the source of truth.
+`urlbox render --help`, use the typed flag (fast local feedback,
+strict enum/type validation). Otherwise reach for `--json '{...}'`
+(passthrough, the API decides). Never guess — `urlbox schema render`
+documents the well-known options, but the API accepts more.
 
 ## Available commands
 
@@ -261,20 +270,37 @@ discover every valid option and its type.
 - `urlbox schema render --output-format quiet` — raw schema only (no envelope).
 - `urlbox schema render --jq '.data.properties.url'` — drill into a specific field.
 
-## Validation
+## Validation contract
 
-When `--json` is used (Phase 4 onward), payloads are validated before being
-sent to the API:
+The CLI's embedded JSON Schema (`schema/render.json`, ~150 documented
+options) is **documentation, not a gate** — it powers typed flags,
+help text, fuzzy-typo suggestions, and `urlbox schema render`. The
+Urlbox API is the authoritative validator.
 
-1. **Size cap:** payloads larger than 1 MiB are rejected.
-2. **Control characters:** URL-like fields with characters below 0x20 or 0x7F
-   are rejected.
-3. **Fuzzy correction:** unknown top-level options trigger a "did you mean
-   <similar>?" suggestion when a close match exists.
-4. **JSON Schema:** the full payload is validated against the embedded render
-   JSON Schema (Draft 2020-12).
+**Typed flags** (`--width`, `--format`, `--wait-until`, ...) get
+strict client-side validation:
+- Type checks via Cobra (e.g. `--width=abc` → local error).
+- Enum checks against the schema (e.g. `--wait-until invalid` → local
+  error with "Allowed: ..." hint).
 
-All validation failures use error code `"validation"` (exit code 2).
+**`--json` is a passthrough:**
+- Unknown keys, known-but-bad-type values, missing-required fields —
+  all go to the API. Structured `InvalidOptions` responses (with
+  field names) come back when the API rejects.
+- Unknown keys that fuzzy-match a documented option emit a stderr
+  warning (`warning: unknown option "fromat" — did you mean
+  "format"?`) but the request is still sent verbatim. Agents read
+  the warning and decide whether to re-run with the suggestion.
+
+Local hard errors (always reject before any API call):
+1. Payloads larger than 1 MiB.
+2. URL-like fields with control characters (below 0x20 or 0x7F).
+3. Malformed JSON.
+
+All local validation failures use error code `"validation"` (exit
+code 2). API-side validation failures arrive as exit code 2 with the
+same `"validation"` envelope, plus the API's structured field-level
+detail.
 
 ## Configuration
 

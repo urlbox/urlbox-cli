@@ -133,6 +133,25 @@ likely captured a captcha page rather than the target content.
 under the current working directory. Parent escapes (`../`), absolute paths
 outside CWD, and symlinks pointing outside CWD are rejected.
 
+#### Validation contract (v0.9.0+)
+
+The CLI ships an embedded JSON Schema documenting the well-known render
+options. As of v0.9.0, validation splits cleanly:
+
+- **Typed flags** (`--width`, `--format`, `--wait-until`, ...) are validated
+  locally — the CLI catches type errors and invalid enum values before any
+  network call.
+- **`--json`** is a passthrough: the Urlbox API performs all option
+  validation. Any current or future API option works via `--json` without
+  needing a CLI update. If a `--json` key looks like a typo of a documented
+  option, the CLI prints a `warning: ...` line to stderr and still sends
+  the request verbatim — the agent or user reads the warning and decides
+  whether to re-run with the suggested spelling.
+
+Local hard errors that always reject before sending: payloads larger than
+1 MiB, URL-like fields with control characters, malformed JSON. Everything
+else flows to the API.
+
 ### `auth`
 
 Saves your Urlbox API secret to `~/.config/urlbox/config.json` (mode 0600). The
