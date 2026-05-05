@@ -115,9 +115,8 @@ func resolveOutputPath(userPath, baseDir string) (string, *output.CLIError) {
 // If no ancestor exists, returns the cleaned input unchanged — the caller's
 // sandbox check is the final line of defense.
 //
-// Note: this defends against parent-symlinks. A leaf-symlink (the FILE
-// itself is a symlink) would still let O_TRUNC follow it. Hardening that
-// needs O_NOFOLLOW or an Lstat probe; deferred.
+// Note: this defends against parent-symlinks. The leaf is defended
+// separately by the Lstat probe in downloadTo before open.
 func canonicalizeExistingPrefix(path string) string {
 	suffix := ""
 	current := path
@@ -176,6 +175,20 @@ func downloadTo(ctx context.Context, url, dst string) *output.CLIError {
 			output.ErrServer,
 			fmt.Sprintf("download returned HTTP %d", resp.StatusCode),
 			"The render URL may have expired. Re-run urlbox render or check the dashboard.",
+		)
+	}
+
+	// Reject leaf symlinks before opening the file: O_NOFOLLOW would do
+	// this kernel-side but isn't portable across the OSes we ship for.
+	// Lstat probes the path itself (without following the final link) and
+	// rejects if it resolves to a symlink. Defends against an attacker
+	// planting `out.png → /etc/hosts` and waiting for `urlbox render
+	// --output out.png` to overwrite it.
+	if info, err := os.Lstat(dst); err == nil && info.Mode()&os.ModeSymlink != 0 {
+		return output.NewCLIError(
+			output.ErrValidation,
+			"--output path is an existing symlink; refusing to follow",
+			"Remove the symlink at "+dst+" first, or write to a different path.",
 		)
 	}
 

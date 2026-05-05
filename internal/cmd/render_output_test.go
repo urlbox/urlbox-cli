@@ -5,10 +5,15 @@ package cmd
 // canonicalization is caught immediately.
 
 import (
+	"context"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/urlbox/urlbox-cli/internal/output"
 )
 
 func TestResolveOutputPath_RejectsEmpty(t *testing.T) {
@@ -199,5 +204,55 @@ func TestResolveOutputPath_BareTilde_ExpandsToHome(t *testing.T) {
 	}
 	if string(perr.Code) != "validation" {
 		t.Errorf("code=%v, want validation", perr.Code)
+	}
+}
+
+func TestDownloadTo_RejectsLeafSymlink(t *testing.T) {
+	tmp := t.TempDir()
+	target := filepath.Join(tmp, "real-target.png")
+	if err := os.WriteFile(target, []byte("untouchable"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(tmp, "out.png")
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("symlinks not supported on this filesystem: %v", err)
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("malicious-content"))
+	}))
+	defer srv.Close()
+
+	cliErr := downloadTo(context.Background(), srv.URL, link)
+	if cliErr == nil {
+		t.Fatal("expected error rejecting leaf symlink, got nil")
+	}
+	if cliErr.Code != output.ErrValidation {
+		t.Errorf("code=%v, want validation", cliErr.Code)
+	}
+	body, _ := os.ReadFile(target)
+	if string(body) != "untouchable" {
+		t.Errorf("symlink target was overwritten: %q", string(body))
+	}
+}
+
+func TestDownloadTo_AcceptsExistingRegularFile(t *testing.T) {
+	tmp := t.TempDir()
+	dst := filepath.Join(tmp, "out.png")
+	if err := os.WriteFile(dst, []byte("old"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("new-content"))
+	}))
+	defer srv.Close()
+
+	if cliErr := downloadTo(context.Background(), srv.URL, dst); cliErr != nil {
+		t.Fatalf("unexpected error: %v", cliErr)
+	}
+	body, _ := os.ReadFile(dst)
+	if string(body) != "new-content" {
+		t.Errorf("file not overwritten: %q", string(body))
 	}
 }
