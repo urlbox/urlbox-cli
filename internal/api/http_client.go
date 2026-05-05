@@ -174,9 +174,12 @@ func (c *HTTPClient) do(ctx context.Context, method, path string, body any) (*Re
 // mapStatusToCLIError maps a non-2xx response to a typed *output.CLIError.
 // 401 → auth, 403 → forbidden, 404 → not_found, 409 → conflict,
 // 429 → rate_limit, 5xx → server, 4xx (other) → usage. The API's error
-// message is lifted into Message; for 400 the error code is also
-// inspected — auth-related codes (ApiKeyNotFound, ApiKeyInvalid, ...)
-// re-route to ErrAuth even though the HTTP status is 400.
+// message is lifted into Message; the error code is also inspected so
+// some 4xx classes re-route — auth-related codes (ApiKeyNotFound,
+// ApiKeyInvalid, ...) become ErrAuth, and option-validation codes
+// (InvalidOptions, InvalidInput, ...) become ErrValidation. This mirrors
+// the v0.9.0 schema-as-docs contract: the API is the validator, and the
+// CLI surfaces its responses with consistent error codes.
 func mapStatusToCLIError(resp *http.Response, body []byte) *output.CLIError {
 	apiMsg, apiCode := extractAPIError(body)
 	switch {
@@ -222,6 +225,17 @@ func mapStatusToCLIError(resp *http.Response, body []byte) *output.CLIError {
 		}
 		return output.NewCLIError(output.ErrServer, msg,
 			"Try again in a moment, or check status.urlbox.com.")
+	case isValidationErrorCode(apiCode):
+		// v0.9.0 schema-as-docs: --json passes through to the API, so
+		// option-validation rejections come back here. Surface them as
+		// ErrValidation so the agent's handling matches what would
+		// happen for local validation errors.
+		msg := apiMsg
+		if msg == "" {
+			msg = "API rejected one or more options"
+		}
+		return output.NewCLIError(output.ErrValidation, msg,
+			"Run `urlbox render --dry-run` to inspect the merged payload, or `urlbox schema render` to see documented option types and enum values.")
 	default: // other 4xx
 		msg := apiMsg
 		if msg == "" {
@@ -241,6 +255,26 @@ func isAuthErrorCode(code string) bool {
 	return strings.HasPrefix(code, "ApiKey") ||
 		strings.HasPrefix(code, "Auth") ||
 		strings.HasPrefix(code, "Unauthorized")
+}
+
+// isValidationErrorCode returns true when the API error code names an
+// option-validation failure. These come back as 4xx but should map to
+// ErrValidation (not the generic ErrUsage default) so the v0.9.0 schema-as-docs
+// contract is honored: --json passes through, and when the API rejects, the
+// CLI surfaces a validation envelope. Mirrors the ClientError subclasses in
+// urlbox-mono apps/api/src/lib/errors.ts (ValidateRequestErrors namespace
+// + a few peers used at the same layer).
+func isValidationErrorCode(code string) bool {
+	switch code {
+	case "InvalidOptions",
+		"InvalidInput",
+		"InvalidTtl",
+		"InvalidQuery",
+		"DuplicateThumbnailSuffixError",
+		"ConflictingStorageOptionsError":
+		return true
+	}
+	return false
 }
 
 // extractAPIError reads an Urlbox-shaped JSON error body and returns

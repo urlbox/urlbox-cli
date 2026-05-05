@@ -134,6 +134,101 @@ func TestSmoke_AuthFails_BadSecret(t *testing.T) {
 	}
 }
 
+// TestSmoke_v090_PassthroughVideoScroll proves the v0.9.0 schema-as-docs
+// contract end-to-end: video_scroll fields (no longer in schema/render.json
+// after the v0.9.0 hand-patch removal) flow through to the API and produce
+// a real video render. Pre-v0.9.0 the CLI rejected this locally with an
+// "unknown option" envelope; today it's just an option the API knows about.
+func TestSmoke_v090_PassthroughVideoScroll(t *testing.T) {
+	c := smokeClient(t)
+	// Video renders take longer than screenshots; give the per-attempt
+	// timeout some headroom.
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+
+	resp, err := c.Render(ctx, map[string]any{
+		"url":                   "https://example.com",
+		"format":                "mp4",
+		"video_scroll":          true,
+		"video_scroll_distance": 600,
+	})
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	url, _ := resp.Data["renderUrl"].(string)
+	if !strings.HasPrefix(url, "https://") {
+		t.Errorf("renderUrl=%q, want https:// prefix", url)
+	}
+}
+
+// TestSmoke_v090_PassthroughTotallyMadeUp proves the loose-schema contract:
+// fields the API doesn't know about are silently accepted (engine ignores).
+// This is the "agent typed something completely novel" case — the CLI does
+// not gate, so it must not break the request when the API also doesn't gate.
+func TestSmoke_v090_PassthroughTotallyMadeUp(t *testing.T) {
+	c := smokeClient(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	resp, err := c.Render(ctx, map[string]any{
+		"url":                       "https://example.com",
+		"format":                    "png",
+		"totally_made_up_xyz_2026":  true,
+		"and_another_one_for_color": "purple",
+	})
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	url, _ := resp.Data["renderUrl"].(string)
+	if !strings.HasPrefix(url, "https://") {
+		t.Errorf("renderUrl=%q, want https:// prefix", url)
+	}
+}
+
+// TestSmoke_v090_KnownBadType_APIReturnsMeaningfulError confirms the OTHER
+// half of the v0.9.0 contract: when --json carries a known field with a
+// bad type, the API rejects with a structured response that the CLI maps
+// to ErrValidation (NOT the generic ErrUsage default that pre-v0.9.0 used
+// for "other 4xx"). Sends width as an array (no anyOf branch matches: not
+// a string, not an integer) to guarantee a hard rejection.
+//
+// What we can verify on the wire today:
+//   - error code routes to ErrValidation (the routing fix)
+//   - message is non-empty and signals options-level rejection
+//   - hint is non-empty and points the agent at next steps
+//
+// What we CAN'T verify here (deferred to a follow-up urlbox-mono PR):
+// the API's response body does not include `info.errors` (the Zod tree
+// with field names) — only the generic "Invalid options, please check
+// errors" message + the `InvalidOptions` code. Field-level detail would
+// require an API change to add `info.errors` to the wire response.
+func TestSmoke_v090_KnownBadType_APIReturnsMeaningfulError(t *testing.T) {
+	c := smokeClient(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	_, err := c.Render(ctx, map[string]any{
+		"url":   "https://example.com",
+		"width": []any{1, 2, 3},
+	})
+	if err == nil {
+		t.Fatalf("expected API to reject width:[1,2,3]; got success")
+	}
+	var cli *output.CLIError
+	if !errors.As(err, &cli) {
+		t.Fatalf("err=%v, want *output.CLIError", err)
+	}
+	if cli.Code != output.ErrValidation {
+		t.Errorf("Code=%q, want %q (API option-validation should map to validation, not usage)", cli.Code, output.ErrValidation)
+	}
+	if cli.Message == "" {
+		t.Errorf("Message is empty; want a non-empty rejection message from the API")
+	}
+	if cli.Hint == "" {
+		t.Errorf("Hint is empty; want a pointer to next-step (e.g. urlbox schema render)")
+	}
+}
+
 // mapKeys is a debug helper for test failure messages.
 func mapKeys(m map[string]any) []string {
 	out := make([]string, 0, len(m))
