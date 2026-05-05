@@ -242,6 +242,108 @@ func TestProfile_IsEmpty(t *testing.T) {
 	}
 }
 
+func TestSave_RenameFails_ReturnsError(t *testing.T) {
+	// Covers the os.Rename failure branch at the end of Save. We pre-create
+	// the target path AS A DIRECTORY so the temp-file-to-target rename fails
+	// (cannot rename a regular file over an existing non-empty directory, and
+	// even an empty dir trips ENOTDIR/EISDIR depending on platform). Parent
+	// stays writable so os.CreateTemp succeeds and we actually reach the
+	// rename branch.
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	parent := filepath.Join(dir, "urlbox")
+	must(t, os.MkdirAll(parent, 0o700))
+
+	// Make the target path a directory containing a file, so it's non-empty
+	// and rename over it is guaranteed to fail across platforms.
+	target := filepath.Join(parent, "config.json")
+	must(t, os.Mkdir(target, 0o700))
+	must(t, os.WriteFile(filepath.Join(target, "blocker"), []byte("x"), 0o600))
+
+	cfg := &config.Config{
+		DefaultProfile: "default",
+		Profiles:       map[string]config.Profile{"default": {APISecret: "ubx_sk_test"}},
+	}
+	err := config.Save(cfg)
+	if err == nil {
+		t.Fatal("expected Save to fail when target is a non-empty directory")
+	}
+}
+
+func TestSave_MkdirAllFails_ReturnsError(t *testing.T) {
+	// Covers the MkdirAll failure branch in Save. If XDG_CONFIG_HOME points
+	// at a regular file, MkdirAll cannot create XDG/urlbox underneath it and
+	// returns an error.
+	dir := t.TempDir()
+	xdg := filepath.Join(dir, "xdg-as-file")
+	must(t, os.WriteFile(xdg, []byte("not a dir"), 0o600))
+	t.Setenv("XDG_CONFIG_HOME", xdg)
+
+	cfg := &config.Config{
+		DefaultProfile: "default",
+		Profiles:       map[string]config.Profile{"default": {APISecret: "ubx_sk_test"}},
+	}
+	if err := config.Save(cfg); err == nil {
+		t.Fatal("expected Save to fail when XDG_CONFIG_HOME is a regular file")
+	}
+}
+
+func TestLoad_MalformedJSON_ReturnsError(t *testing.T) {
+	// Covers the json.Unmarshal error branch in Load.
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	must(t, os.MkdirAll(filepath.Join(dir, "urlbox"), 0o700))
+	must(t, os.WriteFile(filepath.Join(dir, "urlbox", "config.json"), []byte("{not json"), 0o600))
+
+	if _, err := config.Load(); err == nil {
+		t.Fatal("expected Load to fail on malformed JSON")
+	}
+}
+
+func TestAPISecretSource_LegacyOnly_ReturnsFile(t *testing.T) {
+	// Covers the `if c.LegacyAPIKey != ""` branch in APISecretSource. We write
+	// a hand-crafted file where the legacy api_key field is set AND profiles
+	// is non-empty (so Load won't auto-migrate) but no default_profile is
+	// declared — so APISecretSource skips the profile-lookup branch and falls
+	// through to the LegacyAPIKey check.
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	t.Setenv("URLBOX_API_SECRET", "")
+	must(t, os.MkdirAll(filepath.Join(dir, "urlbox"), 0o700))
+	must(t, os.WriteFile(
+		filepath.Join(dir, "urlbox", "config.json"),
+		[]byte(`{"api_key":"sec_legacy","profiles":{"other":{"api_secret":"sec_other"}}}`),
+		0o600,
+	))
+
+	if src := config.APISecretSource(); src != "file" {
+		t.Fatalf("got %q, want file", src)
+	}
+}
+
+func TestSave_CreateTempFails_ReturnsError(t *testing.T) {
+	// Covers the os.CreateTemp failure branch in Save. We make the parent
+	// directory read+execute only (no write), so MkdirAll succeeds (no-op,
+	// dir exists) but CreateTemp inside it fails with EACCES.
+	if os.Getuid() == 0 {
+		t.Skip("running as root; chmod 0500 won't block writes")
+	}
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	parent := filepath.Join(dir, "urlbox")
+	must(t, os.MkdirAll(parent, 0o700))
+	must(t, os.Chmod(parent, 0o500))
+	t.Cleanup(func() { _ = os.Chmod(parent, 0o700) })
+
+	cfg := &config.Config{
+		DefaultProfile: "default",
+		Profiles:       map[string]config.Profile{"default": {APISecret: "ubx_sk_test"}},
+	}
+	if err := config.Save(cfg); err == nil {
+		t.Fatal("expected Save to fail when parent dir is read-only")
+	}
+}
+
 func TestConfig_Save_AtomicViaRename(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)
