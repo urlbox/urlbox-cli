@@ -45,15 +45,15 @@ func SetAuthSecretReaderForTest(f AuthSecretReader) { authSecretReader = f }
 func ResetAuthSecretReaderForTest() { authSecretReader = defaultAuthSecretReader }
 
 // defaultAuthSecretReader reads stdin with terminal echo disabled. Caller is
-// responsible for printing the prompt label first (so this stays a pure I/O
-// primitive that test stubs can replace).
+// responsible for printing the prompt label BEFORE the read AND for printing
+// the trailing newline AFTER the read on the cobra writer (so this stays a
+// pure I/O primitive that test stubs can replace, and so the newline
+// participates in cobra writer plumbing).
 func defaultAuthSecretReader() (string, error) {
 	b, err := term.ReadPassword(int(os.Stdin.Fd())) //nolint:gosec // file descriptors fit in int on every platform Go supports
 	if err != nil {
 		return "", err
 	}
-	// Newline after masked input so the next stderr line starts on its own row.
-	fmt.Fprintln(os.Stderr)
 	return string(b), nil
 }
 
@@ -89,6 +89,9 @@ The env var URLBOX_API_SECRET takes precedence at runtime over the saved value.`
 				if err != nil {
 					return output.NewCLIError(output.ErrUsage, "auth cancelled", err.Error())
 				}
+				// Newline after masked input lands on the cobra writer so it
+				// participates in test capture + caller redirection.
+				_, _ = fmt.Fprintln(cmd.ErrOrStderr())
 				secret = s
 			}
 

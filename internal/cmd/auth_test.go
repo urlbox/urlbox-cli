@@ -210,6 +210,36 @@ func TestAuth_InteractivePath_DispatchedWhenTTY(t *testing.T) {
 	}
 }
 
+// Regression guard: the trailing newline emitted after the masked password
+// read must land on the cobra-injected stderr writer (cmd.ErrOrStderr()),
+// not on the process-global os.Stderr. Otherwise tests can't capture or
+// redirect it, and the writer-plumbing convention breaks.
+func TestAuth_InteractivePrompt_NewlineGoesToCobraStderr(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cmd.SetStdinTTYForTest(true)
+	cmd.SetStderrTTYForTest(true)
+	t.Cleanup(func() {
+		cmd.ResetStdinTTYForTest()
+		cmd.ResetStderrTTYForTest()
+	})
+	cmd.SetAuthSecretReaderForTest(func() (string, error) {
+		return "ubx_sk_test12345678", nil
+	})
+	t.Cleanup(cmd.ResetAuthSecretReaderForTest)
+
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{"auth"}, &stdout, &stderr)
+	if exit != 0 {
+		t.Fatalf("exit=%d stderr=%s", exit, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "API secret:") {
+		t.Errorf("stderr missing prompt; got %q", stderr.String())
+	}
+	if !strings.HasSuffix(stderr.String(), "\n") {
+		t.Errorf("stderr missing trailing newline; got %q", stderr.String())
+	}
+}
+
 func TestAuth_InteractivePath_EmptyInput_UsageError(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	cmd.SetStdinTTYForTest(true)
