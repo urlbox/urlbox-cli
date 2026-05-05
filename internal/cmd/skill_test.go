@@ -108,6 +108,12 @@ func TestSkill_DocumentsRenderSurface(t *testing.T) {
 		"urlbox skill install", // the new command
 		"Bootstrap",            // section header at the top
 		"--target claude-code", // the canonical target invocation
+		// v0.9.0 — schema-as-docs: SKILL.md must teach the new validation
+		// contract so agents understand --json is a passthrough and that
+		// the API (not the CLI) is the authoritative validator.
+		"Validation contract", // new section header (replaces old "Validation")
+		"passthrough",         // load-bearing word for the --json contract
+		"warning:",            // stderr prefix the warning system uses
 	}
 	for _, s := range required {
 		if !strings.Contains(body, s) {

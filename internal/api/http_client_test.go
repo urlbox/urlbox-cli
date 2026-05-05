@@ -271,6 +271,34 @@ func TestHTTPClient_Render_4xxOther_MapsToUsage(t *testing.T) {
 }
 
 // The real Urlbox API returns 400 (not 401) with a NESTED error body for
+// v0.9.0 schema-as-docs: --json passes through to the API, so option
+// rejections come back as 400 with code "InvalidOptions" (or related
+// validation codes). These must route to ErrValidation — NOT the
+// generic ErrUsage default for "other 4xx" — so agents can match the
+// envelope code consistently with what would happen for local validation.
+func TestHTTPClient_Render_400_InvalidOptions_MapsToValidation(t *testing.T) {
+	m := apitest.New(apitest.ScriptedResponse{
+		Status: http.StatusBadRequest,
+		Body:   `{"error":{"code":"InvalidOptions","message":"Invalid options, please check errors"},"requestId":"x"}`,
+	})
+	t.Cleanup(m.Close)
+	c := newTestClient(t, m)
+	_, err := c.Render(context.Background(), map[string]any{"url": "https://example.com", "width": []any{1, 2, 3}})
+	var cli *output.CLIError
+	if !errors.As(err, &cli) {
+		t.Fatalf("err=%v, want *output.CLIError", err)
+	}
+	if cli.Code != output.ErrValidation {
+		t.Errorf("Code=%q, want %q (InvalidOptions on 400 should re-route to validation)", cli.Code, output.ErrValidation)
+	}
+	if !strings.Contains(cli.Message, "Invalid options") {
+		t.Errorf("Message=%q should lift the API's rejection message", cli.Message)
+	}
+	if !strings.Contains(cli.Hint, "schema render") {
+		t.Errorf("Hint=%q, want pointer to `urlbox schema render`", cli.Hint)
+	}
+}
+
 // auth failures: {"error": {"code": "ApiKeyNotFound", "message": "..."}}.
 // We must still map this to ErrAuth based on the inner code, even though
 // the HTTP status code alone would route to ErrUsage.

@@ -3,7 +3,6 @@ package validation
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -16,7 +15,7 @@ import (
 )
 
 // sanitizedStringFields enumerates the string fields whose values must pass
-// SanitizeStringField (control-char rejection) before schema validation.
+// SanitizeStringField (control-char rejection) before passthrough to the API.
 // Currently just URL-like fields.
 var sanitizedStringFields = map[string]struct{}{
 	"url": {},
@@ -29,9 +28,53 @@ var (
 	compileSchemaOnce sync.Once
 )
 
+// warningsMu guards lastWarnings. The slice holds non-fatal stderr-bound
+// messages produced by the most recent ValidatePayload call (e.g. fuzzy-typo
+// suggestions for unknown options that are passed through verbatim).
+var (
+	warningsMu   sync.Mutex
+	lastWarnings []string
+)
+
+// ResetWarnings clears the package-level warning buffer. ValidatePayload
+// invokes this at the top of every call; callers wiring warnings into stderr
+// (e.g. the render command) generally don't need to call it directly.
+func ResetWarnings() {
+	warningsMu.Lock()
+	defer warningsMu.Unlock()
+	lastWarnings = nil
+}
+
+// LastWarnings returns a copy of the warnings produced by the most recent
+// ValidatePayload call. The render command (B6) reads this and prints each
+// entry to stderr; tests assert against the slice directly.
+func LastWarnings() []string {
+	warningsMu.Lock()
+	defer warningsMu.Unlock()
+	if len(lastWarnings) == 0 {
+		return nil
+	}
+	out := make([]string, len(lastWarnings))
+	copy(out, lastWarnings)
+	return out
+}
+
+// appendWarning is the internal mutator. Use ResetWarnings to clear and
+// LastWarnings to read.
+func appendWarning(s string) {
+	warningsMu.Lock()
+	defer warningsMu.Unlock()
+	lastWarnings = append(lastWarnings, s)
+}
+
 // loadSchema compiles the embedded render schema once per process and returns
 // the compiled schema, the sorted list of known top-level property names, and
 // any compile error (sticky across callers).
+//
+// As of v0.9.0 the compiled schema is no longer used by ValidatePayload as a
+// gate (see the ValidatePayload comment). It is kept loaded because the schema
+// surface command and other introspection paths depend on it, and the
+// known-key list it produces still drives fuzzy typo suggestions.
 func loadSchema() (*jsonschema.Schema, []string, error) {
 	compileSchemaOnce.Do(func() {
 		var raw map[string]any
@@ -62,19 +105,32 @@ func loadSchema() (*jsonschema.Schema, []string, error) {
 	return compiledSchema, knownTopLevelKeys, compiledSchemaErr
 }
 
-// ValidatePayload runs the full validation pipeline over a raw --json payload.
+// ValidatePayload runs the v0.9.0 "schema as documentation" pipeline over a
+// raw --json payload.
 //
 // Order of checks:
-//  1. SanitizeRaw (size cap)
-//  2. JSON parse
-//  3. Top-level fuzzy correction on unknown keys
-//  4. Per-field sanitize for known sensitive string fields (e.g. url)
-//  5. JSON Schema validation against the embedded render schema
+//  1. ResetWarnings (clears any leftover state from a previous call)
+//  2. SanitizeRaw (size cap; local hard error)
+//  3. JSON parse (local hard error)
+//  4. Per-field sanitize for known sensitive string fields, e.g. url control
+//     characters (local hard error)
+//  5. Unknown-key warning recorder — emits a non-fatal warning via
+//     appendWarning when an unknown key fuzzy-matches a known option;
+//     silent passthrough when no match. Never returns an error.
 //
-// On success returns the parsed payload as map[string]any. On failure returns
-// (nil, *output.CLIError) with code "validation" (or "server" if the embedded
-// schema itself is unreadable, which would be a build defect).
+// Notably ABSENT: a schema gate. v0.9.0 removed the compiled.Validate(payload)
+// call so --json passes through to the API verbatim — the API is the single
+// source of truth for option validation and emits structured errors. The
+// embedded schema remains informational: it powers typed flags, help text,
+// and the typo-suggestion list. See spec at
+// ~/.claude/specs/2026-05-05-cli-schema-as-documentation-design.md (§5.3).
+//
+// Returns the parsed payload as map[string]any on success. Returns
+// (nil, *output.CLIError) only for the four local hard errors above (size
+// cap, malformed JSON, control characters, embedded-schema build defect).
 func ValidatePayload(b []byte) (map[string]any, *output.CLIError) {
+	ResetWarnings()
+
 	if err := SanitizeRaw(b); err != nil {
 		return nil, err
 	}
@@ -88,19 +144,13 @@ func ValidatePayload(b []byte) (map[string]any, *output.CLIError) {
 		)
 	}
 
-	compiled, known, schemaErr := loadSchema()
+	_, known, schemaErr := loadSchema()
 	if schemaErr != nil {
 		return nil, output.NewCLIError(
 			output.ErrServer,
 			"Embedded render schema is unavailable: "+schemaErr.Error(),
 			"This is a build defect. Please open an issue.",
 		)
-	}
-
-	// Fuzzy-correct unknown top-level keys before formal schema validation —
-	// gives nicer agent UX than schema's generic "additionalProperties" error.
-	if cliErr := checkUnknownKeys(payload, known); cliErr != nil {
-		return nil, cliErr
 	}
 
 	// Per-field sanitize for known sensitive string fields.
@@ -114,121 +164,67 @@ func ValidatePayload(b []byte) (map[string]any, *output.CLIError) {
 		}
 	}
 
-	// JSON Schema validation.
-	if err := compiled.Validate(payload); err != nil {
-		return nil, schemaErrorToCLIError(err)
-	}
+	// Record warnings for unknown keys that look like typos. Never returns
+	// an error: anything goes through to the API.
+	recordUnknownKeyWarnings(payload, known)
 
 	return payload, nil
 }
 
-// checkUnknownKeys collects payload keys not present in the schema's known
-// top-level property set, suggests fuzzy corrections, and returns a single
-// validation CLIError summarising them. Returns nil when every key is known.
-func checkUnknownKeys(payload map[string]any, known []string) *output.CLIError {
+// recordUnknownKeyWarnings walks payload keys, finds those not present in
+// the schema's known top-level property set, and runs each through
+// ClosestMatch. For every fuzzy-matchable typo it appends a friendly stderr
+// warning via appendWarning; truly novel keys (no fuzzy hit) are silent.
+//
+// Multiple matchable typos collapse into a single summary warning. Unknown
+// keys are ALWAYS passed through verbatim — the warning is informational,
+// not a correction. The API decides.
+func recordUnknownKeyWarnings(payload map[string]any, known []string) {
 	if len(known) == 0 {
-		return nil
+		return
 	}
 	knownSet := make(map[string]struct{}, len(known))
 	for _, k := range known {
 		knownSet[k] = struct{}{}
 	}
 
-	type unknown struct {
+	type match struct {
 		name       string
 		suggestion string
-		hasMatch   bool
 	}
-	var unknowns []unknown
+	var matches []match
 	for key := range payload {
 		if _, ok := knownSet[key]; ok {
 			continue
 		}
-		match, hasMatch := ClosestMatch(key, known)
-		unknowns = append(unknowns, unknown{name: key, suggestion: match, hasMatch: hasMatch})
+		if suggestion, ok := ClosestMatch(key, known); ok {
+			matches = append(matches, match{name: key, suggestion: suggestion})
+		}
+		// No fuzzy match → silent passthrough.
 	}
-	if len(unknowns) == 0 {
-		return nil
+	if len(matches) == 0 {
+		return
 	}
 
-	sort.Slice(unknowns, func(i, j int) bool {
-		return unknowns[i].name < unknowns[j].name
+	sort.Slice(matches, func(i, j int) bool {
+		return matches[i].name < matches[j].name
 	})
 
-	if len(unknowns) == 1 {
-		u := unknowns[0]
-		msg := "Unknown option: " + u.name
-		if u.hasMatch {
-			return output.NewCLIError(output.ErrValidation, msg, fmt.Sprintf(`Did you mean %q?`, u.suggestion))
-		}
-		return output.NewCLIError(output.ErrValidation, msg, "Run `urlbox schema render` to see all valid options.")
+	if len(matches) == 1 {
+		m := matches[0]
+		appendWarning(fmt.Sprintf(
+			`unknown option %q — did you mean %q? (sending verbatim; the API will decide)`,
+			m.name, m.suggestion,
+		))
+		return
 	}
 
-	names := make([]string, 0, len(unknowns))
-	parts := make([]string, 0, len(unknowns))
-	anyMatch := false
-	for _, u := range unknowns {
-		names = append(names, u.name)
-		if u.hasMatch {
-			parts = append(parts, fmt.Sprintf(`%s → %q`, u.name, u.suggestion))
-			anyMatch = true
-		}
+	parts := make([]string, 0, len(matches))
+	for _, m := range matches {
+		parts = append(parts, fmt.Sprintf(`%s → %q`, m.name, m.suggestion))
 	}
-	msg := "Unknown options: " + strings.Join(names, ", ")
-	if anyMatch {
-		return output.NewCLIError(
-			output.ErrValidation,
-			msg,
-			"Did you mean: "+strings.Join(parts, ", ")+"?",
-		)
-	}
-	return output.NewCLIError(output.ErrValidation, msg, "Run `urlbox schema render` to see all valid options.")
-}
-
-// schemaErrorToCLIError converts a jsonschema validation error into a
-// validation-class CLIError, surfacing the offending field path in the hint.
-func schemaErrorToCLIError(err error) *output.CLIError {
-	var ve *jsonschema.ValidationError
-	if !errors.As(err, &ve) {
-		return output.NewCLIError(
-			output.ErrValidation,
-			"Payload validation failed: "+err.Error(),
-			"",
-		)
-	}
-
-	leaf := leafCause(ve)
-	path := leafPath(leaf)
-	hint := ""
-	if path != "" {
-		hint = "Field \"" + path + "\" failed validation. Run `urlbox schema render` to see its constraints."
-	}
-	detail := leafSummary(leaf)
-	return output.NewCLIError(output.ErrValidation, "Payload validation failed: "+detail, hint)
-}
-
-// leafCause walks the error tree to the deepest first cause — the most
-// specific failure to surface to the user.
-func leafCause(ve *jsonschema.ValidationError) *jsonschema.ValidationError {
-	for len(ve.Causes) > 0 {
-		ve = ve.Causes[0]
-	}
-	return ve
-}
-
-// leafPath returns a dotted path for the leaf's instance location, e.g.
-// "width" or "options.foo". Empty string for the document root.
-func leafPath(ve *jsonschema.ValidationError) string {
-	if len(ve.InstanceLocation) == 0 {
-		return ""
-	}
-	return strings.Join(ve.InstanceLocation, ".")
-}
-
-// leafSummary renders a short, human-readable description of the leaf error.
-// We rely on the upstream Error() formatter (which uses an English printer
-// internally) to produce a single-line "at \"<ptr>\": <kind>" string for the
-// leaf, then trim any trailing whitespace from the formatter.
-func leafSummary(ve *jsonschema.ValidationError) string {
-	return strings.TrimSpace(ve.Error())
+	appendWarning(
+		"unknown options — did you mean: " + strings.Join(parts, ", ") +
+			"? (sending verbatim; the API will decide)",
+	)
 }

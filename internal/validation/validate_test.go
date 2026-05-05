@@ -46,42 +46,67 @@ func TestValidatePayload_RejectsMalformedJSON(t *testing.T) {
 	}
 }
 
+// v0.9.0 change: a fuzzy-matchable typo no longer errors. The CLI emits a
+// stderr warning and passes the key through verbatim — the API decides.
 func TestValidatePayload_SuggestsCorrection_OneUnknown(t *testing.T) {
-	_, err := validation.ValidatePayload([]byte(`{"url":"https://example.com","fullPage":true}`))
-	if err == nil || err.Code != output.ErrValidation {
-		t.Fatalf("expected validation error, got: %+v", err)
+	got, err := validation.ValidatePayload([]byte(`{"url":"https://example.com","fullPage":true}`))
+	if err != nil {
+		t.Fatalf("expected no error (warning-only), got: %+v", err)
 	}
-	if err.Message != `Unknown option: fullPage` {
-		t.Errorf("message=%q", err.Message)
+	if got["fullPage"] != true {
+		t.Errorf("expected key 'fullPage' to pass through verbatim; got %v", got["fullPage"])
 	}
-	if err.Hint != `Did you mean "full_page"?` {
-		t.Errorf("hint=%q", err.Hint)
+	warnings := validation.LastWarnings()
+	if len(warnings) == 0 {
+		t.Fatalf("expected at least one warning about 'fullPage'")
+	}
+	found := false
+	for _, w := range warnings {
+		if strings.Contains(w, "fullPage") && strings.Contains(w, "full_page") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected warning mentioning 'fullPage' and suggesting 'full_page'; got: %v", warnings)
 	}
 }
 
+// v0.9.0 change: multiple fuzzy-matchable typos collapse into ONE warning.
 func TestValidatePayload_SuggestsCorrection_MultipleUnknown(t *testing.T) {
-	_, err := validation.ValidatePayload([]byte(`{"url":"https://example.com","fullPage":true,"widht":1920}`))
-	if err == nil || err.Code != output.ErrValidation {
-		t.Fatalf("expected validation error, got: %+v", err)
+	got, err := validation.ValidatePayload([]byte(`{"url":"https://example.com","fullPage":true,"widht":1920}`))
+	if err != nil {
+		t.Fatalf("expected no error (warning-only), got: %+v", err)
 	}
-	if err.Message != "Unknown options: fullPage, widht" {
-		t.Errorf("message=%q", err.Message)
+	if got["fullPage"] != true {
+		t.Errorf("expected fullPage to pass through verbatim")
 	}
-	if err.Hint != `Did you mean: fullPage → "full_page", widht → "width"?` {
-		t.Errorf("hint=%q", err.Hint)
+	if got["widht"] != float64(1920) {
+		t.Errorf("expected widht to pass through verbatim")
+	}
+	warnings := validation.LastWarnings()
+	if len(warnings) != 1 {
+		t.Fatalf("expected exactly one summary warning for multiple unknowns, got %d: %v", len(warnings), warnings)
+	}
+	w := warnings[0]
+	if !strings.Contains(w, "fullPage") || !strings.Contains(w, "full_page") {
+		t.Errorf("expected warning to mention fullPage → full_page; got: %s", w)
+	}
+	if !strings.Contains(w, "widht") || !strings.Contains(w, "width") {
+		t.Errorf("expected warning to mention widht → width; got: %s", w)
 	}
 }
 
+// v0.9.0 change: an unknown key with no fuzzy match passes through silently.
 func TestValidatePayload_UnknownNoNearMatch(t *testing.T) {
-	_, err := validation.ValidatePayload([]byte(`{"url":"https://example.com","xyzzy":true}`))
-	if err == nil || err.Code != output.ErrValidation {
-		t.Fatalf("expected validation error, got: %+v", err)
+	got, err := validation.ValidatePayload([]byte(`{"url":"https://example.com","xyzzy":true}`))
+	if err != nil {
+		t.Fatalf("expected no error (silent passthrough), got: %+v", err)
 	}
-	if err.Message != "Unknown option: xyzzy" {
-		t.Errorf("message=%q", err.Message)
+	if got["xyzzy"] != true {
+		t.Errorf("expected xyzzy to pass through verbatim")
 	}
-	if err.Hint != "Run `urlbox schema render` to see all valid options." {
-		t.Errorf("hint=%q", err.Hint)
+	if warnings := validation.LastWarnings(); len(warnings) != 0 {
+		t.Errorf("expected zero warnings for non-matching unknown key; got: %v", warnings)
 	}
 }
 
@@ -95,34 +120,14 @@ func TestValidatePayload_RejectsURLControlChars(t *testing.T) {
 	}
 }
 
-func TestValidatePayload_FailsSchemaTypeMismatch(t *testing.T) {
-	// width per the public schema is anyOf [string, integer with int53 bounds].
-	// A string value should ACCEPT (the API coerces). Passing an *object* (or
-	// boolean) for width fails the schema. Use an object so neither anyOf branch
-	// matches.
-	_, err := validation.ValidatePayload([]byte(`{"url":"https://example.com","width":{"obj":true}}`))
-	if err == nil || err.Code != output.ErrValidation {
-		t.Fatalf("expected validation error, got: %+v", err)
-	}
-	if !strings.HasPrefix(err.Message, "Payload validation failed") {
-		t.Errorf("message=%q", err.Message)
-	}
-	if !strings.Contains(err.Hint, "width") {
-		t.Errorf("hint should mention width; got: %s", err.Hint)
-	}
-}
-
-// Regression guard: the dashboard exposes video_scroll (+ four supporting
-// fields). The CLI's schema must accept them so users can drive
-// video_scroll renders end-to-end. See urlbox-mono
+// Regression guard: video_scroll + four supporting fields are no longer in the
+// regenerated v0.9.0 schema (the dashboard's allowlist source moved during a
+// refactor and the field list drifted). v0.9.0's "schema as documentation"
+// model handles this gracefully — unknown fields pass through verbatim and the
+// API decides. This test guarantees the unknown-passthrough path stays open
+// for these dashboard-supported fields. See urlbox-mono
 // packages/types/src/render/render.types.ts:1277-1292 for API definitions.
-//
-// Background: a one-shot generation from feature/urlbox-cli left these
-// fields out of schema/render.json. The auto-PR sync workflow that should
-// have caught this never landed on urlbox-mono main (the dashboard was
-// refactored and the allowlist source moved). v0.8.1 hand-patches the
-// gap; the broader sync-pipeline rebuild is tracked separately.
-func TestValidatePayload_AcceptsVideoScrollFields(t *testing.T) {
+func TestValidatePayload_AcceptsUnknownFields_WithWarning(t *testing.T) {
 	payload := []byte(`{
 		"url": "https://example.com",
 		"format": "mp4",
@@ -132,7 +137,67 @@ func TestValidatePayload_AcceptsVideoScrollFields(t *testing.T) {
 		"video_scroll_duration": 900,
 		"video_scroll_back_duration": 600
 	}`)
-	if _, err := validation.ValidatePayload(payload); err != nil {
+	got, err := validation.ValidatePayload(payload)
+	if err != nil {
 		t.Fatalf("ValidatePayload rejected video_scroll fields: %+v", err)
+	}
+	if got["video_scroll"] != true {
+		t.Errorf("expected video_scroll to pass through verbatim")
+	}
+	if got["video_scroll_distance"] != float64(800) {
+		t.Errorf("expected video_scroll_distance to pass through verbatim")
+	}
+	// Warnings may or may not be emitted depending on whether ClosestMatch
+	// finds something within edit-distance threshold for these names. The
+	// load-bearing assertion is that the payload is not REJECTED.
+}
+
+func TestValidatePayload_UnknownKey_FuzzyMatch_WarnsAndPasses(t *testing.T) {
+	payload := []byte(`{"url":"https://example.com","fromat":"png"}`)
+	got, cliErr := validation.ValidatePayload(payload)
+	if cliErr != nil {
+		t.Fatalf("expected no error, got: %v", cliErr)
+	}
+	if got["fromat"] != "png" {
+		t.Errorf("expected key 'fromat' to pass through verbatim (no auto-correct); got %v", got["fromat"])
+	}
+	warnings := validation.LastWarnings()
+	if len(warnings) == 0 {
+		t.Fatalf("expected at least one warning about 'fromat'")
+	}
+	found := false
+	for _, w := range warnings {
+		if strings.Contains(w, "fromat") && strings.Contains(w, "format") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected warning mentioning 'fromat' and suggesting 'format'; got: %v", warnings)
+	}
+}
+
+func TestValidatePayload_UnknownKey_NoMatch_PassesSilently(t *testing.T) {
+	payload := []byte(`{"url":"https://example.com","totally_made_up_xyz":true}`)
+	got, cliErr := validation.ValidatePayload(payload)
+	if cliErr != nil {
+		t.Fatalf("expected no error, got: %v", cliErr)
+	}
+	if got["totally_made_up_xyz"] != true {
+		t.Errorf("expected key to pass through verbatim")
+	}
+	warnings := validation.LastWarnings()
+	if len(warnings) != 0 {
+		t.Errorf("expected zero warnings for non-matching unknown key; got: %v", warnings)
+	}
+}
+
+func TestValidatePayload_KnownKey_BadType_PassesThrough(t *testing.T) {
+	payload := []byte(`{"url":"https://example.com","width":"abc"}`)
+	got, cliErr := validation.ValidatePayload(payload)
+	if cliErr != nil {
+		t.Fatalf("expected no local error (API will validate); got: %v", cliErr)
+	}
+	if got["width"] != "abc" {
+		t.Errorf("expected width to pass through verbatim as 'abc'")
 	}
 }
