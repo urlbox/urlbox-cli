@@ -229,6 +229,53 @@ func TestRetryDo_ContextCancelled_MidSleep_Aborts(t *testing.T) {
 	}
 }
 
+// On ctx-cancel mid-sleep, RetryDo must return the last observed response
+// (not nil) so a caller that inspects resp without an early err-check
+// doesn't NPE. The body was drained+closed before the sleep, so it must
+// be replaced with an EOF reader — reading a closed body would surface
+// "use of closed network connection".
+func TestRetryDo_CtxCancel_ReturnsLastResponseNotNil(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	cfg := api.DefaultRetryConfig()
+	cfg.MaxRetries = 5
+	cfg.BaseDelay = 50 * time.Millisecond
+	cfg.Jitter = 0
+	// Sleep stub: cancel ctx mid-sleep so the ctx.Done arm fires.
+	cfg.Sleep = func(d time.Duration) {
+		go func() {
+			time.Sleep(d / 2)
+			cancel()
+		}()
+		time.Sleep(d)
+	}
+
+	resp, err := api.RetryDo(ctx, cfg, func() (*http.Response, error) {
+		return &http.Response{
+			StatusCode: 503,
+			Body:       io.NopCloser(strings.NewReader("server unavailable")),
+			Header:     http.Header{},
+		}, nil
+	})
+
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("err=%v, want context.Canceled", err)
+	}
+	if resp == nil {
+		t.Fatal("resp is nil; want last observed response (with closed body)")
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != 503 {
+		t.Errorf("resp.StatusCode=%d, want 503 (the last attempt's response)", resp.StatusCode)
+	}
+	// Body must be safely readable — drained-and-EOF, not "use of closed connection".
+	b, _ := io.ReadAll(resp.Body)
+	if len(b) != 0 {
+		t.Errorf("body should be drained; got %q", string(b))
+	}
+}
+
 func TestRetryDo_4xxNot429_ReturnsImmediately(t *testing.T) {
 	s := &recordingSleeper{}
 	cfg := api.DefaultRetryConfig()

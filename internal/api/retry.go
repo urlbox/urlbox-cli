@@ -55,7 +55,11 @@ func NoRetryConfig() RetryConfig {
 // RetryDo executes do() up to (1 + cfg.MaxRetries) times, sleeping between
 // attempts on 429 or 5xx responses (or any do() error). Honors Retry-After
 // when present. Returns the last response (success or final failure) once
-// the budget is exhausted. If ctx is cancelled mid-sleep, returns ctx.Err().
+// the budget is exhausted.
+//
+// If ctx is cancelled mid-sleep, returns the last observed response (with
+// body replaced by http.NoBody for safe reading) and ctx.Err(). The
+// response may be nil if the most recent attempt errored.
 //
 // The caller is responsible for closing resp.Body on the *final* returned
 // response. RetryDo drains and closes intermediate response bodies before
@@ -100,7 +104,15 @@ func RetryDo(ctx context.Context, cfg RetryConfig, do func() (*http.Response, er
 		}()
 		select {
 		case <-ctx.Done():
-			return nil, ctx.Err()
+			// Return the last observed response (if any) so a caller that
+			// inspects resp without the early-err check doesn't NPE. The
+			// body was already drained and closed above; replace it with
+			// http.NoBody so reads are safe (returning a closed body
+			// would surface "use of closed network connection" to readers).
+			if resp != nil {
+				resp.Body = http.NoBody
+			}
+			return resp, ctx.Err()
 		case <-done:
 		}
 	}
