@@ -4,9 +4,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 	"github.com/urlbox/urlbox-cli/internal/output"
+	"github.com/urlbox/urlbox-cli/internal/validation"
 	"github.com/urlbox/urlbox-cli/internal/version"
 )
 
@@ -49,11 +52,20 @@ func Execute(args []string, stdout, stderr io.Writer) int {
 
 	var cliErr *output.CLIError
 	if !errors.As(err, &cliErr) {
-		cliErr = output.NewCLIError(
-			output.ErrUsage,
-			err.Error(),
-			"Run `urlbox <command> --help` for usage, or `urlbox commands` for the full surface.",
-		)
+		msg := err.Error()
+		hint := "Run `urlbox <command> --help` for usage, or `urlbox commands` for the full surface."
+		// cobra.NoArgs produces "unknown command \"X\" for \"urlbox\"" with no
+		// suggestion text (the suggestion-bearing legacyArgs path is bypassed
+		// because we set Args=cobra.NoArgs to keep flag parsing happening
+		// before arg validation). Compute the suggestion ourselves so the
+		// did_you_mean behaviour is preserved.
+		if suggestion, ok := suggestUnknownCommand(rootCmd, msg); ok {
+			hint = `Did you mean "` + suggestion + `"? ` + hint
+		} else if suggestion, ok := suggestUnknownFlag(rootCmd, msg); ok {
+			// pflag's "unknown flag: --xxx" carries no suggestion either.
+			hint = `Did you mean "--` + suggestion + `"? ` + hint
+		}
+		cliErr = output.NewCLIError(output.ErrUsage, msg, hint)
 	}
 
 	if !cliErr.Silent {
@@ -118,6 +130,90 @@ func newRootCmd(stdout, stderr io.Writer) *cobra.Command {
 	cmd.AddCommand(newVideoCmd())
 
 	return cmd
+}
+
+// suggestUnknownCommand inspects an error message of the form
+// `unknown command "X" for "..."` (emitted by cobra.NoArgs) and returns the
+// closest known immediate-subcommand name of root, if any.
+//
+// Known limitation (tracked for v0.12.0+ polish): only walks root.Commands().
+// Subcommand-level typos (e.g. `urlbox config gett`) won't be suggested
+// because the parent path is not parsed out of the error message.
+func suggestUnknownCommand(root *cobra.Command, msg string) (string, bool) {
+	// COBRA VERSION COUPLING: this prefix matches cobra v1.x emitted under
+	// Args=cobra.NoArgs. A `go get -u cobra` reviewer should re-verify.
+	const prefix = `unknown command "`
+	idx := strings.Index(msg, prefix)
+	if idx < 0 {
+		return "", false
+	}
+	rest := msg[idx+len(prefix):]
+	end := strings.IndexByte(rest, '"')
+	if end <= 0 {
+		return "", false
+	}
+	typed := rest[:end]
+	candidates := make([]string, 0, len(root.Commands()))
+	for _, sub := range root.Commands() {
+		if sub.IsAvailableCommand() {
+			candidates = append(candidates, sub.Name())
+		}
+	}
+	return validation.ClosestMatch(typed, candidates)
+}
+
+// suggestUnknownFlag inspects an error message of the form
+// `unknown flag: --xxx` (emitted by pflag) and returns the closest known
+// long flag name across the root and all its subcommands. The flag prefix
+// (`--`) is NOT included in the returned name.
+//
+// Known limitation (tracked for v0.12.0+ polish): the candidate pool is the
+// UNION of every flag in the command tree. A typo on one command can match
+// a flag from an unrelated command (e.g. `urlbox auth status --widht`
+// would suggest `--width`, a render flag). Scoping per active command would
+// require parsing the active command path out of pflag's error string,
+// which doesn't include it. Defensible as-is for v0.12.0; revisit later.
+func suggestUnknownFlag(root *cobra.Command, msg string) (string, bool) {
+	// PFLAG VERSION COUPLING: this prefix matches pflag's "unknown flag:"
+	// error string. A `go get -u pflag` reviewer should re-verify.
+	const prefix = "unknown flag: --"
+	idx := strings.Index(msg, prefix)
+	if idx < 0 {
+		return "", false
+	}
+	rest := msg[idx+len(prefix):]
+	// Stop at first whitespace or newline (pflag emits a single line).
+	if cut := strings.IndexAny(rest, " \t\n"); cut >= 0 {
+		rest = rest[:cut]
+	}
+	// Trim any trailing punctuation.
+	typed := strings.TrimRight(rest, ".,;:")
+	if typed == "" {
+		return "", false
+	}
+
+	candidates := collectFlagNames(root)
+	return validation.ClosestMatch(typed, candidates)
+}
+
+// collectFlagNames returns the union of long flag names defined on cmd and
+// all its descendants (deduplicated).
+func collectFlagNames(cmd *cobra.Command) []string {
+	seen := map[string]struct{}{}
+	var walk func(*cobra.Command)
+	walk = func(c *cobra.Command) {
+		c.Flags().VisitAll(func(f *pflag.Flag) { seen[f.Name] = struct{}{} })
+		c.PersistentFlags().VisitAll(func(f *pflag.Flag) { seen[f.Name] = struct{}{} })
+		for _, sub := range c.Commands() {
+			walk(sub)
+		}
+	}
+	walk(cmd)
+	out := make([]string, 0, len(seen))
+	for name := range seen {
+		out = append(out, name)
+	}
+	return out
 }
 
 // calledCommand returns the name of the subcommand that was invoked, or empty string.

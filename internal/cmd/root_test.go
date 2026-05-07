@@ -207,3 +207,55 @@ func TestRoot_WithSubcommand_NoBanner(t *testing.T) {
 		t.Fatalf("banner leaked into subcommand run; got: %q", stderr.String())
 	}
 }
+
+func TestUnknownCommand_SuggestsDidYouMean(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{"rendr"}, &stdout, &stderr) // typo of "render"
+	if exit == 0 {
+		t.Fatal("expected non-zero exit on unknown command")
+	}
+	combined := stdout.String() + stderr.String()
+	// Assert on the literal `Did you mean "render"` (with closing quote)
+	// so the test fails if suggestUnknownCommand is silently removed.
+	// The default text formatter renders the hint verbatim; the JSON
+	// formatter escapes quotes (`Did you mean \"render\"`). Accept either.
+	if !strings.Contains(combined, `Did you mean "render"`) &&
+		!strings.Contains(combined, `Did you mean \"render\"`) {
+		t.Errorf("expected `Did you mean \"render\"` suggestion; got stdout=%q stderr=%q",
+			stdout.String(), stderr.String())
+	}
+}
+
+func TestUnknownFlag_SuggestsDidYouMean(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{"render", "https://example.com", "--output-formart", "json"}, &stdout, &stderr)
+	if exit == 0 {
+		t.Fatal("expected non-zero exit on unknown flag")
+	}
+	combined := stdout.String() + stderr.String()
+	// The suggestion logic must actually fire — assert on the literal
+	// `Did you mean "--output-format"` (with the closing quote) so this
+	// test fails if suggestUnknownFlag is silently removed. Without this,
+	// the substring "output-format" would already appear in pflag's raw
+	// "unknown flag: --output-formart" error and pass spuriously.
+	// The default text formatter renders the hint verbatim; the JSON
+	// formatter escapes quotes (`Did you mean \"--output-format\"`).
+	// Accept either rendering.
+	if !strings.Contains(combined, `Did you mean "--output-format"`) &&
+		!strings.Contains(combined, `Did you mean \"--output-format\"`) {
+		t.Errorf("expected `Did you mean \"--output-format\"` suggestion; got stdout=%q stderr=%q",
+			stdout.String(), stderr.String())
+	}
+}
+
+func TestUnknownCommand_FarTypo_NoSuggestion(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{"xyzzy"}, &stdout, &stderr)
+	if exit == 0 {
+		t.Fatal("expected non-zero exit on unknown command")
+	}
+	combined := stdout.String() + stderr.String()
+	if !strings.Contains(combined, "xyzzy") {
+		t.Errorf("expected error to name unknown command 'xyzzy'; got %q", combined)
+	}
+}
