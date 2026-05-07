@@ -158,7 +158,11 @@ func downloadTo(ctx context.Context, url, dst string) *output.CLIError {
 
 	req, err := http.NewRequestWithContext(dlCtx, http.MethodGet, url, http.NoBody)
 	if err != nil {
-		return output.NewCLIError(output.ErrUsage, "invalid render URL: "+err.Error(), "")
+		return output.NewCLIError(
+			output.ErrUsage,
+			"invalid render URL: "+err.Error(),
+			"This is a CLI bug — please report at https://github.com/urlbox/urlbox-cli/issues. The render URL is in the envelope; you can curl it manually as a workaround.",
+		)
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -193,7 +197,11 @@ func downloadTo(ctx context.Context, url, dst string) *output.CLIError {
 	}
 
 	if err := os.MkdirAll(filepath.Dir(dst), 0o750); err != nil {
-		return output.NewCLIError(output.ErrServer, "failed to create output directory: "+err.Error(), "")
+		return output.NewCLIError(
+			output.ErrServer,
+			"failed to create output directory: "+err.Error(),
+			"Check the parent directory permissions and free disk space, or pick a different --output path.",
+		)
 	}
 
 	// 0o644 (user rw, group/other r) is the right default for rendered
@@ -202,12 +210,20 @@ func downloadTo(ctx context.Context, url, dst string) *output.CLIError {
 	// stricter perms; G302's 0o600 cap is too restrictive for content.
 	f, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644) //nolint:gosec // see comment above; rendered artifacts default to user-rw + world-readable
 	if err != nil {
-		return output.NewCLIError(output.ErrServer, "failed to create output file: "+err.Error(), "")
+		return output.NewCLIError(
+			output.ErrServer,
+			"failed to create output file: "+err.Error(),
+			"Check write permissions on the target path and free disk space.",
+		)
 	}
 	defer func() { _ = f.Close() }()
 
 	if _, err := io.Copy(f, resp.Body); err != nil {
-		return output.NewCLIError(output.ErrNetwork, "failed to write render to disk: "+err.Error(), "")
+		return output.NewCLIError(
+			output.ErrNetwork,
+			"failed to write render to disk: "+err.Error(),
+			"Free disk space ran out mid-write, or the source connection dropped. The render URL is still in the envelope; you can re-download with curl.",
+		)
 	}
 	return nil
 }

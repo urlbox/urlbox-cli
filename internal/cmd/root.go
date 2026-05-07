@@ -49,7 +49,11 @@ func Execute(args []string, stdout, stderr io.Writer) int {
 
 	var cliErr *output.CLIError
 	if !errors.As(err, &cliErr) {
-		cliErr = output.NewCLIError(output.ErrUsage, err.Error(), "")
+		cliErr = output.NewCLIError(
+			output.ErrUsage,
+			err.Error(),
+			"Run `urlbox <command> --help` for usage, or `urlbox commands` for the full surface.",
+		)
 	}
 
 	if !cliErr.Silent {

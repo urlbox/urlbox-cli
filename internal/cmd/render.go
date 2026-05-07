@@ -457,7 +457,11 @@ func buildRenderClient(f *renderFlags) (api.Client, *output.CLIError) {
 		if errors.As(rerr, &cli) {
 			return nil, cli
 		}
-		return nil, output.NewCLIError(output.ErrUsage, rerr.Error(), "")
+		return nil, output.NewCLIError(
+			output.ErrUsage,
+			rerr.Error(),
+			"Check your config with `urlbox config show`, or set --api-secret / URLBOX_API_SECRET explicitly.",
+		)
 	}
 
 	host := resolved.APIHost

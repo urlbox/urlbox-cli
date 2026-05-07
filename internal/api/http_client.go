@@ -241,7 +241,11 @@ func mapStatusToCLIError(resp *http.Response, body []byte) *output.CLIError {
 		if msg == "" {
 			msg = fmt.Sprintf("HTTP %d from Urlbox API", resp.StatusCode)
 		}
-		return output.NewCLIError(output.ErrUsage, msg, "")
+		return output.NewCLIError(
+			output.ErrUsage,
+			msg,
+			"Inspect the API response in the envelope. Run `urlbox doctor` to verify auth + connectivity, or `urlbox schema render` to confirm option shapes. If the status code looks unmapped, please open an issue with the response code + body.",
+		)
 	}
 }
 
