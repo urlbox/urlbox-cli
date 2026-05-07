@@ -77,32 +77,41 @@ func appendWarning(s string) {
 // known-key list it produces still drives fuzzy typo suggestions.
 func loadSchema() (*jsonschema.Schema, []string, error) {
 	compileSchemaOnce.Do(func() {
-		var raw map[string]any
-		if err := json.Unmarshal(schema.RenderJSON, &raw); err != nil {
-			compiledSchemaErr = fmt.Errorf("decode embedded render schema: %w", err)
-			return
-		}
-		compiler := jsonschema.NewCompiler()
-		if err := compiler.AddResource("render.json", raw); err != nil {
-			compiledSchemaErr = fmt.Errorf("register embedded render schema: %w", err)
-			return
-		}
-		s, err := compiler.Compile("render.json")
-		if err != nil {
-			compiledSchemaErr = fmt.Errorf("compile embedded render schema: %w", err)
-			return
-		}
+		s, keys, err := loadSchemaFrom(schema.RenderJSON)
 		compiledSchema = s
-
-		if props, ok := raw["properties"].(map[string]any); ok {
-			knownTopLevelKeys = make([]string, 0, len(props))
-			for k := range props {
-				knownTopLevelKeys = append(knownTopLevelKeys, k)
-			}
-			sort.Strings(knownTopLevelKeys)
+		knownTopLevelKeys = keys
+		if err != nil {
+			compiledSchemaErr = fmt.Errorf("embedded render schema: %w", err)
 		}
 	})
 	return compiledSchema, knownTopLevelKeys, compiledSchemaErr
+}
+
+// loadSchemaFrom is the testable inner: compiles a JSON Schema from arbitrary
+// bytes, returns the compiled schema, sorted top-level property keys, and
+// error. Callers with stable embedded schemas should use loadSchema (memoized).
+func loadSchemaFrom(b []byte) (*jsonschema.Schema, []string, error) {
+	var raw map[string]any
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return nil, nil, fmt.Errorf("decode schema: %w", err)
+	}
+	compiler := jsonschema.NewCompiler()
+	if err := compiler.AddResource("render.json", raw); err != nil {
+		return nil, nil, fmt.Errorf("register schema: %w", err)
+	}
+	s, err := compiler.Compile("render.json")
+	if err != nil {
+		return nil, nil, fmt.Errorf("compile schema: %w", err)
+	}
+	var keys []string
+	if props, ok := raw["properties"].(map[string]any); ok {
+		keys = make([]string, 0, len(props))
+		for k := range props {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+	}
+	return s, keys, nil
 }
 
 // ValidatePayload runs the v0.9.0 "schema as documentation" pipeline over a
@@ -146,10 +155,13 @@ func ValidatePayload(b []byte) (map[string]any, *output.CLIError) {
 
 	_, known, schemaErr := loadSchema()
 	if schemaErr != nil {
+		// schemaErr already starts with "embedded render schema:" — don't
+		// re-prefix or we get "Embedded render schema is unavailable:
+		// embedded render schema: ...".
 		return nil, output.NewCLIError(
 			output.ErrServer,
-			"Embedded render schema is unavailable: "+schemaErr.Error(),
-			"This is a build defect. Please open an issue.",
+			"Build defect — "+schemaErr.Error(),
+			"Please open an issue.",
 		)
 	}
 
