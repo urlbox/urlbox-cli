@@ -4,6 +4,84 @@ All notable changes to the `urlbox` CLI are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
+## v0.12.0 — 2026-05-07
+
+Verification + tech-debt sweep. Closes every "carry-forward open follow-up"
+in the journal so v1.0 ships with zero known sharp edges. Five tech-debt
+fixes, two Fizzy-lessons regression tests, broader coverage on
+`internal/config` and `internal/validation`.
+
+### Fixed
+
+- **Security:** `urlbox render --output` now rejects pre-existing leaf
+  symlinks (`os.Lstat` probe before open). Closes a "render-to-planted-symlink"
+  arbitrary-file-write hazard. Parent-directory symlinks were already defended;
+  this completes the story.
+- `RetryDo` returns the last observed response on context cancel mid-sleep
+  instead of `nil`, so callers that read `resp` without the early-`err` check
+  don't NPE. Body is replaced with `http.NoBody` for safe reading.
+- `urlbox auth` interactive-prompt newline now lands on the cobra-injected
+  stderr writer (matches every other command in the codebase; redirectable
+  in tests).
+
+### Added
+
+- `Did you mean "X"?` typo suggestions on unknown commands and flags
+  (Fizzy item 5). `urlbox rendr` → suggests `render`; `urlbox render
+  --output-formart json` → suggests `--output-format`. Reuses the existing
+  `internal/validation.ClosestMatch` Levenshtein matcher so behavior is
+  consistent with v0.9.0's `--json` typo suggestions.
+- Static regression guard `TestNoEmptyCLIErrorHints` (Fizzy item 1) — every
+  `output.NewCLIError(code, msg, hint)` call in production code must pass a
+  non-empty hint. Test fails the build if a future commit reintroduces an
+  empty hint.
+
+### Tests / Coverage
+
+- `internal/config` coverage: 85.0% → 88.8%. New tests cover `Save`'s
+  rename / mkdirAll / createTemp failure branches, `Load`'s malformed-JSON
+  branch, and `APISecretSource`'s legacy-only fallback.
+- `internal/validation` coverage: 92.2% → 95.0%. `loadSchema` factored
+  into a testable `loadSchemaFrom(b []byte)` so the decode/register/compile
+  error branches are reachable without fighting `sync.Once`.
+- 7 previously-empty `Hint` strings filled with specific recovery paths
+  (`urlbox doctor`, `urlbox config show`, `urlbox schema render`, curl
+  fallback for envelope URLs, etc.).
+
+### Documentation
+
+- `loadSchema` godoc updated: explains the memoized-via-`sync.Once`
+  contract and points to `loadSchemaFrom` as the testable inner.
+- `RetryDo` godoc updated: documents the new ctx-cancel return shape
+  (last response with `http.NoBody`, not nil).
+- `defaultAuthSecretReader` docstring reframed: caller is responsible for
+  both prompt label AND trailing newline on the cobra writer.
+
+### Known limitations (tracked for post-1.0 polish, not v1.0-blocking)
+
+- `did_you_mean` for unknown commands only walks immediate subcommands of
+  root. Subcommand-level typos (e.g. `urlbox config gett`) fall through to
+  the generic hint without a suggestion. Documented in
+  `suggestUnknownCommand`'s godoc.
+- `did_you_mean` for unknown flags unions all flag names across the entire
+  command tree. A typo on one command can match a flag from an unrelated
+  command (e.g. `urlbox auth status --widht` would suggest `--width`,
+  which is a render flag). Documented in `suggestUnknownFlag`'s godoc.
+- Both helpers parse cobra/pflag error strings via `strings.Index` rather
+  than typed errors. A `go get -u cobra` (or pflag) PR should re-verify the
+  prefix constants in `internal/cmd/root.go`.
+
+### Notes
+
+- All Fizzy CLI cross-reference items now closed for v1.0:
+  - Item 1 (breadcrumbs/hint on every error) — regression test landed.
+  - Item 2 (numeric ID parent-scoping) — closed by Phase 5 design.
+  - Item 3 (skill install non-interactive) — closed in v0.8.1.
+  - Item 4 (identifier consistency) — closed by Phase 5 design.
+  - Item 5 (did_you_mean) — regression tests landed.
+- Smoke (`make smoke`) green against `api.urlbox.com`: 6/6 tests pass
+  (3 from v0.7.0, 3 from v0.9.0).
+
 ## v0.9.0 — 2026-05-05
 
 Schema-as-documentation. The embedded `schema/render.json` becomes
