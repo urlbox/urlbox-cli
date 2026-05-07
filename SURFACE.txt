@@ -67,6 +67,16 @@ urlbox doctor --agent
 urlbox doctor --jq
 urlbox doctor --output-format
 urlbox doctor --profile
+urlbox link
+urlbox link --agent
+urlbox link --api-key
+urlbox link --api-secret
+urlbox link --format
+urlbox link --jq
+urlbox link --json
+urlbox link --output-format
+urlbox link --profile
+urlbox link --url
 urlbox pdf [url]
 urlbox pdf [url] --agent
 urlbox pdf [url] --api-secret

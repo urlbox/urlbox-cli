@@ -122,6 +122,7 @@ func newRootCmd(stdout, stderr io.Writer) *cobra.Command {
 	cmd.AddCommand(newAuthCmd())
 	cmd.AddCommand(newConfigCmd())
 	cmd.AddCommand(newDoctorCmd())
+	cmd.AddCommand(newLinkCmd())
 	cmd.AddCommand(newPdfCmd())
 	cmd.AddCommand(newRenderCmd())
 	cmd.AddCommand(newSchemaCmd())
