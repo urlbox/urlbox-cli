@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -110,7 +111,19 @@ func runStatus(cmd *cobra.Command, args []string, f *statusFlags) error {
 				"You can get one from `urlbox render <url> --async`.",
 		)
 	}
-	renderID := args[0]
+	// Reject empty / whitespace-only renderIDs locally. Without this,
+	// `urlbox status ""` would forward an empty path segment to the API,
+	// 404, and surface "Not found" with exit 5 — masking what's actually a
+	// user-input bug. TrimSpace also handles `urlbox status "   "`.
+	renderID := strings.TrimSpace(args[0])
+	if renderID == "" {
+		return output.NewCLIError(
+			output.ErrUsage,
+			"missing render ID (got empty string)",
+			"Provide the renderId as the first positional arg, e.g.: urlbox status ps_abc123. "+
+				"You can get one from `urlbox render <url> --async`.",
+		)
+	}
 
 	client, cerr := buildStatusClient(cmd, f)
 	if cerr != nil {
@@ -187,6 +200,22 @@ func runStatusWait(cmd *cobra.Command, client api.Client, renderID string, f *st
 			// network, timeout). Same shape as single-shot.
 			var cli *output.CLIError
 			if errors.As(err, &cli) {
+				// Special case: when --timeout is shorter than a single
+				// API call can complete, the per-poll context fires
+				// before the GET returns, surfacing as ErrTimeout with
+				// the raw "context deadline exceeded" string. Rewrite
+				// to a friendly message naming the renderID + duration.
+				// The non-shortcase path (we polled but nothing terminal
+				// happened in time) is handled by waitTimeoutError above
+				// — this branch only triggers when the FIRST call
+				// couldn't even finish.
+				if cli.Code == output.ErrTimeout {
+					return output.NewCLIError(
+						output.ErrTimeout,
+						fmt.Sprintf("Render %s status check timed out after %s — the --timeout was shorter than a single API call could complete", renderID, f.timeout),
+						"Increase --timeout (try 30s or more for --wait), or run a single status check with `urlbox status "+renderID+"` (no --wait).",
+					)
+				}
 				return cli
 			}
 			return output.NewCLIError(output.ErrServer, err.Error(), "Run `urlbox doctor` to verify connectivity.")

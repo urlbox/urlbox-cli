@@ -236,6 +236,24 @@ func TestDownloadTo_RejectsLeafSymlink(t *testing.T) {
 	}
 }
 
+// Regression guard (v1.0.2): --output "-" must be rejected explicitly. The
+// shell convention is that "-" means stdout streaming; without an explicit
+// rejection the path falls through and a literal file named "-" is created
+// in the CWD — surprising and easy to miss in directory listings.
+func TestResolveOutputPath_RejectsDashAsStdout(t *testing.T) {
+	cwd := t.TempDir()
+	_, err := resolveOutputPath("-", cwd)
+	if err == nil {
+		t.Fatal("expected error rejecting '-'")
+	}
+	if err.Code != output.ErrValidation {
+		t.Errorf("code=%v, want validation", err.Code)
+	}
+	if !strings.Contains(err.Message, "-") {
+		t.Errorf("error should mention the dash; got %q", err.Message)
+	}
+}
+
 func TestDownloadTo_AcceptsExistingRegularFile(t *testing.T) {
 	tmp := t.TempDir()
 	dst := filepath.Join(tmp, "out.png")

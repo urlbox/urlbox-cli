@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -502,6 +503,82 @@ func TestStatus_ProfileFlag_OverridesEnvProfile(t *testing.T) {
 	reqs := m.Requests()
 	if len(reqs) != 1 || reqs[0].Header.Get("Authorization") != "Bearer sec_good" {
 		t.Errorf("Authorization=%q, want Bearer sec_good (flag --profile must beat URLBOX_PROFILE)", reqs[0].Header.Get("Authorization"))
+	}
+}
+
+// Regression guard (v1.0.2): `urlbox status ""` (empty positional) must be
+// rejected locally as a usage error, not forwarded to the API as an empty
+// path segment. Without this guard, the empty string falls through to a 404
+// "Not found" with exit 5, masking what was actually a user-input bug.
+func TestStatus_EmptyArg_RejectsAsUsage(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{
+		"status", "",
+		"--output-format", "json",
+	}, &stdout, &stderr)
+	if exit != 1 {
+		t.Fatalf("exit=%d, want 1 (usage); stdout=%s stderr=%s", exit, stdout.String(), stderr.String())
+	}
+	var env map[string]any
+	_ = json.Unmarshal(stdout.Bytes(), &env)
+	if env["code"] != "usage" {
+		t.Errorf("code != 'usage': %v", env["code"])
+	}
+	errStr, _ := env["error"].(string)
+	if !strings.Contains(errStr, "empty") && !strings.Contains(errStr, "missing") {
+		t.Errorf("error should mention empty/missing renderID; got %q", errStr)
+	}
+}
+
+// Whitespace-only positional behaves like empty after TrimSpace.
+func TestStatus_WhitespaceArg_RejectsAsUsage(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{"status", "   ", "--output-format", "json"}, &stdout, &stderr)
+	if exit != 1 {
+		t.Fatalf("exit=%d, want 1; stdout=%s stderr=%s", exit, stdout.String(), stderr.String())
+	}
+}
+
+// Regression guard (v1.0.2): `--wait --timeout <very-short>` (shorter than a
+// single API round trip can complete) must surface a friendly timeout
+// message that names the renderID + duration — not the raw Go-internal
+// "context deadline exceeded" string.
+func TestStatus_Wait_TimeoutShorterThanOneCall_FriendlyError(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("URLBOX_API_SECRET", "sec_test")
+
+	// Hangs longer than the --timeout so the per-poll context fires before
+	// the GET can return a body. apitest.Server is for scripted responses;
+	// use httptest directly for the controlled-hang behaviour.
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		time.Sleep(2 * time.Second)
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(s.Close)
+	t.Setenv(api.EnvAPIHost, s.URL)
+
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{
+		"status", "ps_test",
+		"--wait",
+		"--timeout", "100ms",
+		"--no-retry",
+		"--output-format", "json",
+	}, &stdout, &stderr)
+	if exit == 0 {
+		t.Fatalf("expected non-zero exit on tiny timeout; stdout=%s", stdout.String())
+	}
+	var env map[string]any
+	_ = json.Unmarshal(stdout.Bytes(), &env)
+	errStr, _ := env["error"].(string)
+	if !strings.Contains(errStr, "100ms") {
+		t.Errorf("error should mention timeout duration; got %q", errStr)
+	}
+	if strings.Contains(errStr, "context deadline") {
+		t.Errorf("error should NOT contain jargony 'context deadline'; got %q", errStr)
+	}
+	if !strings.Contains(errStr, "ps_test") {
+		t.Errorf("error should reference renderID; got %q", errStr)
 	}
 }
 

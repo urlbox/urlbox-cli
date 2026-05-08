@@ -59,6 +59,12 @@ Exits non-zero if any check fails.`,
 					{Action: "auth", Cmd: "urlbox auth --api-secret <secret>"},
 				},
 			)
+			// Reflect failure state on the envelope's `ok` field so JSON
+			// consumers see `ok: false` alongside the failed checks. Exit
+			// code stays 10 via the silent CLIError below.
+			if anyFail {
+				env.OK = false
+			}
 
 			formatFlag, _ := cmd.Root().PersistentFlags().GetString("output-format")
 			jqExpr, _ := cmd.Root().PersistentFlags().GetString("jq")

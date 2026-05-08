@@ -249,6 +249,15 @@ func runRender(cmd *cobra.Command, args []string, f *renderFlags) error {
 		_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "warning:", w)
 	}
 
+	// 5.5. Validate --profile (and other resolver inputs) BEFORE the
+	// dry-run / curl shortcuts. Scripts using --dry-run for pre-flight
+	// validation expect a bad profile name to error here, not silently
+	// succeed. Missing API secret is tolerated for dry-run / curl —
+	// validateResolverFlags only flags the profile-not-found case.
+	if cliErr := validateResolverFlags(cmd, f); cliErr != nil {
+		return cliErr
+	}
+
 	// 6. --dry-run short-circuits with the validated payload in the envelope.
 	if f.dryRun {
 		env := output.NewEnvelope(
@@ -433,6 +442,51 @@ func applyFlagsToMap(cmd *cobra.Command, f *renderFlags, m map[string]any) {
 			m[optionKey] = f.webhookURL
 		}
 	}
+}
+
+// validateResolverFlags surfaces resolver-side errors (today: only the
+// "--profile X doesn't exist" case) BEFORE --dry-run / --curl shortcut. A
+// real call would hit the same error via buildRenderClient → config.Resolve;
+// the dry-run / curl paths skip client construction entirely, so without
+// this pre-check `urlbox render <url> --dry-run --profile bad` would
+// silently succeed (false-positive for scripts using --dry-run as
+// pre-flight validation).
+//
+// Missing API secret is intentionally not surfaced here — the user may not
+// have a secret configured yet and dry-run should still validate the
+// payload shape. Resolve() doesn't error on missing secret; only on
+// FlagProfile naming a profile that doesn't exist.
+//
+// renderClientOverride bypasses this check (tests with the override
+// shouldn't need a real config).
+func validateResolverFlags(cmd *cobra.Command, f *renderFlags) *output.CLIError {
+	if renderClientOverride != nil {
+		return nil
+	}
+	cfg, err := config.Load()
+	if err != nil {
+		return output.NewCLIError(output.ErrServer, "failed to read config", err.Error())
+	}
+	profile, _ := cmd.Root().PersistentFlags().GetString("profile")
+	_, rerr := config.Resolve(config.ResolveOptions{
+		FlagAPISecret: f.apiSecret,
+		FlagProfile:   profile,
+		EnvAPISecret:  os.Getenv(config.EnvAPISecret),
+		EnvAPIHost:    os.Getenv(config.EnvAPIHost),
+		EnvProfile:    os.Getenv(config.EnvProfile),
+		Config:        cfg,
+	})
+	if rerr != nil {
+		var cli *output.CLIError
+		if errors.As(rerr, &cli) {
+			return cli
+		}
+		// Non-CLIError shouldn't happen today (Resolve only emits CLIError),
+		// but route to a sensible default so we don't silently swallow.
+		return output.NewCLIError(output.ErrUsage, rerr.Error(),
+			"Check your config with `urlbox config show`.")
+	}
+	return nil
 }
 
 // buildRenderClient returns the test-injected client if present, else a

@@ -107,6 +107,24 @@ func TestDoctor_AuthFailure_FailsAuthCheck(t *testing.T) {
 	}
 }
 
+// Regression guard (v1.0.2): when any check fails the envelope's `ok` field
+// must be false. Exit code is already 10 (correct), but consumers parsing
+// JSON would otherwise see `ok: true` alongside failed checks — a contract
+// violation that misleads automation.
+func TestDoctor_FailedChecks_EnvelopeOkIsFalse(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("URLBOX_API_SECRET", "")
+	t.Setenv("URLBOX_API_HOST", "https://api.urlbox.invalid")
+
+	env, exit, _, _ := runDoctor(t)
+	if exit == 0 {
+		t.Fatal("expected non-zero exit on failed checks")
+	}
+	if env["ok"] != false {
+		t.Errorf("envelope ok should be false when checks fail; got %v", env["ok"])
+	}
+}
+
 func TestDoctor_HasBreadcrumbs(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)

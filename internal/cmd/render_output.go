@@ -43,6 +43,18 @@ func resolveOutputPath(userPath, baseDir string) (string, *output.CLIError) {
 			"Pass a file path: --output screenshot.png",
 		)
 	}
+	// Reject "-" explicitly. Standard shell convention treats "-" as
+	// stdout streaming; without this guard, a literal file named "-"
+	// would be created in CWD — easy to miss in `ls` output and a
+	// surprising violation of the convention. Real stdout-streaming
+	// of binary data is reserved for v1.1+.
+	if userPath == "-" {
+		return "", output.NewCLIError(
+			output.ErrValidation,
+			`--output "-" is not supported (would conflict with stdout-as-data convention)`,
+			"Pass a file path (e.g. --output screenshot.png) or omit --output and the rendered URL is in the envelope's data — fetch with `curl -O <url>`.",
+		)
+	}
 	if strings.ContainsRune(userPath, 0) {
 		return "", output.NewCLIError(
 			output.ErrValidation,

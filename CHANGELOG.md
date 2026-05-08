@@ -4,6 +4,36 @@ All notable changes to the `urlbox` CLI are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
+## v1.0.2 — 2026-05-08
+
+Patch release fixing five issues found by Round 2 stress-testing of v1.0.1.
+
+### Fixed
+
+- `urlbox render --dry-run --profile <invalid>` now correctly errors with
+  `code: not_found` (exit 5) instead of silently succeeding. Profile
+  validation now happens before the dry-run shortcut, so scripts using
+  dry-run for pre-flight validation catch bad profiles.
+- `urlbox status ""` (empty positional arg) now rejects locally with
+  `code: usage` (exit 1) and a clear hint, instead of hitting the API
+  and returning a misleading "Not found".
+- `--output -` is now rejected explicitly with `code: validation`
+  (instead of writing a literal file named `-`), matching the standard
+  shell convention that `-` means stdout. The error suggests writing
+  to a file or fetching the renderUrl from the envelope.
+- `urlbox doctor` envelope now sets `ok: false` when any check fails
+  (matches the rest of the CLI's envelope contract). Exit code 10
+  unchanged.
+- `urlbox status --wait --timeout <very-short>` (shorter than one API
+  call) now produces a friendly "Render X status check timed out
+  after 100ms — the --timeout was shorter than a single API call
+  could complete" instead of the jargony "context deadline exceeded".
+
+### Notes
+
+- All v1.0.2 fixes auto-deliver via `brew upgrade urlbox/tap/urlbox`,
+  `npm i -g @urlbox/cli@latest`, etc. Surface frozen.
+
 ## v1.0.1 — 2026-05-08
 
 Patch release fixing two bugs uncovered by post-launch fresh-agent UX

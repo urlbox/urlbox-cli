@@ -820,6 +820,44 @@ func TestRender_TimeoutFlag_DefaultDocumentedInHelp(t *testing.T) {
 	}
 }
 
+// Regression guard (v1.0.2): --dry-run with an invalid --profile must fail
+// fast with code "not_found" instead of silently succeeding. Profile
+// validation has to happen BEFORE the dry-run early return so scripts that
+// use --dry-run for pre-flight validation catch a bad profile name.
+func TestRender_DryRun_InvalidProfile_StillFails(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmp)
+	t.Setenv("URLBOX_API_SECRET", "")
+	if err := os.MkdirAll(filepath.Join(tmp, "urlbox"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	cfg := `{"default_profile":"good","profiles":{"good":{"api_secret":"sec"}}}`
+	if err := os.WriteFile(filepath.Join(tmp, "urlbox", "config.json"), []byte(cfg), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{
+		"render", "https://example.com",
+		"--profile", "nonexistent",
+		"--dry-run",
+		"--output-format", "json",
+	}, &stdout, &stderr)
+
+	if exit == 0 {
+		t.Fatalf("expected non-zero exit (profile must validate even on --dry-run); got 0\nstdout=%s", stdout.String())
+	}
+	var env map[string]any
+	_ = json.Unmarshal(stdout.Bytes(), &env)
+	if env["code"] != "not_found" {
+		t.Errorf("code != 'not_found': %v", env["code"])
+	}
+	errStr, _ := env["error"].(string)
+	if !strings.Contains(errStr, "nonexistent") {
+		t.Errorf("error should mention bad profile name; got %q", errStr)
+	}
+}
+
 // Regression guard: --wait-until's help text must list the real enum values
 // from the schema, not the Puppeteer-style guesses we shipped in v0.7.0.
 func TestRender_WaitUntilHelp_ListsRealEnumValues(t *testing.T) {
