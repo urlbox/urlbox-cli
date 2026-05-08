@@ -108,6 +108,11 @@ func TestSkill_DocumentsRenderSurface(t *testing.T) {
 		"urlbox skill install", // the new command
 		"Bootstrap",            // section header at the top
 		"--target claude-code", // the canonical target invocation
+		// v1.0 — all four skill-install targets must appear in SKILL.md so
+		// agents can self-discover the target name without reading source.
+		"--target cursor",
+		"--target codex",
+		"--target opencode",
 		// v0.9.0 — schema-as-docs: SKILL.md must teach the new validation
 		// contract so agents understand --json is a passthrough and that
 		// the API (not the CLI) is the authoritative validator.

@@ -25,19 +25,20 @@ urlbox skill install --target claude-code --scope user --yes
 urlbox skill install --target claude-code --scope project --yes
 ```
 
+The same invocation supports `--target cursor`, `--target codex`, and
+`--target opencode` — see the table below for each tool's paths.
+
 If they're not sure, default to **user/global** — it's recoverable
 (`rm -r ~/.claude/skills/urlbox` removes it).
 
-| Target          | User scope                          | Project scope                |
-|-----------------|-------------------------------------|------------------------------|
-| `claude-code`   | `~/.claude/skills/urlbox/SKILL.md`  | `.claude/skills/urlbox/SKILL.md` |
-| `cursor`        | TBD                                  | TBD                              |
-| `codex`         | TBD                                  | TBD                              |
-| `opencode`      | TBD                                  | TBD                              |
+| Target        | User scope                              | Project scope                       |
+|---------------|-----------------------------------------|-------------------------------------|
+| `claude-code` | `~/.claude/skills/urlbox/SKILL.md`      | `.claude/skills/urlbox/SKILL.md`    |
+| `cursor`      | `~/.cursor/skills/urlbox/SKILL.md`      | `.cursor/skills/urlbox/SKILL.md`    |
+| `codex`       | `~/.agents/skills/urlbox/SKILL.md`      | `.agents/skills/urlbox/SKILL.md`    |
+| `opencode`    | `~/.config/opencode/skills/urlbox/SKILL.md` | `.opencode/skills/urlbox/SKILL.md` |
 
-`urlbox skill install --help` lists supported targets and scopes. Cursor /
-Codex / OpenCode targets are TBD — paths vary per release; they ship as
-those tools stabilize their skill-discovery conventions.
+`urlbox skill install --help` lists supported targets and scopes.
 
 ## Output contract (every command)
 
