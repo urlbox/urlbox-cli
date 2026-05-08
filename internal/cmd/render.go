@@ -194,7 +194,7 @@ func runRender(cmd *cobra.Command, args []string, f *renderFlags) error {
 		fromJSON := map[string]any{}
 		if err := json.Unmarshal(jsonBytes, &fromJSON); err != nil {
 			return output.NewCLIError(
-				output.ErrUsage,
+				output.ErrValidation,
 				"failed to parse --json payload",
 				"--json accepts a literal JSON string, '-' (stdin), or '@path' (file). Got: "+err.Error(),
 			)

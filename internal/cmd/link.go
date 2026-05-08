@@ -18,6 +18,7 @@ import (
 	"github.com/urlbox/urlbox-cli/internal/api"
 	"github.com/urlbox/urlbox-cli/internal/config"
 	"github.com/urlbox/urlbox-cli/internal/output"
+	"github.com/urlbox/urlbox-cli/internal/validation"
 )
 
 // linkFlags carries every convenience flag the link command supports.
@@ -67,7 +68,7 @@ func runLink(cmd *cobra.Command, f *linkFlags) error {
 	if len(jsonBytes) > 0 {
 		if err := json.Unmarshal(jsonBytes, &options); err != nil {
 			return output.NewCLIError(
-				output.ErrUsage,
+				output.ErrValidation,
 				"failed to parse --json payload",
 				`--json accepts a literal JSON string, '-' (stdin), or '@path' (file). Got: `+err.Error(),
 			)
@@ -89,6 +90,14 @@ func runLink(cmd *cobra.Command, f *linkFlags) error {
 			`Missing required option "url"`,
 			`Pass --url <url> or --json '{"url":"..."}'`,
 		)
+	}
+
+	// 3a. Sanitize the URL field — control characters in a URL are an
+	// unambiguous validation error and must never reach the signer.
+	if s, ok := options["url"].(string); ok {
+		if cliErr := validation.SanitizeStringField("url", s); cliErr != nil {
+			return cliErr
+		}
 	}
 
 	// 4. Resolve credentials. Flag overrides win at the resolver layer; we
@@ -122,7 +131,7 @@ func runLink(cmd *cobra.Command, f *linkFlags) error {
 		return output.NewCLIError(
 			output.ErrAuth,
 			"Missing publishable API key",
-			"Pass --api-key, or set it on a profile via `urlbox config profile create`.",
+			"Pass --api-key, run `urlbox auth`, or set it on a profile via `urlbox config profile create`.",
 		)
 	}
 	if resolved.APISecret == "" {

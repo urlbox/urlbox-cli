@@ -363,3 +363,131 @@ func TestLink_NestedObject_PinnedDigest(t *testing.T) {
 		t.Errorf("expected token %s in url; got %s", fNestedWantToken, data["url"])
 	}
 }
+
+func TestLink_MissingAPIKey_AuthError(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("URLBOX_API_SECRET", "")
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute(
+		[]string{
+			"link",
+			"--url", "https://example.com",
+			"--api-secret", "sec_test_AAA",
+			"--output-format", "json",
+		},
+		&stdout, &stderr,
+	)
+	if exit != 3 {
+		t.Fatalf("exit=%d, want 3 (auth)", exit)
+	}
+	var env map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("error not JSON: %v", err)
+	}
+	if env["code"] != "auth" {
+		t.Errorf("code != 'auth': %v", env["code"])
+	}
+	if env["error"] != "Missing publishable API key" {
+		t.Errorf("error=%q", env["error"])
+	}
+	if !strings.Contains(env["hint"].(string), "urlbox auth") {
+		t.Errorf("hint should mention 'urlbox auth'; got: %s", env["hint"])
+	}
+}
+
+func TestLink_MissingAPISecret_AuthError_PinnedEnvelope(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("URLBOX_API_SECRET", "")
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute(
+		[]string{
+			"link",
+			"--url", "https://example.com",
+			"--api-key", "pub_test_KEY",
+			"--output-format", "json",
+		},
+		&stdout, &stderr,
+	)
+	if exit != 3 {
+		t.Fatalf("exit=%d, want 3 (auth)", exit)
+	}
+	var env map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("not JSON: %v", err)
+	}
+	if env["ok"] != false {
+		t.Errorf("ok != false")
+	}
+	if env["command"] != "link" {
+		t.Errorf("command != 'link': %v", env["command"])
+	}
+	if env["code"] != "auth" {
+		t.Errorf("code != 'auth': %v", env["code"])
+	}
+	if env["error"] != "Missing API secret" {
+		t.Errorf("error mismatch: %q", env["error"])
+	}
+	hint := env["hint"].(string)
+	if !strings.Contains(hint, "urlbox auth") {
+		t.Errorf("hint should mention urlbox auth; got: %s", hint)
+	}
+	if !strings.Contains(hint, "secret") {
+		t.Errorf("hint should mention secret; got: %s", hint)
+	}
+	for _, k := range []string{"data", "summary", "breadcrumbs"} {
+		if _, present := env[k]; present {
+			t.Errorf("error envelope should not contain %q (got: %v)", k, env[k])
+		}
+	}
+}
+
+func TestLink_ControlCharInURL_ValidationError(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("URLBOX_API_SECRET", "")
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute(
+		[]string{
+			"link",
+			"--url", "https://example.com\nfoo",
+			"--api-key", "pub_test_KEY",
+			"--api-secret", "sec_test_AAA",
+			"--output-format", "json",
+		},
+		&stdout, &stderr,
+	)
+	if exit != 2 {
+		t.Fatalf("exit=%d, want 2 (validation)", exit)
+	}
+	var env map[string]any
+	json.Unmarshal(stdout.Bytes(), &env)
+	if env["code"] != "validation" {
+		t.Errorf("code != 'validation': %v", env["code"])
+	}
+	if env["error"] != `Field "url" contains a control character` {
+		t.Errorf("error=%q", env["error"])
+	}
+}
+
+func TestLink_BadJSON_ValidationError(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("URLBOX_API_SECRET", "")
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute(
+		[]string{
+			"link",
+			"--json", `{"url":}`,
+			"--api-key", "pub_test_KEY",
+			"--api-secret", "sec_test_AAA",
+			"--output-format", "json",
+		},
+		&stdout, &stderr,
+	)
+	if exit != 2 {
+		t.Fatalf("exit=%d, want 2 (validation)", exit)
+	}
+	var env map[string]any
+	json.Unmarshal(stdout.Bytes(), &env)
+	if env["code"] != "validation" {
+		t.Errorf("code != 'validation': %v", env["code"])
+	}
+}
