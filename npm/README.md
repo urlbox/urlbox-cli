@@ -23,6 +23,16 @@ urlbox render https://example.com --open                  # open result in brows
 urlbox render https://example.com --preset article        # news/article preset
 urlbox render https://example.com --timeout 3m            # raise per-attempt budget (default 60s)
 
+# Async: queue a render, then poll for completion
+urlbox render https://example.com --async                 # returns a renderId
+urlbox status ps_abc123 --wait                            # poll until terminal
+
+# Sign a render URL locally (no API call) — for templates / CDNs
+urlbox link --url https://example.com --output-format quiet
+
+# Open the Urlbox dashboard in your browser
+urlbox dashboard
+
 # Self-discovery
 urlbox commands --output-format json                      # full command catalog
 urlbox render --help --agent                              # structured JSON help

@@ -197,6 +197,57 @@ urlbox config profile delete work
 `default_profile` is top-level and exempt from this rule, but the named profile
 must exist (you can't set a dangling default).
 
+### `link`
+
+Generate an HMAC-SHA256 signed render URL **without** calling the API. Pure
+local crypto — useful for embedding URLs in templates, emails, or static
+sites, and for inspecting the canonical query a render request would use.
+
+```sh
+# Minimal
+urlbox link --url https://example.com
+
+# Full payload via --json
+urlbox link --json '{"url":"https://example.com","width":1920,"full_page":true}' --format png
+
+# Raw URL only (one line, no envelope)
+urlbox link --url https://example.com --output-format quiet
+```
+
+Requires both the publishable API key AND the API secret. If you want the
+rendered asset (not just the URL), use `urlbox render`.
+
+### `status`
+
+Check or poll the status of an async render queued by `urlbox render --async`.
+
+```sh
+# One-shot status check
+urlbox status ps_abc123
+
+# Poll every 5s until terminal (default --timeout 60s)
+urlbox status ps_abc123 --wait
+
+# Custom cadence
+urlbox status ps_abc123 --wait --timeout 5m --poll-interval 10s
+```
+
+Terminal statuses are `succeeded` (exit 0, `data.renderUrl` points at the
+asset) and `failed` / `error` (exit 10). Non-terminal states (`created`,
+`retrying`, `processing`) without `--wait` return `ok: true` with a
+breadcrumb suggesting `urlbox status <id> --wait`.
+
+### `dashboard`
+
+Opens https://urlbox.com/dashboard in your default browser. On headless
+hosts (no `DISPLAY` / `WAYLAND_DISPLAY` on Linux, unsupported OS) the URL
+is printed to stderr and the envelope still arrives on stdout, so agents
+and pipelines get `data.url` regardless of host.
+
+```sh
+urlbox dashboard
+```
+
 ### `commands`
 
 Lists all available commands, their descriptions, and flags.
@@ -210,12 +261,15 @@ Available commands:
   auth        Configure API credentials
   commands    List all available commands
   config      Inspect and modify CLI configuration
+  dashboard   Open the Urlbox dashboard in your browser
   doctor      Check installation, configuration, network, and credentials
+  link        Generate an HMAC-signed render URL (no API call)
   pdf         Render a URL as PDF (alias for `render --format pdf --full-page`)
   render      Render a URL to a screenshot, PDF, video, or other format
   schema      Print JSON Schemas describing Urlbox API payloads
   screenshot  Capture a screenshot (alias for `render --format png`)
   skill       Agent skill content
+  status      Look up the state of an async render
   upgrade     Update urlbox to the latest version
   video       Render a URL as MP4 video (alias for `render --format mp4`)
 

@@ -114,6 +114,17 @@ func TestSkill_DocumentsRenderSurface(t *testing.T) {
 		"Validation contract", // new section header (replaces old "Validation")
 		"passthrough",         // load-bearing word for the --json contract
 		"warning:",            // stderr prefix the warning system uses
+		// Phase 5 — link / status / dashboard surface. These commands ship
+		// agent-relevant behaviour (URL signing, async polling, headless
+		// fallback) so the skill must mention them or the agent is blind.
+		"urlbox link",      // signed URL command
+		"urlbox status",    // async-render polling command
+		"urlbox dashboard", // browser-open command
+		"--wait",           // status polling flag
+		"--poll-interval",  // status polling cadence flag
+		"renderId",         // status command's positional arg term
+		"HMAC",             // load-bearing crypto term for link
+		"headless",         // dashboard fallback behaviour
 	}
 	for _, s := range required {
 		if !strings.Contains(body, s) {

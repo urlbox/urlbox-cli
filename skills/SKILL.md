@@ -160,13 +160,16 @@ documents the well-known options, but the API accepts more.
 | `urlbox config profile list`     | List all profiles, mark the default                    |
 | `urlbox config profile default`  | Switch the default profile                             |
 | `urlbox config profile delete`   | Delete a non-default profile                           |
+| `urlbox dashboard`               | Open the Urlbox dashboard in the user's browser        |
 | `urlbox doctor`                  | Diagnose install, config, network, credentials         |
+| `urlbox link`                    | Generate an HMAC-signed render URL with no API call    |
 | `urlbox render <url>`            | Capture a screenshot, PDF, or video of a web page      |
 | `urlbox screenshot <url>`        | Alias for `render --format png` (also `urlbox shot`)   |
 | `urlbox pdf <url>`               | Alias for `render --format pdf --full-page`            |
 | `urlbox video <url>`             | Alias for `render --format mp4`                        |
 | `urlbox schema render`           | Print the JSON Schema for the render request payload   |
 | `urlbox skill`                   | Show this skill content (`urlbox skill show`)          |
+| `urlbox status <renderId>`       | Check / poll the status of an async render             |
 | `urlbox upgrade`                 | Self-update via detected install method                |
 
 ## render: capture a URL
@@ -209,7 +212,7 @@ urlbox render https://example.com --output screenshot.png
 # Open the result in the browser after rendering
 urlbox render https://example.com --open
 
-# Async: queue and return a renderId; poll with `urlbox status` (a future release)
+# Async: queue and return a renderId; poll with `urlbox status <id> --wait`
 urlbox render https://example.com --async --webhook-url https://hooks.example/cb
 ```
 
@@ -269,6 +272,90 @@ discover every valid option and its type.
 - `urlbox schema render` — full schema in the standard envelope.
 - `urlbox schema render --output-format quiet` — raw schema only (no envelope).
 - `urlbox schema render --jq '.data.properties.url'` — drill into a specific field.
+
+## link: sign a render URL (no API call)
+
+`urlbox link` produces an HMAC-SHA256 signed render URL **without** calling
+the API. It's pure local crypto — useful for embedding URLs in templates,
+emails, or static sites, and for inspecting the canonical query a render
+request would use.
+
+URL shape: `https://api.urlbox.com/v1/<api_key>/<token>/<format>?<canonical_query>`
+
+```sh
+# Minimal — positional URL via --url
+urlbox link --url https://example.com
+
+# Full payload via --json (same merge rules as render: --json then flags)
+urlbox link --json '{"url":"https://example.com","width":1920,"full_page":true}' --format png
+
+# Raw URL only (one line, no envelope) — pipe-friendly for templates
+urlbox link --url https://example.com --output-format quiet
+```
+
+Requires both the **publishable API key** AND the **API secret**. If a
+profile is missing one, the error envelope tells you which (`auth` code).
+If you actually want the rendered asset, use `urlbox render` instead —
+`link` never touches the network.
+
+## status: check an async render
+
+`urlbox status <renderId>` looks up the state of an async render queued by
+`urlbox render --async`. One-shot by default; pass `--wait` to poll until
+the render reaches a terminal state.
+
+```sh
+# One-shot snapshot
+urlbox status ps_abc123
+
+# Poll every 5s until terminal (default --timeout 60s)
+urlbox status ps_abc123 --wait
+
+# Custom cadence — long renders, slower polling to spare API quota
+urlbox status ps_abc123 --wait --timeout 5m --poll-interval 10s
+```
+
+Terminal statuses:
+
+- `succeeded` → exit 0, `data.renderUrl` points at the asset.
+- `failed` / `error` → exit 10, envelope's `error` describes why.
+
+Non-terminal states (`created`, `retrying`, `processing`) without `--wait`
+return `ok: true` with a breadcrumb suggesting `urlbox status <id> --wait`.
+With `--wait`, the deadline is governed by `--timeout`; if it elapses
+before a terminal state, the envelope is `usage` / exit 1 with a hint to
+raise `--timeout` or re-run later.
+
+## dashboard: open the Urlbox dashboard
+
+`urlbox dashboard` opens https://urlbox.com/dashboard in the user's
+default browser. On headless boxes (no `DISPLAY` / `WAYLAND_DISPLAY` on
+Linux, or unsupported OS) it prints the URL to stderr instead and still
+emits the standard envelope on stdout — so agents and pipelines always
+get `data.url` regardless of host.
+
+```sh
+urlbox dashboard
+urlbox dashboard --output-format json --jq '.data.url'
+```
+
+Exit codes: 0 on success (browser launched or URL printed); 10 if the OS
+browser handler returned an error (URL is in the hint).
+
+## Common workflows
+
+```sh
+# Fire-and-poll: kick off an async render, then wait for it
+urlbox render https://example.com --async --output-format quiet \
+  | jq -r .data.renderId \
+  | xargs urlbox status --wait
+
+# Sign a URL for a CDN / template (no API call, no credit burn)
+urlbox link --json '{"url":"https://example.com","width":1920}' --output-format quiet
+
+# Open the dashboard
+urlbox dashboard
+```
 
 ## Validation contract
 
@@ -349,7 +436,5 @@ Saves to `~/.config/urlbox/config.json` (mode 0600), under the default profile
 
 ## Coming next
 
-- `urlbox status <id>` — poll an async render to completion.
-- `urlbox link <url>` — generate an HMAC-signed render URL with no API call.
-
-When these arrive, this skill file will gain examples and decision trees.
+Future surface additions land here as they ship; the skill file gains
+examples and decision trees alongside each new command.
