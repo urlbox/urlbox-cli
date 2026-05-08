@@ -4,83 +4,184 @@ All notable changes to the `urlbox` CLI are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
-## v0.12.0 — 2026-05-07
+## v1.0.0 — 2026-05-08 — v1 GA
 
-Verification + tech-debt sweep. Closes every "carry-forward open follow-up"
-in the journal so v1.0 ships with zero known sharp edges. Five tech-debt
-fixes, two Fizzy-lessons regression tests, broader coverage on
-`internal/config` and `internal/validation`.
+The first general-availability release of the Urlbox CLI. Closes the
+original 5-phase spec end-to-end: agent contract, schema validation,
+multi-profile config + auth, render + async, link, status, dashboard,
+plus the four-target skill-install matrix (claude-code, cursor, codex,
+opencode). Twenty-one commits since v0.9.0; zero new third-party
+dependencies; surface frozen by `SURFACE.txt`.
 
-### Fixed
+### Added — new commands
 
-- **Security:** `urlbox render --output` now rejects pre-existing leaf
-  symlinks (`os.Lstat` probe before open). Closes a "render-to-planted-symlink"
-  arbitrary-file-write hazard. Parent-directory symlinks were already defended;
-  this completes the story.
-- `RetryDo` returns the last observed response on context cancel mid-sleep
-  instead of `nil`, so callers that read `resp` without the early-`err` check
-  don't NPE. Body is replaced with `http.NoBody` for safe reading.
-- `urlbox auth` interactive-prompt newline now lands on the cobra-injected
-  stderr writer (matches every other command in the codebase; redirectable
-  in tests).
+- **`urlbox link`** — generate an HMAC-SHA256 signed render URL using
+  local crypto only (no API call). Pure function over the canonical
+  query string, lowercase-hex token. URL shape:
+  `https://api.urlbox.com/v1/<api_key>/<token>/<format>?<query>`. Mirrors
+  the customer-facing JS / PHP / Python / Ruby reference impls exactly;
+  pinned tests against Python-derived fixtures cover simple, multi-key
+  sorted, special-character, multi-value-array, null-value, and
+  nested-object cases. Quiet mode emits the bare URL on stdout (pipeline
+  friendly).
+- **`urlbox status <renderId>`** — look up the status of an async render
+  via `api.Client.Status`. Single-shot by default; `--wait` polls every
+  `--poll-interval` (default 5s) until terminal (`succeeded`, `error`,
+  `failed`) or `--timeout` (default 60s) elapses. `--profile` is
+  threaded through to `config.Resolve`. Polling uses the new
+  `internal/clock` package so tests run in microseconds.
+- **`urlbox dashboard`** — opens `https://urlbox.com/dashboard` in the
+  user's default browser. Falls back to printing the URL on stderr (and
+  emitting the standard envelope on stdout) when no graphical session is
+  detected (Linux without `DISPLAY`/`WAYLAND_DISPLAY`, or unsupported
+  OS).
 
-### Added
+### Added — skill-install matrix
+
+- `urlbox skill install --target {cursor,codex,opencode}` joins the
+  existing `claude-code` target. Verified paths against each tool's
+  current docs:
+  - `cursor` → `~/.cursor/skills/urlbox/SKILL.md` (or
+    `.cursor/skills/urlbox/SKILL.md` for project scope)
+  - `codex` → `~/.agents/skills/urlbox/SKILL.md` (cross-agent dir, per
+    Codex docs) / `.agents/skills/urlbox/SKILL.md`
+  - `opencode` → `~/.config/opencode/skills/urlbox/SKILL.md` /
+    `.opencode/skills/urlbox/SKILL.md`
+
+### Added — agent UX
 
 - `Did you mean "X"?` typo suggestions on unknown commands and flags
   (Fizzy item 5). `urlbox rendr` → suggests `render`; `urlbox render
-  --output-formart json` → suggests `--output-format`. Reuses the existing
-  `internal/validation.ClosestMatch` Levenshtein matcher so behavior is
-  consistent with v0.9.0's `--json` typo suggestions.
-- Static regression guard `TestNoEmptyCLIErrorHints` (Fizzy item 1) — every
-  `output.NewCLIError(code, msg, hint)` call in production code must pass a
-  non-empty hint. Test fails the build if a future commit reintroduces an
-  empty hint.
+  --output-formart json` → suggests `--output-format`. Reuses
+  `internal/validation.ClosestMatch` so behavior is consistent with the
+  v0.9.0 `--json` typo suggestions.
+- Static regression guard `TestNoEmptyCLIErrorHints` (Fizzy item 1):
+  every production `output.NewCLIError(code, msg, hint)` call must pass
+  a non-empty hint. Build fails if a future commit drops one. Filled
+  seven previously-empty hints with concrete recovery paths.
+
+### Fixed
+
+- **Security:** `urlbox render --output` rejects pre-existing leaf
+  symlinks (`os.Lstat` probe before open). Closes a
+  "render-to-planted-symlink" arbitrary-file-write hazard. Parent-
+  directory symlinks were already defended in v0.7.0; this completes
+  the story.
+- `RetryDo` returns the last observed response on context cancel
+  mid-sleep instead of `nil`, with body replaced by `http.NoBody` for
+  safe reads.
+- `urlbox auth` interactive-prompt newline now lands on the
+  cobra-injected stderr writer (test-capturable; matches the rest of
+  the codebase).
+- `urlbox render --profile <name>` actually honours `--profile`. The
+  flag was registered persistently on root from v0.5.0 but render's
+  `buildRenderClient` was missing the wire-through to
+  `config.Resolve`. Status, link, and the new commands had it; render
+  was the odd one out.
+
+### Changed
+
+- `--output-format` now rejects unknown values explicitly with `code:
+  "usage"` (exit 1) instead of silently falling through to JSON.
+  `--output-format ndjson` returns a clear "not yet implemented; coming
+  in a future release alongside `urlbox batch`" message — previously it
+  produced JSON and confused users expecting NDJSON.
+- `urlbox upgrade` now emits the standard envelope on stdout while
+  streaming package-manager progress on stderr. Agents piping
+  `--output-format json` get a structured description of the install
+  method, current version, binary path, and a `verify` breadcrumb;
+  humans see the brew/scoop/npm/go output as before.
+- `urlbox render --json '<malformed>'` exits with code `validation`
+  (exit 2) instead of `usage` (exit 1). Matches `link`'s behavior and
+  `internal/validation.ValidatePayload`'s convention. Malformed JSON is
+  a payload-content problem, not a flag-shape problem.
 
 ### Tests / Coverage
 
 - `internal/config` coverage: 85.0% → 88.8%. New tests cover `Save`'s
-  rename / mkdirAll / createTemp failure branches, `Load`'s malformed-JSON
-  branch, and `APISecretSource`'s legacy-only fallback.
+  rename / mkdirAll / createTemp failure branches, `Load`'s
+  malformed-JSON branch, and `APISecretSource`'s legacy-only fallback.
 - `internal/validation` coverage: 92.2% → 95.0%. `loadSchema` factored
-  into a testable `loadSchemaFrom(b []byte)` so the decode/register/compile
+  into a testable `loadSchemaFrom(b []byte)` so decode/register/compile
   error branches are reachable without fighting `sync.Once`.
-- 7 previously-empty `Hint` strings filled with specific recovery paths
-  (`urlbox doctor`, `urlbox config show`, `urlbox schema render`, curl
-  fallback for envelope URLs, etc.).
+- New `internal/clock` package (~70 lines, stdlib-only) with `Clock`
+  interface and a race-clean `FakeClock` driving the status `--wait`
+  tests in microseconds.
 
 ### Documentation
 
-- `loadSchema` godoc updated: explains the memoized-via-`sync.Once`
-  contract and points to `loadSchemaFrom` as the testable inner.
-- `RetryDo` godoc updated: documents the new ctx-cancel return shape
-  (last response with `http.NoBody`, not nil).
-- `defaultAuthSecretReader` docstring reframed: caller is responsible for
-  both prompt label AND trailing newline on the cobra writer.
+- New `urlbox link` / `urlbox status` / `urlbox dashboard` sections in
+  `skills/SKILL.md`, `README.md`, and `npm/README.md`. SKILL.md gains a
+  "Common workflows" section (fire-and-poll, sign-a-URL, open-dashboard).
+- Skill install table in SKILL.md and README documents all four
+  targets with verified upstream paths.
+- `RetryDo`, `loadSchema`, `defaultAuthSecretReader` godoc updated to
+  reflect new contracts.
 
-### Known limitations (tracked for post-1.0 polish, not v1.0-blocking)
+### v1 surface stability promise
 
-- `did_you_mean` for unknown commands only walks immediate subcommands of
-  root. Subcommand-level typos (e.g. `urlbox config gett`) fall through to
-  the generic hint without a suggestion. Documented in
-  `suggestUnknownCommand`'s godoc.
-- `did_you_mean` for unknown flags unions all flag names across the entire
-  command tree. A typo on one command can match a flag from an unrelated
-  command (e.g. `urlbox auth status --widht` would suggest `--width`,
-  which is a render flag). Documented in `suggestUnknownFlag`'s godoc.
-- Both helpers parse cobra/pflag error strings via `strings.Index` rather
-  than typed errors. A `go get -u cobra` (or pflag) PR should re-verify the
-  prefix constants in `internal/cmd/root.go`.
+`SURFACE.txt` is the contract. Adding new commands or flags is
+backwards-compatible. Removing or renaming anything in `SURFACE.txt`
+requires a major version bump. From v1.0 onward, every breaking change
+to commands, flags, envelope shape, or exit codes ships in a 2.0
+release, not a point release.
+
+### Exit code mapping (frozen for v1.0)
+
+The closed-set error codes and their exit codes:
+
+| Exit code | Code           |
+|-----------|----------------|
+| 0         | success        |
+| 1         | usage          |
+| 2         | validation     |
+| 3         | auth           |
+| 4         | forbidden      |
+| 5         | not_found      |
+| 6         | rate_limit     |
+| 7         | conflict       |
+| 10        | server         |
+| 11        | network / timeout |
+
+This mapping has been stable since v0.3.0; v1.0 freezes it.
+
+### Known limitations (post-1.0 polish, not blockers)
+
+- `did_you_mean` for unknown commands only walks immediate subcommands
+  of root. `urlbox config gett` falls through to the generic hint
+  without a suggestion. Documented in `suggestUnknownCommand`'s godoc.
+- `did_you_mean` for unknown flags unions all flag names across the
+  command tree. A typo on one command can match a flag from an
+  unrelated command (e.g. `urlbox auth status --widht` would suggest
+  `--width`, a render flag). Documented in `suggestUnknownFlag`'s
+  godoc.
+- Both helpers parse cobra/pflag error strings via `strings.Index`. A
+  `go get -u cobra/pflag` PR should re-verify the prefix constants in
+  `internal/cmd/root.go`.
+
+### Fizzy verifications closed
+
+- Item 1 (breadcrumbs/hint on every error) — regression test landed.
+- Item 2 (numeric ID parent-scoping) — closed by Phase 5 design (opaque
+  `renderId`, no integer ambiguity).
+- Item 3 (skill install non-interactive) — closed in v0.8.1.
+- Item 4 (identifier consistency) — closed by Phase 5 design (`link`
+  emits a `renderId`-shaped output that `status` accepts verbatim).
+- Item 5 (did_you_mean) — regression test landed.
+
+### Convention H
+
+`make smoke` green against `api.urlbox.com`: 6/6 tests pass (sync
+render, async queue, auth fail, three v0.9.0 passthrough cases).
 
 ### Notes
 
-- All Fizzy CLI cross-reference items now closed for v1.0:
-  - Item 1 (breadcrumbs/hint on every error) — regression test landed.
-  - Item 2 (numeric ID parent-scoping) — closed by Phase 5 design.
-  - Item 3 (skill install non-interactive) — closed in v0.8.1.
-  - Item 4 (identifier consistency) — closed by Phase 5 design.
-  - Item 5 (did_you_mean) — regression tests landed.
-- Smoke (`make smoke`) green against `api.urlbox.com`: 6/6 tests pass
-  (3 from v0.7.0, 3 from v0.9.0).
+- Twenty-one commits since v0.9.0 across three workstreams (sweep, link/
+  status/dashboard, skill targets) plus two bulletproofing follow-ups.
+- Zero new third-party dependencies. `go.mod` and `go.sum` unchanged
+  since `cc1bbd0` (v0.9.0 merge).
+- Cross-compile verified for `linux/amd64`, `linux/arm64`,
+  `windows/amd64`. Race + stress (count=10) clean.
 
 ## v0.9.0 — 2026-05-05
 
