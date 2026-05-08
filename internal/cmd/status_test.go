@@ -3,14 +3,18 @@ package cmd_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/urlbox/urlbox-cli/internal/api"
 	"github.com/urlbox/urlbox-cli/internal/api/apitest"
+	"github.com/urlbox/urlbox-cli/internal/clock"
 	"github.com/urlbox/urlbox-cli/internal/cmd"
 	"github.com/urlbox/urlbox-cli/internal/config"
 )
@@ -218,31 +222,257 @@ func TestStatus_NoArgs_UsageError(t *testing.T) {
 	}
 }
 
-// TestStatus_WaitFlag_StubbedUntilTask4 documents the placeholder behaviour:
-// --wait is a registered flag, but Task 4 implements the polling loop. Until
-// then, calling --wait returns a clear usage-class error so the agent isn't
-// silently no-op'd.
-func TestStatus_WaitFlag_StubbedUntilTask4(t *testing.T) {
+// scriptedStatusClient is a fake api.Client whose Status() method returns
+// successive Responses from the script. Once exhausted it loops on the last
+// entry. Used by the --wait tests to drive the polling loop through a known
+// transcript.
+type scriptedStatusClient struct {
+	script []*api.Response
+	errs   []error
+	calls  atomic.Int32
+}
+
+func (s *scriptedStatusClient) Render(_ context.Context, _ map[string]any) (*api.Response, error) {
+	return nil, fmt.Errorf("Render not used in --wait tests")
+}
+
+func (s *scriptedStatusClient) RenderAsync(_ context.Context, _ map[string]any) (*api.Response, error) {
+	return nil, fmt.Errorf("RenderAsync not used in --wait tests")
+}
+
+func (s *scriptedStatusClient) Status(_ context.Context, _ string) (*api.Response, error) {
+	i := int(s.calls.Add(1)) - 1
+	if i >= len(s.script) {
+		i = len(s.script) - 1
+	}
+	var err error
+	if i < len(s.errs) {
+		err = s.errs[i]
+	}
+	return s.script[i], err
+}
+
+// startFakeClockDriver runs a goroutine that wakes any sleeper on fc by
+// advancing past the interval. Returns a stop func tests should defer.
+//
+// Has a sanity cap of 100 advances — well past any well-behaved test's
+// budget but tight enough to fail fast if production code stops returning.
+func startFakeClockDriver(t *testing.T, fc *clock.FakeClock, advance time.Duration) (stop func()) {
+	t.Helper()
+	stopCh := make(chan struct{})
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		const maxAdvances = 100
+		advances := 0
+		for {
+			select {
+			case <-stopCh:
+				return
+			default:
+			}
+			// Use a short timeout so we re-check stopCh quickly after the
+			// production code returns.
+			if !fc.WaitForSleeper(50 * time.Millisecond) {
+				continue
+			}
+			fc.Advance(advance)
+			advances++
+			if advances >= maxAdvances {
+				t.Errorf("startFakeClockDriver: hit maxAdvances=%d; production code likely stuck in poll loop", maxAdvances)
+				return
+			}
+		}
+	}()
+	return func() {
+		close(stopCh)
+		<-done
+	}
+}
+
+// TestStatus_Wait_PollsUntilSucceeded confirms --wait polls Status() until it
+// returns status=succeeded, then emits the success envelope (exit 0).
+// Uses a FakeClock so the synthetic poll-interval (5s) is driven by Advance,
+// not real wall-clock waits.
+func TestStatus_Wait_PollsUntilSucceeded(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("URLBOX_API_SECRET", "sec_test")
+
+	sc := &scriptedStatusClient{
+		script: []*api.Response{
+			{OK: true, Data: map[string]any{"status": "created", "renderId": "ps_abc"}},
+			{OK: true, Data: map[string]any{"status": "processing", "renderId": "ps_abc"}},
+			{OK: true, Data: map[string]any{
+				"status":    "succeeded",
+				"renderId":  "ps_abc",
+				"renderUrl": "https://renders.urlbox.com/v1/renders/ps_abc.png",
+			}},
+		},
+	}
+	cmd.SetStatusClientForTest(sc)
+	t.Cleanup(cmd.ResetStatusClientForTest)
+
+	fc := clock.NewFake(time.Now())
+	cmd.SetStatusClockForTest(fc)
+	t.Cleanup(cmd.ResetStatusClockForTest)
+
+	stop := startFakeClockDriver(t, fc, 6*time.Second)
+	defer stop()
+
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{
+		"status", "ps_abc",
+		"--wait",
+		"--poll-interval", "5s",
+		"--timeout", "30s",
+		"--output-format", "json",
+	}, &stdout, &stderr)
+
+	if exit != 0 {
+		t.Fatalf("exit=%d stderr=%s stdout=%s", exit, stderr.String(), stdout.String())
+	}
+	if got := sc.calls.Load(); got != 3 {
+		t.Errorf("Status() calls=%d, want 3 (created → processing → succeeded)", got)
+	}
+	var env map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("not JSON: %v\nstdout=%s", err, stdout.String())
+	}
+	if env["ok"] != true {
+		t.Errorf("ok != true: %v", env["ok"])
+	}
+	data, _ := env["data"].(map[string]any)
+	if data["status"] != "succeeded" {
+		t.Errorf("data.status=%v, want succeeded", data["status"])
+	}
+}
+
+// TestStatus_Wait_FailedTerminal_Exit10 confirms a status=failed mid-poll
+// short-circuits the loop and yields exit 10 with code "server".
+func TestStatus_Wait_FailedTerminal_Exit10(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("URLBOX_API_SECRET", "sec_test")
+
+	sc := &scriptedStatusClient{
+		script: []*api.Response{
+			{OK: true, Data: map[string]any{"status": "created", "renderId": "ps_abc"}},
+			{OK: true, Data: map[string]any{
+				"status":   "failed",
+				"renderId": "ps_abc",
+				"error":    "navigation timeout",
+			}},
+		},
+	}
+	cmd.SetStatusClientForTest(sc)
+	t.Cleanup(cmd.ResetStatusClientForTest)
+
+	fc := clock.NewFake(time.Now())
+	cmd.SetStatusClockForTest(fc)
+	t.Cleanup(cmd.ResetStatusClockForTest)
+
+	stop := startFakeClockDriver(t, fc, 6*time.Second)
+	defer stop()
+
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{
+		"status", "ps_abc",
+		"--wait",
+		"--poll-interval", "5s",
+		"--timeout", "30s",
+		"--output-format", "json",
+	}, &stdout, &stderr)
+
+	if exit != 10 {
+		t.Fatalf("exit=%d, want 10 (server); stdout=%s stderr=%s", exit, stdout.String(), stderr.String())
+	}
+	var env map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("error not JSON: %v\nstdout=%s", err, stdout.String())
+	}
+	if env["code"] != "server" {
+		t.Errorf("code != 'server': %v", env["code"])
+	}
+	errMsg, _ := env["error"].(string)
+	if !strings.Contains(errMsg, "navigation timeout") {
+		t.Errorf("error should include API failure message; got %q", errMsg)
+	}
+}
+
+// TestStatus_Wait_TimesOut_UsageExit confirms that when --timeout elapses
+// before a terminal status is observed, runStatusWait returns ErrUsage (exit
+// 1) with a message naming the renderId, the duration, and the last status.
+func TestStatus_Wait_TimesOut_UsageExit(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("URLBOX_API_SECRET", "sec_test")
+
+	// Always in-flight — never reaches succeeded/failed.
+	sc := &scriptedStatusClient{
+		script: []*api.Response{
+			{OK: true, Data: map[string]any{"status": "processing", "renderId": "ps_abc"}},
+		},
+	}
+	cmd.SetStatusClientForTest(sc)
+	t.Cleanup(cmd.ResetStatusClientForTest)
+
+	fc := clock.NewFake(time.Now())
+	cmd.SetStatusClockForTest(fc)
+	t.Cleanup(cmd.ResetStatusClockForTest)
+
+	// Drive the clock past the deadline. With timeout=10s and
+	// poll-interval=5s, after one poll the next deadline check is at +5s
+	// (fits) → sleep → advance to +6s. Second iteration: +6s+5s=+11s,
+	// which is past the 10s deadline → returns timeout.
+	stop := startFakeClockDriver(t, fc, 6*time.Second)
+	defer stop()
+
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{
+		"status", "ps_abc",
+		"--wait",
+		"--poll-interval", "5s",
+		"--timeout", "10s",
+		"--output-format", "json",
+	}, &stdout, &stderr)
+
+	if exit != 1 {
+		t.Fatalf("exit=%d, want 1 (usage timeout); stdout=%s stderr=%s", exit, stdout.String(), stderr.String())
+	}
+	var env map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("error not JSON: %v\nstdout=%s", err, stdout.String())
+	}
+	if env["code"] != "usage" {
+		t.Errorf("code != 'usage': %v", env["code"])
+	}
+	errMsg, _ := env["error"].(string)
+	if !strings.Contains(errMsg, "ps_abc") {
+		t.Errorf("error should reference renderId; got %q", errMsg)
+	}
+	if !strings.Contains(strings.ToLower(errMsg), "timed out") {
+		t.Errorf("error should say 'timed out'; got %q", errMsg)
+	}
+	if !strings.Contains(errMsg, "processing") {
+		t.Errorf("error should include last status; got %q", errMsg)
+	}
+}
+
+// TestStatus_Wait_BadDuration_UsageError confirms that a malformed --timeout
+// or --poll-interval value yields ErrUsage rather than a panic / silent
+// fallback. cobra's DurationVar already rejects malformed values upstream,
+// but this test pins the behaviour at the public CLI surface.
+func TestStatus_Wait_BadDuration_UsageError(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("URLBOX_API_SECRET", "sec_test")
 
 	var stdout, stderr bytes.Buffer
 	exit := cmd.Execute([]string{
-		"status", "ps_abc123",
+		"status", "ps_abc",
 		"--wait",
+		"--poll-interval", "not-a-duration",
 		"--output-format", "json",
 	}, &stdout, &stderr)
 	if exit != 1 {
-		t.Fatalf("exit=%d, want 1 (usage stub); stdout=%s stderr=%s", exit, stdout.String(), stderr.String())
-	}
-	var env map[string]any
-	_ = json.Unmarshal(stdout.Bytes(), &env)
-	if env["code"] != "usage" {
-		t.Errorf("code != 'usage': %v", env["code"])
-	}
-	errMsg, _ := env["error"].(string)
-	if !strings.Contains(strings.ToLower(errMsg), "wait") {
-		t.Errorf("error should mention --wait; got %q", errMsg)
+		t.Fatalf("exit=%d, want 1 (usage); stdout=%s stderr=%s", exit, stdout.String(), stderr.String())
 	}
 }
 

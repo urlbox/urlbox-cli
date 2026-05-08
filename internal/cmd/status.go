@@ -11,9 +11,15 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/urlbox/urlbox-cli/internal/api"
+	"github.com/urlbox/urlbox-cli/internal/clock"
 	"github.com/urlbox/urlbox-cli/internal/config"
 	"github.com/urlbox/urlbox-cli/internal/output"
 )
+
+// statusClock is the wall-clock source used by runStatusWait. Production code
+// gets the real clock; tests swap a FakeClock via SetStatusClockForTest so the
+// polling loop runs in microseconds.
+var statusClock clock.Clock = clock.New()
 
 // statusClientOverride is a test injection point. Production builds always
 // see nil and construct a real api.HTTPClient.
@@ -26,9 +32,17 @@ func SetStatusClientForTest(c api.Client) { statusClientOverride = c }
 // ResetStatusClientForTest restores production client construction.
 func ResetStatusClientForTest() { statusClientOverride = nil }
 
+// SetStatusClockForTest swaps the package-level statusClock for tests.
+// Mirrors SetStatusClientForTest's shape — no return value; pair with
+// ResetStatusClockForTest in t.Cleanup.
+func SetStatusClockForTest(c clock.Clock) { statusClock = c }
+
+// ResetStatusClockForTest restores the real wall clock.
+func ResetStatusClockForTest() { statusClock = clock.New() }
+
 // defaultStatusTimeout is the per-call deadline for the status GET. Status
 // is cheap; users who want long polling reach for --wait + --timeout (Task 4).
-const defaultStatusTimeout = 30 * time.Second
+const defaultStatusTimeout = 60 * time.Second
 
 // defaultStatusPollInterval is the time between successive GETs when --wait
 // is in use (Task 4 wires up the polling loop; Task 3 only registers the flag).
@@ -53,10 +67,11 @@ func newStatusCmd() *cobra.Command {
 
 Without --wait, returns immediately with the current status. With --wait,
 polls until the render reaches a terminal state (succeeded / failed) or the
---timeout elapses (Task 4 — not yet implemented).
+--timeout elapses.
 
 Exit codes:
-  0   succeeded, or in-flight (created / retrying)
+  0   succeeded, or in-flight (created / retrying) without --wait
+  1   --wait timed out before reaching a terminal state
   5   renderId not found
   10  the API reported status=failed (the render itself failed)
   11  network failure
@@ -64,7 +79,8 @@ Exit codes:
 Examples:
   urlbox status ps_abc123
   urlbox status ps_abc123 --output-format json
-  urlbox status ps_abc123 --wait                  # blocks until terminal (Task 4)`,
+  urlbox status ps_abc123 --wait
+  urlbox status ps_abc123 --wait --timeout 2m --poll-interval 5s`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runStatus(cmd, args, f)
@@ -76,7 +92,7 @@ Examples:
 		"Per-call timeout for the status GET (e.g. 30s, 2m). With --wait, "+
 			"caps the total time spent polling.")
 	c.Flags().BoolVar(&f.wait, "wait", false,
-		"Poll until the render reaches a terminal state (Task 4 — not yet implemented)")
+		"Poll until the render reaches a terminal state (succeeded / failed) or --timeout elapses")
 	c.Flags().DurationVar(&f.pollInterval, "poll-interval", defaultStatusPollInterval,
 		"Time between successive status GETs when --wait is set")
 	c.Flags().BoolVar(&f.noRetry, "no-retry", false, "Disable automatic retries on 429 / 5xx")
@@ -96,19 +112,13 @@ func runStatus(cmd *cobra.Command, args []string, f *statusFlags) error {
 	}
 	renderID := args[0]
 
-	if f.wait {
-		// Task 4 implements the polling loop. Until then, surface a clear
-		// usage error so callers passing --wait don't get silently ignored.
-		return output.NewCLIError(
-			output.ErrUsage,
-			"--wait not yet implemented",
-			"Re-run without --wait, or upgrade to a CLI version where Task 4 has shipped.",
-		)
-	}
-
 	client, cerr := buildStatusClient(cmd, f)
 	if cerr != nil {
 		return cerr
+	}
+
+	if f.wait {
+		return runStatusWait(cmd, client, renderID, f)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), f.timeout)
@@ -127,6 +137,90 @@ func runStatus(cmd *cobra.Command, args []string, f *statusFlags) error {
 	}
 
 	return writeStatusEnvelope(cmd, resp, renderID)
+}
+
+// runStatusWait polls client.Status every f.pollInterval until the render
+// reaches a terminal state (succeeded / failed / error), the deadline elapses,
+// or the context is cancelled.
+//
+// Terminal handling reuses writeStatusEnvelope so the success / failure
+// envelopes match the single-shot path exactly. Mid-poll non-terminal states
+// (created, retrying, processing, queued, …) are silently absorbed — the
+// breadcrumb-to---wait suggestion only matters when the user asked for a
+// snapshot, not while we're already waiting.
+func runStatusWait(cmd *cobra.Command, client api.Client, renderID string, f *statusFlags) error {
+	if f.timeout <= 0 {
+		return output.NewCLIError(
+			output.ErrUsage,
+			"--timeout must be positive when --wait is set",
+			"Use a positive duration like --timeout 2m.",
+		)
+	}
+	if f.pollInterval <= 0 {
+		return output.NewCLIError(
+			output.ErrUsage,
+			"--poll-interval must be positive",
+			"Use a positive duration like --poll-interval 2s.",
+		)
+	}
+
+	start := statusClock.Now()
+	deadline := start.Add(f.timeout)
+	lastStatus := ""
+
+	// Per-poll context = the remaining budget. Each poll is allowed to
+	// consume up to (deadline - now), so a single hung GET can't burn past
+	// the user's --timeout. Bounded by the API's own behaviour: HTTPClient
+	// already retries 429/5xx within its own budget.
+	for {
+		now := statusClock.Now()
+		remaining := deadline.Sub(now)
+		if remaining <= 0 {
+			return waitTimeoutError(renderID, f.timeout, lastStatus)
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), remaining)
+		resp, err := client.Status(ctx, renderID)
+		cancel()
+		if err != nil {
+			// Propagate *output.CLIError straight through (404 → not_found,
+			// network, timeout). Same shape as single-shot.
+			var cli *output.CLIError
+			if errors.As(err, &cli) {
+				return cli
+			}
+			return output.NewCLIError(output.ErrServer, err.Error(), "Run `urlbox doctor` to verify connectivity.")
+		}
+
+		statusStr, _ := resp.Data["status"].(string)
+		if statusStr != "" {
+			lastStatus = statusStr
+		}
+		switch statusStr {
+		case "succeeded", "failed", "error":
+			return writeStatusEnvelope(cmd, resp, renderID)
+		}
+
+		// Non-terminal. Decide whether the next poll fits inside --timeout.
+		next := statusClock.Now().Add(f.pollInterval)
+		if !next.Before(deadline) {
+			return waitTimeoutError(renderID, f.timeout, lastStatus)
+		}
+		statusClock.Sleep(f.pollInterval)
+	}
+}
+
+// waitTimeoutError builds the ErrUsage envelope returned when --timeout
+// expires before a terminal status is observed.
+func waitTimeoutError(renderID string, timeout time.Duration, lastStatus string) *output.CLIError {
+	if lastStatus == "" {
+		lastStatus = "unknown"
+	}
+	return output.NewCLIError(
+		output.ErrUsage,
+		fmt.Sprintf("Render %s timed out after %s (last status: %s)", renderID, timeout, lastStatus),
+		"Increase --timeout, or re-run `urlbox status "+renderID+" --wait` later.",
+	)
 }
 
 // writeStatusEnvelope inspects the API's status field and emits the right
