@@ -38,6 +38,7 @@ urlbox commands --output-format json                      # full command catalog
 urlbox render --help --agent                              # structured JSON help
 urlbox schema render                                      # JSON Schema of render options
 urlbox skill show                                         # one-page agent guide
+urlbox skill install --target claude-code --scope user --yes  # auto-discover by your agent (also: cursor, codex, opencode)
 
 # Diagnostics
 urlbox doctor                                             # version + config + auth + reachability

@@ -319,6 +319,25 @@ context for an LLM agent.
 urlbox skill show
 ```
 
+`urlbox skill install --target <tool>` writes the embedded `SKILL.md` to the
+well-known skill directory of your agent tooling so the agent picks it up
+automatically on next launch. Supported targets:
+
+| Target          | User scope                                 | Project scope                  |
+|-----------------|--------------------------------------------|--------------------------------|
+| `claude-code`   | `~/.claude/skills/urlbox/SKILL.md`         | `.claude/skills/urlbox/SKILL.md` |
+| `cursor`        | `~/.cursor/skills/urlbox/SKILL.md`         | `.cursor/skills/urlbox/SKILL.md` |
+| `codex`         | `~/.agents/skills/urlbox/SKILL.md`         | `.agents/skills/urlbox/SKILL.md` |
+| `opencode`      | `~/.config/opencode/skills/urlbox/SKILL.md` | `.opencode/skills/urlbox/SKILL.md` |
+
+```sh
+urlbox skill install --target cursor --scope user --yes
+```
+
+Use `--scope user` to install once across all projects (under `$HOME`); use
+`--scope project` to commit the skill to the current repo so teammates inherit
+it.
+
 ### `upgrade`
 
 Updates urlbox to the latest version. Automatically detects how you installed it (Homebrew, Scoop, npm, or Go) and runs the appropriate update command. If the install method can't be detected, it prints all available upgrade commands so you can pick the right one.
