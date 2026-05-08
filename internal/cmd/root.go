@@ -89,6 +89,30 @@ func newRootCmd(stdout, stderr io.Writer) *cobra.Command {
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,
+		PersistentPreRunE: func(c *cobra.Command, args []string) error {
+			// Reject unknown --output-format values up-front. Without this,
+			// `--output-format ndjson` (and any other unknown value) silently
+			// falls through to JSON in NewFormatter's default arm — confusing
+			// for users who expect a different format. ndjson is reserved for
+			// v1.1+ batch streaming.
+			format, _ := c.Root().PersistentFlags().GetString("output-format")
+			switch format {
+			case "", "json", "text", "quiet":
+				return nil
+			case "ndjson":
+				return output.NewCLIError(
+					output.ErrUsage,
+					`--output-format "ndjson" is not yet implemented`,
+					"Coming in a future release alongside `urlbox batch`. Use json, text, or quiet today.",
+				)
+			default:
+				return output.NewCLIError(
+					output.ErrUsage,
+					`unknown --output-format "`+format+`"`,
+					"Use one of: json, text, quiet.",
+				)
+			}
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if isStderrTTY(cmd.ErrOrStderr()) {
 				_, _ = fmt.Fprintln(cmd.ErrOrStderr(), discoverabilityBanner)

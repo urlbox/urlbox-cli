@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/urlbox/urlbox-cli/internal/output"
 	"github.com/urlbox/urlbox-cli/internal/version"
 )
 
@@ -78,10 +79,52 @@ func newUpgradeCmd(stdout, stderr io.Writer) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			execPath, err := os.Executable()
 			if err != nil {
-				return fmt.Errorf("could not determine binary path: %w", err)
+				return output.NewCLIError(
+					output.ErrServer,
+					"could not determine binary path: "+err.Error(),
+					"This is a CLI bug — please report at https://github.com/urlbox/urlbox-cli/issues.",
+				)
 			}
-			return RunUpgrade(stderr, execPath, runExternal)
+
+			// Run the upgrade first — it streams human progress to stderr.
+			// On failure we surface a CLIError; on success we emit the
+			// standard envelope on stdout so agents get a structured
+			// description of what happened.
+			if err := RunUpgrade(cmd.ErrOrStderr(), execPath, runExternal); err != nil {
+				return output.NewCLIError(
+					output.ErrServer,
+					"upgrade failed: "+err.Error(),
+					"Re-run the package-manager command shown on stderr manually, or check https://github.com/urlbox/urlbox-cli/issues.",
+				)
+			}
+
+			method := DetectInstallMethod(execPath)
+			env := output.NewEnvelope("upgrade", map[string]any{
+				"currentVersion": version.Version,
+				"installMethod":  method,
+				"binaryPath":     execPath,
+			}, upgradeSummary(method), []output.Breadcrumb{
+				{Action: "verify", Cmd: "urlbox --version"},
+			})
+			return writeEnvelope(cmd, env)
 		},
+	}
+}
+
+// upgradeSummary returns a human-friendly one-liner describing what the
+// upgrade command just did, for the envelope's `summary` field.
+func upgradeSummary(method string) string {
+	switch method {
+	case "brew":
+		return "Upgraded via Homebrew"
+	case "scoop":
+		return "Upgraded via Scoop"
+	case "npm":
+		return "Upgraded via npm"
+	case "go":
+		return "Upgraded via go install"
+	default:
+		return "Manual upgrade instructions printed to stderr"
 	}
 }
 

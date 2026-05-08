@@ -349,16 +349,44 @@ func TestE2E_NoArgs_ShowsHelp(t *testing.T) {
 
 // --- Output-format flag ---
 
-func TestE2E_OutputFormatFlag_InvalidValue_StillWorks(t *testing.T) {
+func TestE2E_OutputFormatFlag_InvalidValue_RejectedExplicitly(t *testing.T) {
+	// Pre-v1.0 silently fell through to JSON. v1.0 rejects unknown values
+	// up-front so the user/agent gets a clear "use one of: json, text,
+	// quiet" error instead of confusion when "yaml" produces JSON.
 	stdout, _, exitCode := runCLI(t, "--output-format", "yaml", "commands")
 
-	if exitCode != 0 {
-		t.Fatalf("expected exit 0, got %d", exitCode)
+	if exitCode != 1 {
+		t.Fatalf("expected exit 1 (usage), got %d", exitCode)
 	}
-
 	var env map[string]any
 	if err := json.Unmarshal([]byte(stdout), &env); err != nil {
-		t.Fatalf("unknown format should default to JSON: %v\nOutput: %s", err, stdout)
+		t.Fatalf("error envelope should be JSON: %v\nOutput: %s", err, stdout)
+	}
+	if env["code"] != "usage" {
+		t.Errorf("code != 'usage': %v", env["code"])
+	}
+	if errMsg, _ := env["error"].(string); !strings.Contains(errMsg, "yaml") {
+		t.Errorf("error should name the bad value 'yaml'; got: %v", env["error"])
+	}
+}
+
+func TestE2E_OutputFormatFlag_NDJSON_NotYetImplemented(t *testing.T) {
+	// ndjson is reserved for v1.1+ batch streaming. Reject explicitly so
+	// users don't think they're getting NDJSON when they're getting JSON.
+	stdout, _, exitCode := runCLI(t, "--output-format", "ndjson", "commands")
+
+	if exitCode != 1 {
+		t.Fatalf("expected exit 1 (usage), got %d", exitCode)
+	}
+	var env map[string]any
+	if err := json.Unmarshal([]byte(stdout), &env); err != nil {
+		t.Fatalf("error envelope should be JSON: %v\nOutput: %s", err, stdout)
+	}
+	if env["code"] != "usage" {
+		t.Errorf("code != 'usage': %v", env["code"])
+	}
+	if errMsg, _ := env["error"].(string); !strings.Contains(errMsg, "ndjson") {
+		t.Errorf("error should mention 'ndjson'; got: %v", env["error"])
 	}
 }
 
