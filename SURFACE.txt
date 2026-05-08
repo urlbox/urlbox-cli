@@ -62,6 +62,11 @@ urlbox config set <key> <value> --agent
 urlbox config set <key> <value> --jq
 urlbox config set <key> <value> --output-format
 urlbox config set <key> <value> --profile
+urlbox dashboard
+urlbox dashboard --agent
+urlbox dashboard --jq
+urlbox dashboard --output-format
+urlbox dashboard --profile
 urlbox doctor
 urlbox doctor --agent
 urlbox doctor --jq
