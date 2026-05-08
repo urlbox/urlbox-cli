@@ -43,6 +43,14 @@ func ApplyJQ(envelopeBytes []byte, expr string, quiet bool) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
+		// In quiet mode, scalar strings emit raw (no JSON quotes) — matches
+		// `jq -r` so pipelines like `... --jq .renderId | xargs ...` work
+		// without inheriting double-quotes around the string value.
+		if quiet {
+			if s, ok := v.(string); ok {
+				out = []byte(s)
+			}
+		}
 		buf.Write(out)
 		buf.WriteByte('\n')
 	}

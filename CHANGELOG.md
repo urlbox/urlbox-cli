@@ -4,6 +4,45 @@ All notable changes to the `urlbox` CLI are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
+## v1.0.1 — 2026-05-08
+
+Patch release fixing two bugs uncovered by post-launch fresh-agent UX
+testing within the first hour of v1.0.0 going live. No surface change.
+
+### Fixed
+
+- **`--jq` in quiet mode now strips JSON quotes from scalar string
+  results.** The canonical pipeline documented in SKILL.md —
+  `urlbox render <url> --async --output-format quiet --jq '.renderId'
+  | xargs urlbox status --wait` — was broken in v1.0.0: jq emitted
+  the renderId with literal `"..."` quotes, which `xargs` passed
+  verbatim to `status`, hitting the API as a quoted ID and getting
+  404. v1.0.1 emits scalar strings raw in quiet mode (matches `jq -r`
+  behaviour). Object and array results are still JSON-formatted in
+  quiet mode; non-quiet mode is unchanged.
+- **`urlbox status` not-found error message is now human-readable.**
+  When the API returns 404 with body `{"renderId":"X","status":
+  "not-found"}` (no `error` field), v1.0.0 surfaced the raw JSON
+  blob as the error message. v1.0.1 returns `Render X not found`.
+
+### Documentation
+
+- `urlbox link --help` now mentions `--output-format quiet` as the
+  pipeline-friendly invocation.
+- `skills/SKILL.md` clarifies that env-var auth and `--api-secret`
+  flag are equally agent-safe (no hierarchy implied).
+- `skills/SKILL.md` adds an explicit caveat to the validation
+  contract: unknown `--json` keys with no fuzzy match pass to the
+  API silently — agents should use `urlbox schema render` to
+  verify the documented set.
+
+### Notes
+
+- All v1.0.0 install methods (Homebrew, Scoop, npm, install.sh,
+  release tarballs) auto-upgrade to v1.0.1 on next `brew upgrade` /
+  `npm i -g @urlbox/cli@latest` / re-run of install.sh.
+- Surface frozen by `SURFACE.txt` is unchanged from v1.0.0.
+
 ## v1.0.0 — 2026-05-08 — v1 GA
 
 The first general-availability release of the Urlbox CLI. Closes the

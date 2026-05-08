@@ -27,8 +27,14 @@ func TestJQ_QuietRunsOnData(t *testing.T) {
 		t.Fatalf("exit=%d stderr=%s", exit, stderr.String())
 	}
 	out := strings.TrimSpace(stdout.String())
-	if !strings.HasPrefix(out, `"`) {
-		t.Fatalf("expected quoted result, got: %q", out)
+	// Quiet mode strips quotes from scalar strings (matches `jq -r`),
+	// so pipelines like `--jq .renderId | xargs ...` work without
+	// inheriting the literal `"..."` wrapping the value.
+	if out == "" {
+		t.Fatalf("expected non-empty result, got: %q", out)
+	}
+	if strings.HasPrefix(out, `"`) || strings.HasSuffix(out, `"`) {
+		t.Fatalf("expected unquoted scalar string in quiet mode, got: %q", out)
 	}
 }
 

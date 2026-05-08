@@ -311,6 +311,15 @@ func extractAPIError(body []byte) (msg, code string) {
 				return v, code
 			}
 		}
+		// Urlbox status-endpoint not-found shape:
+		// {"renderId": "X", "status": "not-found"}.
+		// No `error` field; surface a clean human message.
+		if status, ok := parsed["status"].(string); ok && status == "not-found" {
+			if rid, ok := parsed["renderId"].(string); ok && rid != "" {
+				return "Render " + rid + " not found", code
+			}
+			return "Render not found", code
+		}
 	}
 	return trimmed, code
 }

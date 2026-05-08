@@ -380,6 +380,12 @@ strict client-side validation:
   "format"?`) but the request is still sent verbatim. Agents read
   the warning and decide whether to re-run with the suggestion.
 
+**Silent-passthrough caveat:** unknown `--json` keys with no fuzzy
+match to a documented option pass to the API silently — the CLI does
+NOT warn. If you need to verify which keys the API recognized, use
+`urlbox schema render` to check the documented set, or inspect the
+returned envelope's `data` for the API's interpretation.
+
 Local hard errors (always reject before any API call):
 1. Payloads larger than 1 MiB.
 2. URL-like fields with control characters (below 0x20 or 0x7F).
@@ -416,15 +422,24 @@ default_profile <name>` requires `<name>` to exist as a profile.
 
 ## Authentication
 
-### For agents and CI (preferred — non-interactive)
+### For agents and CI (non-interactive)
+
+Both options below are agent-safe — neither prompts. Pick whichever
+matches your secret-management story; there's no hierarchy.
 
 ```sh
-urlbox auth --api-secret <secret>  # one-liner, never prompts
+# Option A — persist to config file (mode 0600), one-liner
+urlbox auth --api-secret <secret>
+
+# Option B — pass per-call via flag (no file write)
+urlbox render <url> --api-secret <secret>
+
 urlbox doctor --output-format json # JSON envelope: ok/not-ok
 ```
 
-The env var `URLBOX_API_SECRET` takes precedence at runtime over any saved value
-and never touches the config file.
+The env var `URLBOX_API_SECRET` is the third agent-safe option: it
+takes precedence at runtime over any saved value and never touches
+the config file.
 
 ### For humans on a TTY
 

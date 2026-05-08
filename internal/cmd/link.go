@@ -41,6 +41,11 @@ func newLinkCmd() *cobra.Command {
 Pure local computation — no API call is made. Requires both the publishable
 API key and the API secret.
 
+For pipelines, --output-format quiet emits the bare signed URL on
+stdout (no envelope), e.g.:
+
+  urlbox link --url https://example.com --output-format quiet
+
 If you actually want the rendered asset, use:
   urlbox render --json '{"url":"..."}'`,
 		Args: cobra.NoArgs,
