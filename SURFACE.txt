@@ -192,6 +192,17 @@ urlbox skill show --agent
 urlbox skill show --jq
 urlbox skill show --output-format
 urlbox skill show --profile
+urlbox status <renderId>
+urlbox status <renderId> --agent
+urlbox status <renderId> --api-secret
+urlbox status <renderId> --jq
+urlbox status <renderId> --max-retries
+urlbox status <renderId> --no-retry
+urlbox status <renderId> --output-format
+urlbox status <renderId> --poll-interval
+urlbox status <renderId> --profile
+urlbox status <renderId> --timeout
+urlbox status <renderId> --wait
 urlbox upgrade
 urlbox upgrade --agent
 urlbox upgrade --jq

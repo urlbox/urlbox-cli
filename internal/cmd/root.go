@@ -128,6 +128,7 @@ func newRootCmd(stdout, stderr io.Writer) *cobra.Command {
 	cmd.AddCommand(newSchemaCmd())
 	cmd.AddCommand(newScreenshotCmd())
 	cmd.AddCommand(newSkillCmd())
+	cmd.AddCommand(newStatusCmd())
 	cmd.AddCommand(newVideoCmd())
 
 	return cmd
