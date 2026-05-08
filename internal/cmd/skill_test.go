@@ -266,3 +266,213 @@ func TestSkillInstall_ClaudeCode_Project_WritesUnderCWD(t *testing.T) {
 		t.Fatalf("project-scope file not written at %s: %v", wantPath, err)
 	}
 }
+
+func TestSkillInstall_Cursor_User_WritesFileAtHomePath(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("HOME", tmp)
+
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{
+		"skill", "install",
+		"--target", "cursor",
+		"--scope", "user",
+		"--yes",
+		"--output-format", "json",
+	}, &stdout, &stderr)
+	if exit != 0 {
+		t.Fatalf("exit=%d stderr=%s", exit, stderr.String())
+	}
+
+	wantPath := filepath.Join(tmp, ".cursor", "skills", "urlbox", "SKILL.md")
+	body, err := os.ReadFile(wantPath)
+	if err != nil {
+		t.Fatalf("file not written: %v", err)
+	}
+	if !strings.Contains(string(body), "Urlbox CLI Skill") {
+		t.Fatalf("file content unexpected; first 80 bytes: %q", string(body[:min(80, len(body))]))
+	}
+
+	var env map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("not JSON: %v", err)
+	}
+	data, _ := env["data"].(map[string]any)
+	if data["target"] != "cursor" {
+		t.Errorf("data.target=%v, want cursor", data["target"])
+	}
+	if data["scope"] != "user" {
+		t.Errorf("data.scope=%v, want user", data["scope"])
+	}
+	if data["path"] != wantPath {
+		t.Errorf("data.path=%v, want %q", data["path"], wantPath)
+	}
+}
+
+func TestSkillInstall_Cursor_Project_WritesUnderCWD(t *testing.T) {
+	tmp := t.TempDir()
+	origCWD, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(origCWD) })
+	if err := os.Chdir(tmp); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{
+		"skill", "install",
+		"--target", "cursor",
+		"--scope", "project",
+		"--yes",
+		"--output-format", "json",
+	}, &stdout, &stderr)
+	if exit != 0 {
+		t.Fatalf("exit=%d stderr=%s", exit, stderr.String())
+	}
+
+	wantPath := filepath.Join(tmp, ".cursor", "skills", "urlbox", "SKILL.md")
+	if _, err := os.Stat(wantPath); err != nil {
+		t.Fatalf("project-scope file not written at %s: %v", wantPath, err)
+	}
+}
+
+func TestSkillInstall_Codex_User_WritesFileAtHomePath(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("HOME", tmp)
+
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{
+		"skill", "install",
+		"--target", "codex",
+		"--scope", "user",
+		"--yes",
+		"--output-format", "json",
+	}, &stdout, &stderr)
+	if exit != 0 {
+		t.Fatalf("exit=%d stderr=%s", exit, stderr.String())
+	}
+
+	wantPath := filepath.Join(tmp, ".agents", "skills", "urlbox", "SKILL.md")
+	body, err := os.ReadFile(wantPath)
+	if err != nil {
+		t.Fatalf("file not written: %v", err)
+	}
+	if !strings.Contains(string(body), "Urlbox CLI Skill") {
+		t.Fatalf("file content unexpected; first 80 bytes: %q", string(body[:min(80, len(body))]))
+	}
+
+	var env map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("not JSON: %v", err)
+	}
+	data, _ := env["data"].(map[string]any)
+	if data["target"] != "codex" {
+		t.Errorf("data.target=%v, want codex", data["target"])
+	}
+	if data["scope"] != "user" {
+		t.Errorf("data.scope=%v, want user", data["scope"])
+	}
+	if data["path"] != wantPath {
+		t.Errorf("data.path=%v, want %q", data["path"], wantPath)
+	}
+}
+
+func TestSkillInstall_Codex_Project_WritesUnderCWD(t *testing.T) {
+	tmp := t.TempDir()
+	origCWD, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(origCWD) })
+	if err := os.Chdir(tmp); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{
+		"skill", "install",
+		"--target", "codex",
+		"--scope", "project",
+		"--yes",
+		"--output-format", "json",
+	}, &stdout, &stderr)
+	if exit != 0 {
+		t.Fatalf("exit=%d stderr=%s", exit, stderr.String())
+	}
+
+	wantPath := filepath.Join(tmp, ".agents", "skills", "urlbox", "SKILL.md")
+	if _, err := os.Stat(wantPath); err != nil {
+		t.Fatalf("project-scope file not written at %s: %v", wantPath, err)
+	}
+}
+
+func TestSkillInstall_Opencode_User_WritesFileAtHomePath(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("HOME", tmp)
+
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{
+		"skill", "install",
+		"--target", "opencode",
+		"--scope", "user",
+		"--yes",
+		"--output-format", "json",
+	}, &stdout, &stderr)
+	if exit != 0 {
+		t.Fatalf("exit=%d stderr=%s", exit, stderr.String())
+	}
+
+	wantPath := filepath.Join(tmp, ".config", "opencode", "skills", "urlbox", "SKILL.md")
+	body, err := os.ReadFile(wantPath)
+	if err != nil {
+		t.Fatalf("file not written: %v", err)
+	}
+	if !strings.Contains(string(body), "Urlbox CLI Skill") {
+		t.Fatalf("file content unexpected; first 80 bytes: %q", string(body[:min(80, len(body))]))
+	}
+
+	var env map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("not JSON: %v", err)
+	}
+	data, _ := env["data"].(map[string]any)
+	if data["target"] != "opencode" {
+		t.Errorf("data.target=%v, want opencode", data["target"])
+	}
+	if data["scope"] != "user" {
+		t.Errorf("data.scope=%v, want user", data["scope"])
+	}
+	if data["path"] != wantPath {
+		t.Errorf("data.path=%v, want %q", data["path"], wantPath)
+	}
+}
+
+func TestSkillInstall_Opencode_Project_WritesUnderCWD(t *testing.T) {
+	tmp := t.TempDir()
+	origCWD, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(origCWD) })
+	if err := os.Chdir(tmp); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{
+		"skill", "install",
+		"--target", "opencode",
+		"--scope", "project",
+		"--yes",
+		"--output-format", "json",
+	}, &stdout, &stderr)
+	if exit != 0 {
+		t.Fatalf("exit=%d stderr=%s", exit, stderr.String())
+	}
+
+	wantPath := filepath.Join(tmp, ".opencode", "skills", "urlbox", "SKILL.md")
+	if _, err := os.Stat(wantPath); err != nil {
+		t.Fatalf("project-scope file not written at %s: %v", wantPath, err)
+	}
+}

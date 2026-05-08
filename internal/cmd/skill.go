@@ -16,12 +16,29 @@ import (
 // destination resolver. Add new targets here; tests + the SKILL.md
 // regression guard pin the matrix so changes are caught.
 //
-// `cursor`, `codex`, `opencode` are TBD — paths vary per release; not
-// shipping until verified against current versions.
+// Paths verified against each tool's current docs:
+//   - claude-code: ~/.claude/skills/ or .claude/skills/
+//   - cursor:      ~/.cursor/skills/ or .cursor/skills/
+//   - codex:       ~/.agents/skills/ or .agents/skills/  (cross-agent dir)
+//   - opencode:    ~/.config/opencode/skills/ or .opencode/skills/
 var supportedSkillTargets = map[string]skillTarget{
 	"claude-code": {
 		userPath:    func() (string, error) { return userHomeJoin(".claude", "skills", "urlbox", "SKILL.md") },
 		projectPath: func() (string, error) { return cwdJoin(".claude", "skills", "urlbox", "SKILL.md") },
+	},
+	"cursor": {
+		userPath:    func() (string, error) { return userHomeJoin(".cursor", "skills", "urlbox", "SKILL.md") },
+		projectPath: func() (string, error) { return cwdJoin(".cursor", "skills", "urlbox", "SKILL.md") },
+	},
+	"codex": {
+		userPath:    func() (string, error) { return userHomeJoin(".agents", "skills", "urlbox", "SKILL.md") },
+		projectPath: func() (string, error) { return cwdJoin(".agents", "skills", "urlbox", "SKILL.md") },
+	},
+	"opencode": {
+		userPath: func() (string, error) {
+			return userHomeJoin(".config", "opencode", "skills", "urlbox", "SKILL.md")
+		},
+		projectPath: func() (string, error) { return cwdJoin(".opencode", "skills", "urlbox", "SKILL.md") },
 	},
 }
 
@@ -88,6 +105,9 @@ your agent tooling, so the agent picks it up automatically on next launch.
 
 Currently supported targets:
   claude-code    Anthropic Claude Code (~/.claude/skills/urlbox/ or .claude/skills/urlbox/)
+  cursor         Cursor (~/.cursor/skills/urlbox/ or .cursor/skills/urlbox/)
+  codex          OpenAI Codex (~/.agents/skills/urlbox/ or .agents/skills/urlbox/)
+  opencode       opencode (~/.config/opencode/skills/urlbox/ or .opencode/skills/urlbox/)
 
 Scopes:
   user           Install once for all your projects (under $HOME).
@@ -172,7 +192,7 @@ func resolveSkillTarget(flag string, interactive bool, stderr io.Writer) (string
 			return "", output.NewCLIError(
 				output.ErrUsage,
 				fmt.Sprintf("unsupported target %q", flag),
-				"Supported: "+listSupportedTargets()+". Cursor/Codex/OpenCode TBD.",
+				"Supported: "+listSupportedTargets()+".",
 			)
 		}
 		return flag, nil
