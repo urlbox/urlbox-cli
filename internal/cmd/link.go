@@ -124,7 +124,7 @@ func runLink(cmd *cobra.Command, f *linkFlags) error {
 		if errors.As(rerr, &cli) {
 			return cli
 		}
-		return output.NewCLIError(output.ErrUsage, rerr.Error(), "Check your config with `urlbox config show`.")
+		return output.NewCLIError(output.ErrUsage, rerr.Error(), "Run `urlbox config path` to find the config file, then check permissions and contents.")
 	}
 
 	if resolved.APIKey == "" {

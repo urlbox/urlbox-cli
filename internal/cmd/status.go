@@ -348,7 +348,7 @@ func buildStatusClient(cmd *cobra.Command, f *statusFlags) (api.Client, *output.
 		return nil, output.NewCLIError(
 			output.ErrUsage,
 			rerr.Error(),
-			"Check your config with `urlbox config show`, or set --api-secret / URLBOX_API_SECRET explicitly.",
+			"Run `urlbox config path` to find the config file, then check permissions and contents.",
 		)
 	}
 
