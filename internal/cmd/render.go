@@ -282,7 +282,7 @@ func runRender(cmd *cobra.Command, args []string, f *renderFlags) error {
 	}
 
 	// 8. Real call. Build the client (test override wins) and dispatch.
-	client, cerr := buildRenderClient(f)
+	client, cerr := buildRenderClient(cmd, f)
 	if cerr != nil {
 		return cerr
 	}
@@ -437,7 +437,7 @@ func applyFlagsToMap(cmd *cobra.Command, f *renderFlags, m map[string]any) {
 
 // buildRenderClient returns the test-injected client if present, else a
 // production HTTPClient resolved from env/config.
-func buildRenderClient(f *renderFlags) (api.Client, *output.CLIError) {
+func buildRenderClient(cmd *cobra.Command, f *renderFlags) (api.Client, *output.CLIError) {
 	if renderClientOverride != nil {
 		return renderClientOverride, nil
 	}
@@ -446,10 +446,13 @@ func buildRenderClient(f *renderFlags) (api.Client, *output.CLIError) {
 	if err != nil {
 		return nil, output.NewCLIError(output.ErrServer, "failed to read config", err.Error())
 	}
+	profile, _ := cmd.Root().PersistentFlags().GetString("profile")
 	resolved, rerr := config.Resolve(config.ResolveOptions{
 		FlagAPISecret: f.apiSecret,
+		FlagProfile:   profile,
 		EnvAPISecret:  os.Getenv(config.EnvAPISecret),
 		EnvAPIHost:    os.Getenv(config.EnvAPIHost),
+		EnvProfile:    os.Getenv(config.EnvProfile),
 		Config:        cfg,
 	})
 	if rerr != nil {
