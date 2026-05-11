@@ -1,8 +1,18 @@
 #!/bin/sh
-set -e
+set -eu
 
 # Urlbox CLI installer
 # Usage: curl -fsSL https://cli.urlbox.com/install.sh | sh
+#
+# Every release artifact is sha256-pinned in the checksums.txt file attached
+# to the GitHub release; checksums.txt is itself sigstore-signed (keyless,
+# OIDC-bound to github.com/urlbox/urlbox-cli). This installer verifies BOTH:
+#   1. sha256 of the downloaded archive against checksums.txt (required)
+#   2. sigstore signature on checksums.txt (optional — requires cosign)
+#
+# Set URLBOX_SKIP_VERIFY=1 to bypass verification (NOT recommended — exists
+# only as an escape hatch for offline / air-gapped installs where the user
+# has out-of-band-verified the artifact themselves).
 
 REPO="urlbox/urlbox-cli"
 INSTALL_DIR="/usr/local/bin"
@@ -49,11 +59,64 @@ latest_version() {
     return
   fi
   # Fallback to API with auth if available
-  auth_header=""
   if [ -n "${GITHUB_TOKEN:-}" ]; then
-    auth_header="-H Authorization: token ${GITHUB_TOKEN}"
+    curl -fsSL -H "Authorization: token ${GITHUB_TOKEN}" "https://api.github.com/repos/${REPO}/releases/latest" \
+      | grep '"tag_name"' | sed -E 's/.*"v?([^"]+)".*/\1/'
+  else
+    curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" \
+      | grep '"tag_name"' | sed -E 's/.*"v?([^"]+)".*/\1/'
   fi
-  curl -fsSL $auth_header "https://api.github.com/repos/${REPO}/releases/latest" | grep '"tag_name"' | sed -E 's/.*"v?([^"]+)".*/\1/'
+}
+
+# Compute the sha256 of $1 using sha256sum (GNU/Linux) or shasum (BSD/macOS).
+compute_sha256() {
+  file="$1"
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$file" | awk '{print $1}'
+  elif command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$file" | awk '{print $1}'
+  else
+    error "neither sha256sum nor shasum is available; cannot verify checksum. Install coreutils (sha256sum) or perl (shasum), or set URLBOX_SKIP_VERIFY=1 to bypass (not recommended)."
+  fi
+}
+
+# Verify $archive against the entry for its basename in $checksums.
+verify_archive_sha256() {
+  archive="$1"
+  checksums="$2"
+  name=$(basename "$archive")
+  # checksums.txt lines are: "<sha256>  <filename>"
+  expected=$(awk -v n="$name" '$2 == n {print $1}' "$checksums" | head -1)
+  if [ -z "$expected" ]; then
+    error "no checksum entry for ${name} in checksums.txt — the release artifacts may be incomplete"
+  fi
+  actual=$(compute_sha256 "$archive")
+  if [ "$expected" != "$actual" ]; then
+    error "checksum mismatch for ${name}: expected ${expected}, got ${actual}. Artifact may have been tampered with."
+  fi
+  info "  sha256 verified: ${actual}"
+}
+
+# Verify the sigstore bundle on checksums.txt against the urlbox-cli OIDC
+# identity. Soft-optional: if cosign is not installed, prints a hint and
+# returns successfully (the sha256 check already gave integrity; cosign
+# adds publisher-identity provenance).
+verify_cosign_bundle() {
+  checksums="$1"
+  bundle="$2"
+  if ! command -v cosign >/dev/null 2>&1; then
+    info "  cosign not found — skipping signature verification (sha256 already verified)."
+    info "  Install cosign for cryptographic provenance: https://github.com/sigstore/cosign"
+    return
+  fi
+  if ! cosign verify-blob "$checksums" \
+      --bundle "$bundle" \
+      --certificate-identity-regexp='github.com/urlbox/urlbox-cli' \
+      --certificate-oidc-issuer='https://token.actions.githubusercontent.com' \
+      >/dev/null 2>&1; then
+    error "sigstore signature verification failed for checksums.txt. The release may have been tampered with — refusing to install."
+  fi
+  info "  sigstore signature verified (publisher: github.com/urlbox/urlbox-cli)"
 }
 
 main() {
@@ -72,12 +135,36 @@ main() {
     ext="zip"
   fi
 
-  url="https://github.com/${REPO}/releases/download/v${version}/urlbox_${version}_${os}_${arch}.${ext}"
-  tmpdir="$(mktemp -d)"
-  archive="${tmpdir}/urlbox.${ext}"
+  archive_name="urlbox_${version}_${os}_${arch}.${ext}"
+  base="https://github.com/${REPO}/releases/download/v${version}"
 
-  info "Downloading ${url}..."
-  curl -fsSL "$url" -o "$archive"
+  tmpdir="$(mktemp -d)"
+  trap 'rm -rf "$tmpdir"' EXIT
+  archive="${tmpdir}/${archive_name}"
+  checksums="${tmpdir}/checksums.txt"
+  bundle="${tmpdir}/checksums.txt.sigstore.json"
+
+  info "Downloading ${archive_name}..."
+  curl -fsSL "${base}/${archive_name}" -o "$archive"
+
+  if [ "${URLBOX_SKIP_VERIFY:-}" = "1" ]; then
+    info "URLBOX_SKIP_VERIFY=1 — bypassing checksum + signature verification (not recommended)"
+  else
+    info "Verifying release..."
+    curl -fsSL "${base}/checksums.txt" -o "$checksums" \
+      || error "could not download checksums.txt — refusing to install without verification"
+
+    # The sigstore bundle is best-effort: older releases predate it. If it's
+    # absent we proceed with sha256-only verification (still cryptographic;
+    # just no publisher-identity provenance).
+    if curl -fsSL "${base}/checksums.txt.sigstore.json" -o "$bundle" 2>/dev/null; then
+      verify_cosign_bundle "$checksums" "$bundle"
+    else
+      info "  no sigstore bundle on this release — sha256-only verification"
+    fi
+
+    verify_archive_sha256 "$archive" "$checksums"
+  fi
 
   info "Extracting..."
   if [ "$ext" = "zip" ]; then
@@ -94,7 +181,6 @@ main() {
   fi
 
   chmod +x "${INSTALL_DIR}/${BINARY_NAME}"
-  rm -rf "$tmpdir"
 
   info ""
   info "urlbox v${version} installed to ${INSTALL_DIR}/${BINARY_NAME}"
