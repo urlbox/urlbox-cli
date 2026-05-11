@@ -161,11 +161,17 @@ The env var URLBOX_API_SECRET takes precedence at runtime over the saved value.`
 			// --api-secret <test_value>` and silently clobbers the user's
 			// real secret. Only fires when the new value differs from the
 			// existing — same-secret re-save remains idempotent.
+			// Both branches return ErrConflict — the existing secret is the
+			// conflict in both cases, and unified exit code 7 lets CI scripts
+			// classify "we did not save" without caring whether the user typed
+			// 'n' or whether they forgot --force. The error message and code
+			// field still distinguish the variants for humans / structured
+			// log consumers.
 			if p.APISecret != "" && p.APISecret != secret && !force {
 				if isStdinTTY(cmd.InOrStdin()) && isStderrTTY(cmd.ErrOrStderr()) {
 					if !confirmAuthOverwrite(cmd, p.APISecret, secret) {
 						return output.NewCLIError(
-							output.ErrUsage,
+							output.ErrConflict,
 							"auth cancelled — existing secret preserved",
 							"Re-run with --force to overwrite without prompt, or use `urlbox config profile create <name>` for a separate profile.",
 						)

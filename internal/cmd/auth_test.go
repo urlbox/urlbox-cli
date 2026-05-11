@@ -536,8 +536,17 @@ func TestAuth_Overwrite_TTY_PromptReject(t *testing.T) {
 	stdout.Reset()
 	stderr.Reset()
 	exit := cmd.Execute([]string{"auth", "--api-secret", "sec_REJECTED_abc456", "--output-format", "json"}, &stdout, &stderr)
-	if exit == 0 {
-		t.Fatal("'n' prompt should cancel and exit non-zero")
+	// TTY reject and non-TTY refuse both yield "we did not save because of
+	// existing state" — exit code 7 (ErrConflict) in both paths. The `code`
+	// field in the JSON envelope is identical too; the message text disambiguates
+	// for humans. Round 2 architecture M1.
+	if exit != 7 {
+		t.Fatalf("exit=%d, want 7 (conflict); stdout=%s", exit, stdout.String())
+	}
+	var env map[string]any
+	_ = json.Unmarshal(stdout.Bytes(), &env)
+	if env["code"] != "conflict" {
+		t.Errorf("code=%v, want conflict", env["code"])
 	}
 	c, _ := config.Load()
 	if c.Profiles[c.DefaultProfile].APISecret != "sec_seed_abcdefghij" {
