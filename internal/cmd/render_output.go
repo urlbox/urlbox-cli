@@ -113,7 +113,7 @@ func resolveOutputPath(userPath, baseDir string) (string, *output.CLIError) {
 		return "", output.NewCLIError(
 			output.ErrValidation,
 			fmt.Sprintf("--output path %q is outside the working directory", userPath),
-			"Pass a path under the current directory, e.g. --output screenshot.png or --output renders/screenshot.png",
+			"Pass a path under the current directory (e.g. --output screenshot.png), or cd to the target directory first: `cd /tmp && urlbox render --output foo.png`.",
 		)
 	}
 	return cleaned, nil

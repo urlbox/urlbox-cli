@@ -26,6 +26,24 @@ func TestResolveOutputPath_RejectsEmpty(t *testing.T) {
 	}
 }
 
+// TestResolveOutputPath_RejectsOutsideCWD_HintMentionsCdWorkaround pins
+// the rejection hint includes the `cd <dir> && urlbox render ...` escape
+// hatch. Round 1 UX I4 — agents bouncing off /tmp/foo.png deserved to be
+// told the workaround inline, not just "pass a path under CWD".
+func TestResolveOutputPath_RejectsOutsideCWD_HintMentionsCdWorkaround(t *testing.T) {
+	cwd := t.TempDir()
+	_, err := resolveOutputPath("/tmp/foo.png", cwd)
+	if err == nil {
+		t.Fatal("expected error for /tmp/foo.png outside CWD")
+	}
+	if !strings.Contains(err.Hint, "cd ") {
+		t.Errorf("hint should mention `cd` workaround; got %q", err.Hint)
+	}
+	if !strings.Contains(err.Hint, "urlbox render") {
+		t.Errorf("hint should show the workaround command; got %q", err.Hint)
+	}
+}
+
 func TestResolveOutputPath_RejectsParentEscape(t *testing.T) {
 	cwd := t.TempDir()
 	_, err := resolveOutputPath("../escape.png", cwd)

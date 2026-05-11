@@ -6,6 +6,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/urlbox/urlbox-cli/internal/output"
@@ -253,14 +255,12 @@ func resolveSkillScope(flag string, interactive bool, stderr io.Writer) (string,
 }
 
 func listSupportedTargets() string {
-	out := ""
+	names := make([]string, 0, len(supportedSkillTargets))
 	for k := range supportedSkillTargets {
-		if out != "" {
-			out += ", "
-		}
-		out += k
+		names = append(names, k)
 	}
-	return out
+	sort.Strings(names)
+	return strings.Join(names, ", ")
 }
 
 // userHomeJoin builds a path under $HOME. Errors if HOME is unset.

@@ -18,6 +18,7 @@ import (
 	"github.com/urlbox/urlbox-cli/internal/clock"
 	"github.com/urlbox/urlbox-cli/internal/cmd"
 	"github.com/urlbox/urlbox-cli/internal/config"
+	"github.com/urlbox/urlbox-cli/internal/output"
 )
 
 // TestStatus_Succeeded_WrapsInEnvelope confirms a 200 + status=succeeded body
@@ -399,10 +400,13 @@ func TestStatus_Wait_FailedTerminal_Exit10(t *testing.T) {
 	}
 }
 
-// TestStatus_Wait_TimesOut_UsageExit confirms that when --timeout elapses
-// before a terminal status is observed, runStatusWait returns ErrUsage (exit
-// 1) with a message naming the renderId, the duration, and the last status.
-func TestStatus_Wait_TimesOut_UsageExit(t *testing.T) {
+// TestStatus_Wait_TimesOut_TimeoutExit confirms that when --timeout elapses
+// before a terminal status is observed, runStatusWait returns ErrTimeout
+// (exit 11) with a message naming the renderId, the duration, and the last
+// status. Round 1 review (Arch I2 + UX I7): a deadline-exceeded outcome is
+// what ErrTimeout exists for; exit 1 (ErrUsage) conflated poll-timeouts with
+// "bad flag" usage errors and broke agent retry classification.
+func TestStatus_Wait_TimesOut_TimeoutExit(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("URLBOX_API_SECRET", "sec_test")
 
@@ -435,15 +439,15 @@ func TestStatus_Wait_TimesOut_UsageExit(t *testing.T) {
 		"--output-format", "json",
 	}, &stdout, &stderr)
 
-	if exit != 1 {
-		t.Fatalf("exit=%d, want 1 (usage timeout); stdout=%s stderr=%s", exit, stdout.String(), stderr.String())
+	if exit != 11 {
+		t.Fatalf("exit=%d, want 11 (timeout); stdout=%s stderr=%s", exit, stdout.String(), stderr.String())
 	}
 	var env map[string]any
 	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
 		t.Fatalf("error not JSON: %v\nstdout=%s", err, stdout.String())
 	}
-	if env["code"] != "usage" {
-		t.Errorf("code != 'usage': %v", env["code"])
+	if env["code"] != "timeout" {
+		t.Errorf("code != 'timeout': %v", env["code"])
 	}
 	errMsg, _ := env["error"].(string)
 	if !strings.Contains(errMsg, "ps_abc") {
@@ -454,6 +458,58 @@ func TestStatus_Wait_TimesOut_UsageExit(t *testing.T) {
 	}
 	if !strings.Contains(errMsg, "processing") {
 		t.Errorf("error should include last status; got %q", errMsg)
+	}
+}
+
+// TestStatus_Wait_LaterPollContextTimeout_DoesNotSayShorterThanOneCall
+// pins Arch I1: the "shorter than a single API call" friendly message
+// must only fire on attempt 0. If a per-poll context-deadline fires on
+// attempt N>0 (e.g., a slow GET several polls into a long --wait), the
+// friendly message lies — by definition the first call already succeeded.
+// Fall through to the generic waitTimeoutError instead.
+func TestStatus_Wait_LaterPollContextTimeout_DoesNotSayShorterThanOneCall(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("URLBOX_API_SECRET", "sec_test")
+
+	// First call succeeds with "processing"; second call returns a
+	// synthetic ErrTimeout. The faux client lets us simulate the
+	// per-poll context cancel without needing httptest+sleep timing.
+	sc := &scriptedStatusClient{
+		script: []*api.Response{
+			{OK: true, Data: map[string]any{"status": "processing", "renderId": "ps_late"}},
+			nil,
+		},
+		errs: []error{
+			nil,
+			output.NewCLIError(output.ErrTimeout, "context deadline exceeded", "Retry the call."),
+		},
+	}
+	cmd.SetStatusClientForTest(sc)
+	t.Cleanup(cmd.ResetStatusClientForTest)
+
+	fc := clock.NewFake(time.Now())
+	cmd.SetStatusClockForTest(fc)
+	t.Cleanup(cmd.ResetStatusClockForTest)
+	stop := startFakeClockDriver(t, fc, 2*time.Second)
+	defer stop()
+
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{
+		"status", "ps_late",
+		"--wait",
+		"--poll-interval", "1s",
+		"--timeout", "30s",
+		"--output-format", "json",
+	}, &stdout, &stderr)
+
+	if exit == 0 {
+		t.Fatalf("expected non-zero exit on later-poll timeout; stdout=%s", stdout.String())
+	}
+	var env map[string]any
+	_ = json.Unmarshal(stdout.Bytes(), &env)
+	errMsg, _ := env["error"].(string)
+	if strings.Contains(errMsg, "shorter than a single API call") {
+		t.Errorf("error must NOT claim 'shorter than a single API call' on attempt > 0; got %q", errMsg)
 	}
 }
 

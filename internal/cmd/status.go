@@ -72,10 +72,10 @@ polls until the render reaches a terminal state (succeeded / failed) or the
 
 Exit codes:
   0   succeeded, or in-flight (created / retrying) without --wait
-  1   --wait timed out before reaching a terminal state
+  1   usage error (missing renderId, invalid flag)
   5   renderId not found
   10  the API reported status=failed (the render itself failed)
-  11  network failure
+  11  network failure, or --wait timed out before reaching a terminal state
 
 Examples:
   urlbox status ps_abc123
@@ -185,6 +185,7 @@ func runStatusWait(cmd *cobra.Command, client api.Client, renderID string, f *st
 	// consume up to (deadline - now), so a single hung GET can't burn past
 	// the user's --timeout. Bounded by the API's own behaviour: HTTPClient
 	// already retries 429/5xx within its own budget.
+	attempt := 0
 	for {
 		now := statusClock.Now()
 		remaining := deadline.Sub(now)
@@ -200,26 +201,30 @@ func runStatusWait(cmd *cobra.Command, client api.Client, renderID string, f *st
 			// network, timeout). Same shape as single-shot.
 			var cli *output.CLIError
 			if errors.As(err, &cli) {
-				// Special case: when --timeout is shorter than a single
-				// API call can complete, the per-poll context fires
-				// before the GET returns, surfacing as ErrTimeout with
-				// the raw "context deadline exceeded" string. Rewrite
-				// to a friendly message naming the renderID + duration.
-				// The non-shortcase path (we polled but nothing terminal
-				// happened in time) is handled by waitTimeoutError above
-				// — this branch only triggers when the FIRST call
-				// couldn't even finish.
-				if cli.Code == output.ErrTimeout {
+				// First-attempt timeout special case: --timeout is shorter
+				// than a single API call can complete; the per-poll
+				// context fires before the very first GET returns.
+				// Rewrite to a friendly message naming the duration.
+				//
+				// Only fires on attempt 0. On later attempts the first
+				// call already succeeded, so saying "shorter than a
+				// single API call" would lie — fall through to
+				// waitTimeoutError instead.
+				if cli.Code == output.ErrTimeout && attempt == 0 {
 					return output.NewCLIError(
 						output.ErrTimeout,
 						fmt.Sprintf("Render %s status check timed out after %s — the --timeout was shorter than a single API call could complete", renderID, f.timeout),
 						"Increase --timeout (try 30s or more for --wait), or run a single status check with `urlbox status "+renderID+"` (no --wait).",
 					)
 				}
+				if cli.Code == output.ErrTimeout {
+					return waitTimeoutError(renderID, f.timeout, lastStatus)
+				}
 				return cli
 			}
 			return output.NewCLIError(output.ErrServer, err.Error(), "Run `urlbox doctor` to verify connectivity.")
 		}
+		attempt++
 
 		statusStr, _ := resp.Data["status"].(string)
 		if statusStr != "" {
@@ -239,14 +244,16 @@ func runStatusWait(cmd *cobra.Command, client api.Client, renderID string, f *st
 	}
 }
 
-// waitTimeoutError builds the ErrUsage envelope returned when --timeout
-// expires before a terminal status is observed.
+// waitTimeoutError builds the ErrTimeout envelope returned when --timeout
+// expires before a terminal status is observed. Exit code 11 (timeout
+// class) is the agent-friendly classification — a deadline-exceeded
+// outcome is operational, not a "bad flag" usage error.
 func waitTimeoutError(renderID string, timeout time.Duration, lastStatus string) *output.CLIError {
 	if lastStatus == "" {
 		lastStatus = "unknown"
 	}
 	return output.NewCLIError(
-		output.ErrUsage,
+		output.ErrTimeout,
 		fmt.Sprintf("Render %s timed out after %s (last status: %s)", renderID, timeout, lastStatus),
 		"Increase --timeout, or re-run `urlbox status "+renderID+" --wait` later.",
 	)

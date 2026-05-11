@@ -159,6 +159,32 @@ func TestSkillInstall_NonTTY_NoTarget_Errors(t *testing.T) {
 	}
 }
 
+// TestSkillInstall_SupportedTargetsListIsStableSorted pins that the
+// "Supported targets" hint is alphabetically sorted, not map-iteration
+// random. Caught Round 1 review (Arch I8 + UX I8).
+func TestSkillInstall_SupportedTargetsListIsStableSorted(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{
+		"skill", "install",
+		"--target", "vim",
+		"--scope", "user",
+		"--yes",
+		"--output-format", "json",
+	}, &stdout, &stderr)
+	if exit == 0 {
+		t.Fatal("expected non-zero exit for unsupported target")
+	}
+	var env map[string]any
+	_ = json.Unmarshal(stdout.Bytes(), &env)
+	hint, _ := env["hint"].(string)
+	// Supported targets today: claude-code, codex, cursor, opencode.
+	// Sorted alphabetically that's: claude-code, codex, cursor, opencode.
+	want := "claude-code, codex, cursor, opencode"
+	if !strings.Contains(hint, want) {
+		t.Errorf("hint should list targets in sorted order %q; got %q", want, hint)
+	}
+}
+
 func TestSkillInstall_UnsupportedTarget_Errors(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	exit := cmd.Execute([]string{
