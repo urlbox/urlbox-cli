@@ -149,10 +149,45 @@ The env var URLBOX_API_SECRET takes precedence at runtime over the saved value.`
 			if cfg.Profiles == nil {
 				cfg.Profiles = map[string]config.Profile{}
 			}
-			profileName := cfg.DefaultProfile
-			if profileName == "" {
-				profileName = "default"
-				cfg.DefaultProfile = profileName
+
+			// Round 4 C1 fix: honor --profile and URLBOX_PROFILE. Before this,
+			// auth always wrote to cfg.DefaultProfile, silently dropping any
+			// --profile flag the user passed. With --force, that turned the
+			// overwrite guard into a 2026-05-08-incident-class clobber of the
+			// default profile when the caller intended a non-default target.
+			//
+			// Precedence: --profile flag > URLBOX_PROFILE env > cfg.DefaultProfile > "default".
+			// When the flag or env names a non-existent profile, error rather than
+			// silently fall back. This matches render / status / link / config set.
+			flagProfile, _ := cmd.Root().PersistentFlags().GetString("profile")
+			envProfile := os.Getenv(config.EnvProfile)
+
+			var profileName string
+			switch {
+			case flagProfile != "":
+				if _, ok := cfg.Profiles[flagProfile]; !ok {
+					return output.NewCLIError(
+						output.ErrUsage,
+						"Unknown profile: "+flagProfile,
+						"Configured profiles: "+quotedSortedProfileNames(cfg.Profiles)+". Use `urlbox config profile create "+flagProfile+"` first, or drop --profile to target the default.",
+					)
+				}
+				profileName = flagProfile
+			case envProfile != "":
+				if _, ok := cfg.Profiles[envProfile]; !ok {
+					return output.NewCLIError(
+						output.ErrUsage,
+						"Unknown profile (URLBOX_PROFILE): "+envProfile,
+						"Configured profiles: "+quotedSortedProfileNames(cfg.Profiles)+". Unset URLBOX_PROFILE or create the profile first.",
+					)
+				}
+				profileName = envProfile
+			default:
+				profileName = cfg.DefaultProfile
+				if profileName == "" {
+					profileName = "default"
+					cfg.DefaultProfile = profileName
+				}
 			}
 			p := cfg.Profiles[profileName]
 

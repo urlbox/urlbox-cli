@@ -553,3 +553,136 @@ func TestAuth_Overwrite_TTY_PromptReject(t *testing.T) {
 		t.Errorf("after 'n' prompt, original secret was clobbered: %q", c.Profiles[c.DefaultProfile].APISecret)
 	}
 }
+
+// TestAuth_ProfileFlag_TargetsNamedProfile pins the C1 fix from Round 4
+// adversarial review: `urlbox auth --profile <name>` must write the new
+// secret into the named profile, NOT silently fall back to default.
+//
+// Before this fix, `--profile` was ignored entirely by auth — meaning a
+// caller intending to set up a non-default profile would unknowingly
+// clobber the default profile's secret. With --force, the clobber was
+// silent (the overwrite guard fired against the wrong profile name and
+// then --force bypassed it).
+func TestAuth_ProfileFlag_TargetsNamedProfile(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("URLBOX_API_SECRET", "")
+	cmd.SetStdinTTYForTest(false)
+	cmd.SetStderrTTYForTest(false)
+	t.Cleanup(cmd.ResetStdinTTYForTest)
+	t.Cleanup(cmd.ResetStderrTTYForTest)
+
+	// Seed two profiles so default_profile != target. `config profile create`
+	// makes the FIRST created profile the default, so create `default` first
+	// to anchor it, then create `staging` as the non-default target.
+	var stdout, stderr bytes.Buffer
+	if exit := cmd.Execute([]string{"config", "profile", "create", "default", "--api-secret", "sec_default_seed12"}, &stdout, &stderr); exit != 0 {
+		t.Fatalf("seed default exit=%d stderr=%s", exit, stderr.String())
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if exit := cmd.Execute([]string{"config", "profile", "create", "staging"}, &stdout, &stderr); exit != 0 {
+		t.Fatalf("seed staging exit=%d stderr=%s", exit, stderr.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	exit := cmd.Execute([]string{"--profile", "staging", "auth", "--api-secret", "sec_staging_xxxxxxx", "--output-format", "json"}, &stdout, &stderr)
+	if exit != 0 {
+		t.Fatalf("exit=%d, want 0; stderr=%s; stdout=%s", exit, stderr.String(), stdout.String())
+	}
+	var env map[string]any
+	_ = json.Unmarshal(stdout.Bytes(), &env)
+	data, _ := env["data"].(map[string]any)
+	if data["profile"] != "staging" {
+		t.Errorf("envelope profile=%v, want staging", data["profile"])
+	}
+
+	c, _ := config.Load()
+	if c.Profiles["staging"].APISecret != "sec_staging_xxxxxxx" {
+		t.Errorf("staging.APISecret=%q, want sec_staging_xxxxxxx", c.Profiles["staging"].APISecret)
+	}
+	// default profile must NOT have been touched.
+	if c.Profiles["default"].APISecret != "sec_default_seed12" {
+		t.Errorf("default.APISecret was unexpectedly mutated: %q", c.Profiles["default"].APISecret)
+	}
+}
+
+// TestAuth_ProfileFlag_UnknownProfile_Errors pins that an unknown profile
+// name causes ErrUsage rather than silently writing to default. This is
+// the documented behavior of `render`, `status`, `link`, and `config set`
+// — auth should be consistent.
+func TestAuth_ProfileFlag_UnknownProfile_Errors(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("URLBOX_API_SECRET", "")
+	cmd.SetStdinTTYForTest(false)
+	cmd.SetStderrTTYForTest(false)
+	t.Cleanup(cmd.ResetStdinTTYForTest)
+	t.Cleanup(cmd.ResetStderrTTYForTest)
+
+	// Seed a real default profile so we can prove --profile bogus didn't clobber it.
+	var stdout, stderr bytes.Buffer
+	if exit := cmd.Execute([]string{"auth", "--api-secret", "sec_default_xxxxx"}, &stdout, &stderr); exit != 0 {
+		t.Fatalf("seed exit=%d stderr=%s", exit, stderr.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	// Even with --force, an unknown profile name must error rather than
+	// silently overwrite default. This closes the Round 4 adversarial repro.
+	exit := cmd.Execute([]string{"--profile", "NONEXISTENT", "auth", "--api-secret", "sec_attacker_yy", "--force", "--output-format", "json"}, &stdout, &stderr)
+	if exit == 0 {
+		t.Fatalf("--profile NONEXISTENT should error; exit=0 stdout=%s", stdout.String())
+	}
+	var env map[string]any
+	_ = json.Unmarshal(stdout.Bytes(), &env)
+	if env["code"] != "usage" {
+		t.Errorf("code=%v, want usage", env["code"])
+	}
+	if !strings.Contains(env["error"].(string), "NONEXISTENT") {
+		t.Errorf("error should name the rejected profile; got %q", env["error"])
+	}
+
+	// Verify default profile was NOT clobbered — this is the load-bearing assertion.
+	c, _ := config.Load()
+	if c.Profiles["default"].APISecret != "sec_default_xxxxx" {
+		t.Errorf("default.APISecret was clobbered by bogus --profile: %q", c.Profiles["default"].APISecret)
+	}
+}
+
+// TestAuth_EnvProfile_TargetsNamedProfile pins parallel behavior for the
+// URLBOX_PROFILE env var.
+func TestAuth_EnvProfile_TargetsNamedProfile(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("URLBOX_API_SECRET", "")
+	cmd.SetStdinTTYForTest(false)
+	cmd.SetStderrTTYForTest(false)
+	t.Cleanup(cmd.ResetStdinTTYForTest)
+	t.Cleanup(cmd.ResetStderrTTYForTest)
+
+	// Seed two profiles so default != target, then point URLBOX_PROFILE at
+	// the non-default one and verify auth respects it.
+	var stdout, stderr bytes.Buffer
+	if exit := cmd.Execute([]string{"config", "profile", "create", "default", "--api-secret", "sec_default_seed12"}, &stdout, &stderr); exit != 0 {
+		t.Fatalf("seed default exit=%d stderr=%s", exit, stderr.String())
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if exit := cmd.Execute([]string{"config", "profile", "create", "prod"}, &stdout, &stderr); exit != 0 {
+		t.Fatalf("seed prod exit=%d stderr=%s", exit, stderr.String())
+	}
+
+	t.Setenv("URLBOX_PROFILE", "prod")
+	stdout.Reset()
+	stderr.Reset()
+	exit := cmd.Execute([]string{"auth", "--api-secret", "sec_prod_zzzzzzzz"}, &stdout, &stderr)
+	if exit != 0 {
+		t.Fatalf("exit=%d stderr=%s", exit, stderr.String())
+	}
+	c, _ := config.Load()
+	if c.Profiles["prod"].APISecret != "sec_prod_zzzzzzzz" {
+		t.Errorf("prod.APISecret=%q, want sec_prod_zzzzzzzz", c.Profiles["prod"].APISecret)
+	}
+	if c.Profiles["default"].APISecret != "sec_default_seed12" {
+		t.Errorf("default.APISecret unexpectedly mutated: %q", c.Profiles["default"].APISecret)
+	}
+}
