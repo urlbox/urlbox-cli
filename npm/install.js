@@ -150,11 +150,13 @@ async function main() {
   fs.writeFileSync(tmpArchive, archiveData);
 
   if (process.env.URLBOX_SKIP_VERIFY === "1") {
-    console.log("================================================================");
-    console.log("WARNING: URLBOX_SKIP_VERIFY=1 — bypassing checksum + signature");
-    console.log("verification. This is NOT recommended outside of air-gapped");
-    console.log("installs where the artifact has been verified out-of-band.");
-    console.log("================================================================");
+    // Warnings go to stderr (matches scripts/install.sh and keeps stdout
+    // reserved for any future machine-readable install output).
+    console.error("================================================================");
+    console.error("WARNING: URLBOX_SKIP_VERIFY=1 — bypassing checksum + signature");
+    console.error("verification. This is NOT recommended outside of air-gapped");
+    console.error("installs where the artifact has been verified out-of-band.");
+    console.error("================================================================");
   } else {
     console.log("Verifying release...");
     const checksumsBuf = await fetch(`${base}/checksums.txt`);
@@ -170,8 +172,9 @@ async function main() {
     // The "bundle missing → sha256-only" downgrade is exactly what a network
     // attacker would force to defeat publisher-identity verification while
     // serving substituted-but-internally-consistent checksums.txt + archive.
-    const bundleRequired =
-      !version.startsWith("0.") && process.env.URLBOX_ALLOW_UNSIGNED !== "1";
+    const allowUnsignedUsed =
+      !version.startsWith("0.") && process.env.URLBOX_ALLOW_UNSIGNED === "1";
+    const bundleRequired = !version.startsWith("0.") && !allowUnsignedUsed;
 
     const bundleBuf = await fetch(`${base}/checksums.txt.sigstore.json`, { allowMissing: true });
     if (bundleBuf) {
@@ -190,6 +193,14 @@ async function main() {
       throw new Error(
         `sigstore bundle (checksums.txt.sigstore.json) missing for v${version}. Refusing to downgrade to sha256-only — set URLBOX_ALLOW_UNSIGNED=1 to override (NOT recommended for v1.0+ releases).`,
       );
+    } else if (allowUnsignedUsed) {
+      console.error("================================================================");
+      console.error(`WARNING: URLBOX_ALLOW_UNSIGNED=1 — downgrading to sha256-only`);
+      console.error(`on v${version}. A network attacker who substitutes both`);
+      console.error("checksums.txt AND the archive bypasses publisher-identity");
+      console.error("verification. Use only when you cannot fetch the sigstore");
+      console.error("bundle (corporate proxy, etc.).");
+      console.error("================================================================");
     } else {
       console.log("  no sigstore bundle on this release — sha256-only verification");
     }

@@ -125,7 +125,40 @@ verify_cosign_bundle() {
   info "  sigstore signature verified (publisher: github.com/urlbox/urlbox-cli)"
 }
 
+print_help() {
+  cat <<EOF
+Urlbox CLI installer
+
+Usage:
+  curl -fsSL https://cli.urlbox.com/install.sh | sh
+  sh install.sh
+
+Verifies the downloaded archive's sha256 against the release's
+checksums.txt, and (if cosign is available) verifies a sigstore
+bundle on checksums.txt pinned to the Urlbox publisher identity.
+
+Environment variables:
+  URLBOX_SKIP_VERIFY=1       Bypass checksum + signature verification
+                             (NOT recommended; air-gapped only)
+  URLBOX_ALLOW_UNSIGNED=1    Allow missing sigstore bundle on v1.0+
+                             releases (NOT recommended)
+  GITHUB_TOKEN=<token>       Auth header for the latest-version probe
+                             (avoids API rate limits on shared CI IPs)
+  CI / GITHUB_ACTIONS / URLBOX_SKIP_SETUP
+                             Markers consulted by is_interactive
+
+Installs the urlbox binary into ${INSTALL_DIR}.
+EOF
+}
+
 main() {
+  case "${1:-}" in
+    -h|--help)
+      print_help
+      return 0
+      ;;
+  esac
+
   os="$(detect_os)"
   arch="$(detect_arch)"
   version="$(latest_version)"
@@ -174,14 +207,24 @@ main() {
       0.*) bundle_required=0 ;;
       *)   bundle_required=1 ;;
     esac
-    if [ "${URLBOX_ALLOW_UNSIGNED:-}" = "1" ]; then
+    allow_unsigned_used=0
+    if [ "${URLBOX_ALLOW_UNSIGNED:-}" = "1" ] && [ "$bundle_required" = "1" ]; then
       bundle_required=0
+      allow_unsigned_used=1
     fi
 
     if curl -fsSL "${base}/checksums.txt.sigstore.json" -o "$bundle" 2>/dev/null; then
       verify_cosign_bundle "$checksums" "$bundle"
     elif [ "$bundle_required" = "1" ]; then
       error "sigstore bundle (checksums.txt.sigstore.json) missing for v${version}. Refusing to downgrade to sha256-only — set URLBOX_ALLOW_UNSIGNED=1 to override (NOT recommended for v1.0+ releases)."
+    elif [ "$allow_unsigned_used" = "1" ]; then
+      info "================================================================"
+      info "WARNING: URLBOX_ALLOW_UNSIGNED=1 — downgrading to sha256-only"
+      info "on v${version}. A network attacker who substitutes both"
+      info "checksums.txt AND the archive bypasses publisher-identity"
+      info "verification. Use only when you cannot fetch the sigstore"
+      info "bundle (corporate proxy, etc.)."
+      info "================================================================"
     else
       info "  no sigstore bundle on this release — sha256-only verification"
     fi

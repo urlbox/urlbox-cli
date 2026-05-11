@@ -2,6 +2,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -9,6 +10,17 @@ import (
 
 	"github.com/urlbox/urlbox-cli/internal/output"
 )
+
+// unwrapFileError strips the leading `op /path:` prefix from an os
+// syscall error so we can name the path ourselves without duplicating
+// it. Falls back to err.Error() for non-PathError types.
+func unwrapFileError(err error) string {
+	var pe *os.PathError
+	if errors.As(err, &pe) {
+		return pe.Err.Error()
+	}
+	return err.Error()
+}
 
 // secretStdin is the io.Reader used to satisfy --api-secret-stdin. Defaults
 // to os.Stdin; tests inject a strings.Reader via SetSecretStdinForTest.
@@ -100,7 +112,7 @@ func resolveAPISecretInput(stdin io.Reader, stderr io.Writer, direct string, fro
 		if err != nil {
 			return "", output.NewCLIError(
 				output.ErrUsage,
-				fmt.Sprintf("failed to read --api-secret-file %s: %s", fromFile, err.Error()),
+				fmt.Sprintf("failed to read --api-secret-file %s: %s", fromFile, unwrapFileError(err)),
 				"Check the path and permissions. The file must be readable by the current user and contain the API secret on a single line.",
 			)
 		}
@@ -109,7 +121,7 @@ func resolveAPISecretInput(stdin io.Reader, stderr io.Writer, direct string, fro
 		if err != nil {
 			return "", output.NewCLIError(
 				output.ErrUsage,
-				fmt.Sprintf("failed to read --api-secret-file %s: %s", fromFile, err.Error()),
+				fmt.Sprintf("failed to read --api-secret-file %s: %s", fromFile, unwrapFileError(err)),
 				"Check the path and permissions.",
 			)
 		}
