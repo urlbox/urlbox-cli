@@ -2,7 +2,9 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -209,7 +211,19 @@ func checkAuth(ctx context.Context, host string) Check {
 	}
 	defer func() { _ = resp.Body.Close() }()
 
+	// Auth status is determined by the HTTP class:
+	//   - 2xx → credentials accepted
+	//   - 401/403 → explicit credential rejection
+	//   - other 4xx (e.g. 400 "Api Key does not exist", 404, 429) → fail too
+	//   - 5xx → warn; we can't tell whether creds are valid when the API is sick
+	//
+	// Round 4 H2: before this, only 401/403/5xx fell out of "ok". A real
+	// production 400 with body `{"error":{"code":"ApiKeyNotFound",...}}`
+	// silently reported "credentials valid", which let CI green-light a
+	// broken secret.
 	switch {
+	case resp.StatusCode >= 200 && resp.StatusCode < 300:
+		return Check{Name: "auth", Status: "ok", Message: "credentials valid"}
 	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
 		return Check{
 			Name:    "auth",
@@ -224,6 +238,35 @@ func checkAuth(ctx context.Context, host string) Check {
 			Message: fmt.Sprintf("API returned %d", resp.StatusCode),
 		}
 	default:
-		return Check{Name: "auth", Status: "ok", Message: "credentials valid"}
+		// Non-2xx, non-401/403, non-5xx — typically a 400 ApiKeyNotFound
+		// or 404. Treat as a credential failure; surface the API's
+		// error message if it parses as the standard envelope.
+		msg := fmt.Sprintf("API returned %d", resp.StatusCode)
+		if apiMsg := readAPIErrorMessage(resp); apiMsg != "" {
+			msg = fmt.Sprintf("API returned %d: %s", resp.StatusCode, apiMsg)
+		}
+		return Check{
+			Name:    "auth",
+			Status:  "fail",
+			Message: msg,
+			Hint:    "Re-run `urlbox auth --api-secret <secret>` with a valid secret, or check `urlbox config get api_secret --reveal` against the dashboard.",
+		}
 	}
+}
+
+// readAPIErrorMessage best-effort extracts `error.message` from the Urlbox
+// API's standard error envelope: {"error":{"code":"...","message":"..."}}.
+// Returns "" on any parse / shape failure — callers must fall back to a
+// generic message.
+func readAPIErrorMessage(resp *http.Response) string {
+	var body struct {
+		Error struct {
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	dec := json.NewDecoder(io.LimitReader(resp.Body, 4096))
+	if err := dec.Decode(&body); err != nil {
+		return ""
+	}
+	return body.Error.Message
 }

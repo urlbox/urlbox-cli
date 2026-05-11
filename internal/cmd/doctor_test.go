@@ -107,6 +107,56 @@ func TestDoctor_AuthFailure_FailsAuthCheck(t *testing.T) {
 	}
 }
 
+// TestDoctor_AuthBadRequest_FailsAuthCheck pins Round 4 H2: the auth check
+// previously only treated 401/403/5xx as failure. A real-world 400 from
+// /v1/user/me with body {"error":{"code":"ApiKeyNotFound",...}} fell into
+// the default arm and was reported as "credentials valid" — a critical
+// false-positive that let CI green-light a broken secret.
+func TestDoctor_AuthBadRequest_FailsAuthCheck(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error":{"code":"ApiKeyNotFound","message":"Api Key does not exist"}}`))
+	}))
+	defer srv.Close()
+
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("URLBOX_API_SECRET", "ubx_sk_fakebutwellformed")
+	t.Setenv("URLBOX_API_HOST", srv.URL)
+
+	env, exit, _, _ := runDoctor(t)
+
+	c := extractCheck(t, env, "auth")
+	if c["status"] != "fail" {
+		t.Fatalf("auth check on HTTP 400 should fail; got %v (full check: %v)", c["status"], c)
+	}
+	if exit == 0 {
+		t.Fatal("expected non-zero exit when auth check fails")
+	}
+}
+
+// TestDoctor_AuthNotFound_FailsAuthCheck pins another non-2xx, non-401/403
+// case — 404 on /v1/user/me should not be "credentials valid" either.
+func TestDoctor_AuthNotFound_FailsAuthCheck(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("URLBOX_API_SECRET", "ubx_sk_anything")
+	t.Setenv("URLBOX_API_HOST", srv.URL)
+
+	env, exit, _, _ := runDoctor(t)
+
+	c := extractCheck(t, env, "auth")
+	if c["status"] != "fail" {
+		t.Fatalf("auth check on HTTP 404 should fail; got %v", c["status"])
+	}
+	if exit == 0 {
+		t.Fatal("expected non-zero exit when auth check fails")
+	}
+}
+
 // Regression guard (v1.0.2): when any check fails the envelope's `ok` field
 // must be false. Exit code is already 10 (correct), but consumers parsing
 // JSON would otherwise see `ok: true` alongside failed checks — a contract
