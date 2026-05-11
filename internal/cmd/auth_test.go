@@ -3,6 +3,8 @@ package cmd_test
 import (
 	"bytes"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -167,7 +169,7 @@ func TestAuth_NonInteractive_NoSecret_StillUsageError(t *testing.T) {
 	if env["code"] != "usage" {
 		t.Errorf("code=%v", env["code"])
 	}
-	if env["error"] != "missing --api-secret" {
+	if env["error"] != "missing API secret" {
 		t.Errorf("error=%v", env["error"])
 	}
 }
@@ -271,5 +273,112 @@ func TestAuth_InteractivePath_EmptyInput_UsageError(t *testing.T) {
 	}
 	if hint, _ := env["hint"].(string); strings.Contains(hint, "run interactively on a TTY") {
 		t.Errorf("interactive hint shouldn't suggest TTY (user is already on one): %q", hint)
+	}
+}
+
+// TestAuth_APISecretStdin_ReadsAndSaves pins the --api-secret-stdin path:
+// pipe the secret on stdin, no argv leak, no shell-history exposure.
+// Closes Round 1 S-C2.
+func TestAuth_APISecretStdin_ReadsAndSaves(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("URLBOX_API_SECRET", "")
+	cmd.SetSecretStdinForTest(strings.NewReader("sec_stdin_abcdefghij\n"))
+	t.Cleanup(cmd.ResetSecretStdinForTest)
+
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{"auth", "--api-secret-stdin"}, &stdout, &stderr)
+	if exit != 0 {
+		t.Fatalf("exit=%d stdout=%s stderr=%s", exit, stdout.String(), stderr.String())
+	}
+	c, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := c.Profiles[c.DefaultProfile].APISecret; got != "sec_stdin_abcdefghij" {
+		t.Errorf("APISecret=%q, want sec_stdin_abcdefghij", got)
+	}
+	// stdin path must NOT trigger the TTY history warning.
+	if strings.Contains(stderr.String(), "shell history") {
+		t.Errorf("stdin path should not warn about shell history; got %q", stderr.String())
+	}
+}
+
+// TestAuth_APISecretFile_ReadsAndSaves pins the --api-secret-file path.
+func TestAuth_APISecretFile_ReadsAndSaves(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("URLBOX_API_SECRET", "")
+
+	dir := t.TempDir()
+	p := filepath.Join(dir, "secret.txt")
+	if err := os.WriteFile(p, []byte("sec_file_klmnopqrst\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{"auth", "--api-secret-file", p}, &stdout, &stderr)
+	if exit != 0 {
+		t.Fatalf("exit=%d stdout=%s stderr=%s", exit, stdout.String(), stderr.String())
+	}
+	c, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := c.Profiles[c.DefaultProfile].APISecret; got != "sec_file_klmnopqrst" {
+		t.Errorf("APISecret=%q, want sec_file_klmnopqrst", got)
+	}
+}
+
+// TestAuth_APISecretFlag_OnTTY_PrintsHistoryWarning pins UX I5:
+// --api-secret <value> on a TTY emits a stderr warning about shell history.
+// On a non-TTY (CI), the warning is suppressed.
+func TestAuth_APISecretFlag_OnTTY_PrintsHistoryWarning(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("URLBOX_API_SECRET", "")
+	cmd.SetStderrTTYForTest(true)
+	t.Cleanup(cmd.ResetStderrTTYForTest)
+
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{"auth", "--api-secret", "sec_argv_uvwxyz1234"}, &stdout, &stderr)
+	if exit != 0 {
+		t.Fatalf("exit=%d stdout=%s stderr=%s", exit, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "shell history") {
+		t.Errorf("TTY stderr should warn about shell history; got %q", stderr.String())
+	}
+}
+
+// TestAuth_APISecretFlag_OnNonTTY_NoWarning pins suppression in CI / pipelines.
+func TestAuth_APISecretFlag_OnNonTTY_NoWarning(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("URLBOX_API_SECRET", "")
+	cmd.SetStderrTTYForTest(false)
+	t.Cleanup(cmd.ResetStderrTTYForTest)
+
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{"auth", "--api-secret", "sec_ci_qwerty5678"}, &stdout, &stderr)
+	if exit != 0 {
+		t.Fatalf("exit=%d stdout=%s stderr=%s", exit, stdout.String(), stderr.String())
+	}
+	if strings.Contains(stderr.String(), "warning") {
+		t.Errorf("non-TTY should NOT emit shell-history warning; got %q", stderr.String())
+	}
+}
+
+// TestAuth_MutexBetweenSecretInputFlags pins that passing more than one of
+// --api-secret, --api-secret-stdin, --api-secret-file is a usage error.
+func TestAuth_MutexBetweenSecretInputFlags(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{"auth", "--api-secret", "sec_x", "--api-secret-stdin"}, &stdout, &stderr)
+	if exit == 0 {
+		t.Fatal("expected non-zero exit on mutex violation")
+	}
+	var env map[string]any
+	_ = json.Unmarshal(stdout.Bytes(), &env)
+	if env["code"] != "usage" {
+		t.Errorf("code=%v, want usage", env["code"])
+	}
+	if !strings.Contains(env["error"].(string), "at most one") {
+		t.Errorf("error should say 'at most one'; got %q", env["error"])
 	}
 }

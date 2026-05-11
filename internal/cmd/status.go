@@ -51,12 +51,14 @@ const defaultStatusPollInterval = 2 * time.Second
 
 // statusFlags carries every convenience flag the status command supports.
 type statusFlags struct {
-	apiSecret    string
-	timeout      time.Duration
-	wait         bool
-	pollInterval time.Duration
-	noRetry      bool
-	maxRetries   int
+	apiSecret      string
+	apiSecretStdin bool
+	apiSecretFile  string
+	timeout        time.Duration
+	wait           bool
+	pollInterval   time.Duration
+	noRetry        bool
+	maxRetries     int
 }
 
 func newStatusCmd() *cobra.Command {
@@ -88,7 +90,9 @@ Examples:
 		},
 	}
 	c.Flags().StringVar(&f.apiSecret, "api-secret", "",
-		"Per-call override of the API secret (else read from config / env)")
+		"Per-call override of the API secret (leaks via ps + shell history; prefer --api-secret-stdin or --api-secret-file)")
+	c.Flags().BoolVar(&f.apiSecretStdin, "api-secret-stdin", false, "Read the API secret from stdin until EOF")
+	c.Flags().StringVar(&f.apiSecretFile, "api-secret-file", "", "Read the API secret from the given file (trailing newline trimmed)")
 	c.Flags().DurationVar(&f.timeout, "timeout", defaultStatusTimeout,
 		"Per-call timeout for the status GET (e.g. 30s, 2m). With --wait, "+
 			"caps the total time spent polling.")
@@ -123,6 +127,12 @@ func runStatus(cmd *cobra.Command, args []string, f *statusFlags) error {
 			"Provide the renderId as the first positional arg, e.g.: urlbox status ps_abc123. "+
 				"You can get one from `urlbox render <url> --async`.",
 		)
+	}
+
+	if resolved, cliErr := resolveAPISecretInput(secretStdin, cmd.ErrOrStderr(), f.apiSecret, f.apiSecretStdin, f.apiSecretFile); cliErr != nil {
+		return cliErr
+	} else if resolved != "" {
+		f.apiSecret = resolved
 	}
 
 	client, cerr := buildStatusClient(cmd, f)

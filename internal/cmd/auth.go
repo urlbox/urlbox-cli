@@ -58,7 +58,8 @@ func defaultAuthSecretReader() (string, error) {
 }
 
 func newAuthCmd() *cobra.Command {
-	var apiSecret string
+	var apiSecret, apiSecretFile string
+	var apiSecretStdin bool
 	c := &cobra.Command{
 		Use:   "auth",
 		Short: "Configure API credentials",
@@ -68,7 +69,9 @@ Find your API secret in your project's settings on the dashboard:
   https://urlbox.com/dashboard/projects   (open your project → API Secret)
 
 Non-interactive (preferred for agents and CI):
-  urlbox auth --api-secret <secret>
+  printf %s "$URLBOX_API_SECRET" | urlbox auth --api-secret-stdin
+  urlbox auth --api-secret-file ~/.config/urlbox/secret
+  urlbox auth --api-secret <secret>     # least safe: visible in ps + shell history
 
 Interactive (humans, on a TTY):
   urlbox auth         # prompts once for the secret with masked echo
@@ -76,9 +79,12 @@ Interactive (humans, on a TTY):
 The env var URLBOX_API_SECRET takes precedence at runtime over the saved value.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			secret := apiSecret
+			secret, cliErr := resolveAPISecretInput(secretStdin, cmd.ErrOrStderr(), apiSecret, apiSecretStdin, apiSecretFile)
+			if cliErr != nil {
+				return cliErr
+			}
 
-			interactive := apiSecret == "" && isStdinTTY(cmd.InOrStdin()) && isStderrTTY(cmd.ErrOrStderr())
+			interactive := secret == "" && !apiSecretStdin && apiSecretFile == "" && isStdinTTY(cmd.InOrStdin()) && isStderrTTY(cmd.ErrOrStderr())
 			if interactive {
 				// Prompt label on stderr — keeps stdout clean for --output-format json.
 				// Pre-prompt pointer to where the secret lives, so a first-time
@@ -107,8 +113,8 @@ The env var URLBOX_API_SECRET takes precedence at runtime over the saved value.`
 				}
 				return output.NewCLIError(
 					output.ErrUsage,
-					"missing --api-secret",
-					"Pass --api-secret <secret>, export URLBOX_API_SECRET, or run interactively on a TTY. Find your API secret in your project's settings at https://urlbox.com/dashboard/projects.",
+					"missing API secret",
+					"Pipe via --api-secret-stdin, read from --api-secret-file <path>, pass --api-secret <secret>, export URLBOX_API_SECRET, or run interactively on a TTY. Find your API secret in your project's settings at https://urlbox.com/dashboard/projects.",
 				)
 			}
 
@@ -168,7 +174,9 @@ The env var URLBOX_API_SECRET takes precedence at runtime over the saved value.`
 			return formatter.WriteSuccess(stdout, env)
 		},
 	}
-	c.Flags().StringVar(&apiSecret, "api-secret", "", "Urlbox API secret (skip the interactive prompt — required in CI / non-TTY)")
+	c.Flags().StringVar(&apiSecret, "api-secret", "", "Urlbox API secret (skip the interactive prompt — leaks into ps and shell history; prefer --api-secret-stdin or --api-secret-file)")
+	c.Flags().BoolVar(&apiSecretStdin, "api-secret-stdin", false, "Read the API secret from stdin until EOF (recommended for CI / agents)")
+	c.Flags().StringVar(&apiSecretFile, "api-secret-file", "", "Read the API secret from the given file (trailing newline trimmed)")
 	return c
 }
 

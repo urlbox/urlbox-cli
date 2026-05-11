@@ -424,22 +424,29 @@ default_profile <name>` requires `<name>` to exist as a profile.
 
 ### For agents and CI (non-interactive)
 
-Both options below are agent-safe — neither prompts. Pick whichever
-matches your secret-management story; there's no hierarchy.
+All options below are agent-safe — none prompts. Listed in order of
+secret-hygiene; prefer the higher items.
 
 ```sh
-# Option A — persist to config file (mode 0600), one-liner
-urlbox auth --api-secret <secret>
+# A — pipe on stdin (no argv leak, no shell-history exposure)
+printf %s "$URLBOX_API_SECRET" | urlbox auth --api-secret-stdin
 
-# Option B — pass per-call via flag (no file write)
-urlbox render <url> --api-secret <secret>
+# B — read from a file (handy when the secret already lives on disk)
+urlbox auth --api-secret-file /run/secrets/urlbox
+
+# C — env var (never touches the config file)
+URLBOX_API_SECRET=<secret> urlbox render <url>
+
+# D — argv flag (leaks into `ps` and shell history; emits a TTY warning)
+urlbox auth --api-secret <secret>
 
 urlbox doctor --output-format json # JSON envelope: ok/not-ok
 ```
 
-The env var `URLBOX_API_SECRET` is the third agent-safe option: it
-takes precedence at runtime over any saved value and never touches
-the config file.
+`--api-secret-stdin` and `--api-secret-file` are accepted by every
+command that takes `--api-secret` (auth, render, status, link,
+config profile create, and the render aliases screenshot/pdf/video).
+Mutually exclusive — pass at most one.
 
 ### For humans on a TTY
 

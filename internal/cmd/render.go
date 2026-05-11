@@ -71,6 +71,8 @@ type renderFlags struct {
 	noRetry                                                 bool
 	maxRetries                                              int
 	apiSecret                                               string
+	apiSecretStdin                                          bool
+	apiSecretFile                                           string
 	timeout                                                 time.Duration
 }
 
@@ -155,12 +157,29 @@ func attachRenderFlags(c *cobra.Command, f *renderFlags) {
 	c.Flags().BoolVar(&f.open, "open", false, "Open the rendered URL in the default browser after success")
 	c.Flags().BoolVar(&f.noRetry, "no-retry", false, "Disable automatic retries on 429 / 5xx")
 	c.Flags().IntVar(&f.maxRetries, "max-retries", api.DefaultRetryConfig().MaxRetries, "Maximum retry attempts on 429 / 5xx")
-	c.Flags().StringVar(&f.apiSecret, "api-secret", "", "Per-call override of the API secret (else read from config / env)")
+	c.Flags().StringVar(&f.apiSecret, "api-secret", "", "Per-call override of the API secret (leaks via ps + shell history; prefer --api-secret-stdin or --api-secret-file)")
+	c.Flags().BoolVar(&f.apiSecretStdin, "api-secret-stdin", false, "Read the API secret from stdin until EOF")
+	c.Flags().StringVar(&f.apiSecretFile, "api-secret-file", "", "Read the API secret from the given file (trailing newline trimmed)")
 }
 
 func runRender(cmd *cobra.Command, args []string, f *renderFlags) error {
 	if len(args) == 1 {
 		f.url = args[0]
+	}
+
+	// Both --api-secret-stdin and `--json -` consume stdin; at most one wins.
+	if f.apiSecretStdin && f.jsonInput == "-" {
+		return output.NewCLIError(
+			output.ErrUsage,
+			"--api-secret-stdin and --json - both want stdin",
+			"Pipe the secret via --api-secret-file <path> (or use URLBOX_API_SECRET) and reserve stdin for --json.",
+		)
+	}
+
+	if resolved, cliErr := resolveAPISecretInput(secretStdin, cmd.ErrOrStderr(), f.apiSecret, f.apiSecretStdin, f.apiSecretFile); cliErr != nil {
+		return cliErr
+	} else if resolved != "" {
+		f.apiSecret = resolved
 	}
 
 	// 1. Parse --json source (flag value, stdin, or @file).

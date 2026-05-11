@@ -23,11 +23,13 @@ import (
 
 // linkFlags carries every convenience flag the link command supports.
 type linkFlags struct {
-	urlFlag    string
-	jsonInput  string
-	formatFlag string
-	apiKey     string
-	apiSecret  string
+	urlFlag        string
+	jsonInput      string
+	formatFlag     string
+	apiKey         string
+	apiSecret      string
+	apiSecretStdin bool
+	apiSecretFile  string
 }
 
 func newLinkCmd() *cobra.Command {
@@ -57,11 +59,28 @@ If you actually want the rendered asset, use:
 	c.Flags().StringVar(&f.jsonInput, "json", "", `JSON options payload (literal, '-' for stdin, or '@path' for file)`)
 	c.Flags().StringVarP(&f.formatFlag, "format", "f", "", "Output format (default: png, or whatever --json sets)")
 	c.Flags().StringVar(&f.apiKey, "api-key", "", "Override resolved API key")
-	c.Flags().StringVar(&f.apiSecret, "api-secret", "", "Override resolved API secret")
+	c.Flags().StringVar(&f.apiSecret, "api-secret", "", "Override resolved API secret (leaks via ps + shell history; prefer --api-secret-stdin or --api-secret-file)")
+	c.Flags().BoolVar(&f.apiSecretStdin, "api-secret-stdin", false, "Read the API secret from stdin until EOF")
+	c.Flags().StringVar(&f.apiSecretFile, "api-secret-file", "", "Read the API secret from the given file (trailing newline trimmed)")
 	return c
 }
 
 func runLink(cmd *cobra.Command, f *linkFlags) error {
+	// Both --api-secret-stdin and `--json -` consume stdin; at most one wins.
+	if f.apiSecretStdin && f.jsonInput == "-" {
+		return output.NewCLIError(
+			output.ErrUsage,
+			"--api-secret-stdin and --json - both want stdin",
+			"Pipe the secret via --api-secret-file <path> (or use URLBOX_API_SECRET) and reserve stdin for --json.",
+		)
+	}
+
+	if resolved, cliErr := resolveAPISecretInput(secretStdin, cmd.ErrOrStderr(), f.apiSecret, f.apiSecretStdin, f.apiSecretFile); cliErr != nil {
+		return cliErr
+	} else if resolved != "" {
+		f.apiSecret = resolved
+	}
+
 	// 1. Parse --json source (flag value, stdin, or @file). Reuses render's
 	// helper so the parsing surface is one and the same.
 	jsonBytes, perr := parseJSONFlag(f.jsonInput, renderStdin)

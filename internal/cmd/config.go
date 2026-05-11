@@ -54,13 +54,21 @@ func newProfileCmd() *cobra.Command {
 }
 
 func newProfileCreateCmd() *cobra.Command {
-	var apiHost, apiSecret, apiKey string
+	var apiHost, apiSecret, apiSecretFile, apiKey string
+	var apiSecretStdin bool
 	c := &cobra.Command{
 		Use:   "create <name>",
 		Short: "Create a new profile",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
+			resolvedSecret, cliErr := resolveAPISecretInput(secretStdin, cmd.ErrOrStderr(), apiSecret, apiSecretStdin, apiSecretFile)
+			if cliErr != nil {
+				return cliErr
+			}
+			if resolvedSecret == "" {
+				resolvedSecret = apiSecret
+			}
 			cfg, err := config.Load()
 			if err != nil {
 				return output.NewCLIError(output.ErrServer, "failed to read config", err.Error())
@@ -75,7 +83,7 @@ func newProfileCreateCmd() *cobra.Command {
 			if cfg.Profiles == nil {
 				cfg.Profiles = map[string]config.Profile{}
 			}
-			cfg.Profiles[name] = config.Profile{APIKey: apiKey, APISecret: apiSecret, APIHost: apiHost}
+			cfg.Profiles[name] = config.Profile{APIKey: apiKey, APISecret: resolvedSecret, APIHost: apiHost}
 			if cfg.DefaultProfile == "" {
 				cfg.DefaultProfile = name
 			}
@@ -92,7 +100,9 @@ func newProfileCreateCmd() *cobra.Command {
 		},
 	}
 	c.Flags().StringVar(&apiHost, "api-host", "", "API host for this profile")
-	c.Flags().StringVar(&apiSecret, "api-secret", "", "API secret for this profile")
+	c.Flags().StringVar(&apiSecret, "api-secret", "", "API secret for this profile (leaks via ps + shell history; prefer --api-secret-stdin or --api-secret-file)")
+	c.Flags().BoolVar(&apiSecretStdin, "api-secret-stdin", false, "Read the API secret from stdin until EOF")
+	c.Flags().StringVar(&apiSecretFile, "api-secret-file", "", "Read the API secret from the given file (trailing newline trimmed)")
 	c.Flags().StringVar(&apiKey, "api-key", "", "Publishable API key for this profile")
 	return c
 }

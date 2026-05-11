@@ -875,3 +875,27 @@ func TestRender_WaitUntilHelp_ListsRealEnumValues(t *testing.T) {
 		}
 	}
 }
+
+// TestRender_APISecretStdin_ConflictsWithJSONStdin pins that --api-secret-stdin
+// and --json - cannot share stdin; the runRender entry rejects the combo
+// before either reader touches stdin. Round 1 S-C2 follow-up.
+func TestRender_APISecretStdin_ConflictsWithJSONStdin(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("URLBOX_API_SECRET", "sec_test")
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{
+		"render", "--json", "-", "--api-secret-stdin",
+	}, &stdout, &stderr)
+	if exit == 0 {
+		t.Fatal("expected non-zero exit on stdin double-claim")
+	}
+	var env map[string]any
+	_ = json.Unmarshal(stdout.Bytes(), &env)
+	if env["code"] != "usage" {
+		t.Errorf("code=%v, want usage", env["code"])
+	}
+	errStr, _ := env["error"].(string)
+	if !strings.Contains(errStr, "stdin") {
+		t.Errorf("error should mention stdin conflict; got %q", errStr)
+	}
+}
