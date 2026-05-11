@@ -277,6 +277,22 @@ func runRender(cmd *cobra.Command, args []string, f *renderFlags) error {
 		return cliErr
 	}
 
+	// 5.6. Pre-flight --output sandbox + writability before any API call
+	// (Round 4 M1, M6). Without this, --dry-run silently passed paths
+	// outside CWD and real renders burned a credit before discovering
+	// the target was unwritable. Skipped for --async since --output is
+	// not honored on the async path (the renderId is returned instead).
+	if f.output != "" && !f.async {
+		cwd, _ := os.Getwd()
+		abs, cerr := resolveOutputPath(f.output, cwd)
+		if cerr != nil {
+			return cerr
+		}
+		if cerr := checkOutputWritable(abs); cerr != nil {
+			return cerr
+		}
+	}
+
 	// 6. --dry-run short-circuits with the validated payload in the envelope.
 	if f.dryRun {
 		env := output.NewEnvelope(

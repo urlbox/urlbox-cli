@@ -899,3 +899,83 @@ func TestRender_APISecretStdin_ConflictsWithJSONStdin(t *testing.T) {
 		t.Errorf("error should mention stdin conflict; got %q", errStr)
 	}
 }
+
+// TestRender_DryRun_ValidatesOutputSandbox pins Round 4 M1: --dry-run
+// must catch --output paths that escape the CWD sandbox. Before this fix,
+// "ok: true, payload validated" came back for paths the real run would
+// reject — defeating dry-run as a pre-flight tool.
+func TestRender_DryRun_ValidatesOutputSandbox(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("URLBOX_API_SECRET", "sec_test")
+
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{
+		"render", "https://example.com",
+		"--output", "/etc/passwd",
+		"--dry-run",
+		"--output-format", "json",
+	}, &stdout, &stderr)
+	if exit != 2 {
+		t.Errorf("dry-run with sandbox-escaping --output should exit 2 (validation); got %d. stdout=%s", exit, stdout.String())
+	}
+	var env map[string]any
+	_ = json.Unmarshal(stdout.Bytes(), &env)
+	if env["code"] != "validation" {
+		t.Errorf("code=%v, want validation", env["code"])
+	}
+}
+
+// TestRender_OutputPath_WritabilityPreflight pins Round 4 M6: when
+// --output points at a directory the user can't write, the failure must
+// be detected BEFORE the API call (no wasted credit) and surfaced as
+// ErrValidation (not ErrServer — that misclassified the user error as
+// our server's fault).
+func TestRender_OutputPath_WritabilityPreflight(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("URLBOX_API_SECRET", "sec_test")
+
+	// Set up a read-only sub-directory inside a writable parent. macOS
+	// honors 0o500 for the owner; Linux too. Cleanup must chmod back to
+	// 0o700 so t.TempDir's RemoveAll can sweep it.
+	root := t.TempDir()
+	readonly := filepath.Join(root, "ro")
+	if err := os.Mkdir(readonly, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(readonly, 0o700) })
+
+	// Use a server that would respond OK to detect whether the API was
+	// hit. If the preflight works, no request reaches this handler.
+	hits := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hits++
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"renderUrl":"https://renders.urlbox.invalid/x.png","size":100}`))
+	}))
+	defer srv.Close()
+	t.Setenv(api.EnvAPIHost, srv.URL)
+
+	prevDir, _ := os.Getwd()
+	if err := os.Chdir(root); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(prevDir) })
+
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{
+		"render", "https://example.com",
+		"--output", "ro/cantwrite.png",
+		"--output-format", "json",
+	}, &stdout, &stderr)
+	if exit != 2 {
+		t.Errorf("exit=%d, want 2 (validation). stdout=%s", exit, stdout.String())
+	}
+	var env map[string]any
+	_ = json.Unmarshal(stdout.Bytes(), &env)
+	if env["code"] != "validation" {
+		t.Errorf("code=%v, want validation (not server)", env["code"])
+	}
+	if hits != 0 {
+		t.Errorf("API was hit %d times despite unwritable --output; preflight failed", hits)
+	}
+}

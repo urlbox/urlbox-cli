@@ -164,6 +164,36 @@ func canonicalizeExistingPrefix(path string) string {
 // The download is bounded by downloadMaxDuration even if the caller's
 // context has no deadline — a stalled CDN connection mustn't hang the
 // CLI indefinitely.
+// checkOutputWritable verifies the user's --output path can be written to
+// BEFORE the API call, so a bad path doesn't burn a render credit. Mkdirs
+// the parent and probe-creates a sibling file in it (CreateTemp guarantees
+// a unique name so the user's actual --output target is untouched).
+//
+// Returns ErrValidation — the user owns the path; misclassifying this as
+// ErrServer (as the pre-Round-4 download path did) blames the wrong party.
+// Round 4 M6.
+func checkOutputWritable(abs string) *output.CLIError {
+	parent := filepath.Dir(abs)
+	if err := os.MkdirAll(parent, 0o750); err != nil {
+		return output.NewCLIError(
+			output.ErrValidation,
+			"--output directory could not be created: "+err.Error(),
+			"Check the parent directory's permissions, or pick a different --output path.",
+		)
+	}
+	probe, err := os.CreateTemp(parent, ".urlbox-write-probe-*")
+	if err != nil {
+		return output.NewCLIError(
+			output.ErrValidation,
+			"--output directory is not writable: "+err.Error(),
+			"Check the directory permissions, or pick a different --output path.",
+		)
+	}
+	_ = probe.Close()
+	_ = os.Remove(probe.Name())
+	return nil
+}
+
 func downloadTo(ctx context.Context, url, dst string) *output.CLIError {
 	dlCtx, cancel := context.WithTimeout(ctx, downloadMaxDuration)
 	defer cancel()
