@@ -156,3 +156,50 @@ func TestResolveAPISecretInput_MultipleSourcesError(t *testing.T) {
 		})
 	}
 }
+
+func TestResolveAPISecretInput_Stdin_RejectsTooLarge(t *testing.T) {
+	// Build a payload larger than the cap.
+	big := strings.Repeat("a", 4097)
+	_, err := resolveAPISecretInput(strings.NewReader(big), &bytes.Buffer{}, "", true, "")
+	if err == nil {
+		t.Fatal("oversized stdin should error")
+	}
+	if string(err.Code) != "usage" {
+		t.Errorf("code=%q, want usage", err.Code)
+	}
+	if !strings.Contains(err.Message, "too large") {
+		t.Errorf("message should say 'too large'; got %q", err.Message)
+	}
+}
+
+func TestResolveAPISecretInput_File_RejectsTooLarge(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "big.txt")
+	big := bytes.Repeat([]byte("a"), 4097)
+	if err := os.WriteFile(p, big, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err := resolveAPISecretInput(strings.NewReader(""), &bytes.Buffer{}, "", false, p)
+	if err == nil {
+		t.Fatal("oversized file should error")
+	}
+	if string(err.Code) != "usage" {
+		t.Errorf("code=%q, want usage", err.Code)
+	}
+	if !strings.Contains(err.Message, "too large") {
+		t.Errorf("message should say 'too large'; got %q", err.Message)
+	}
+}
+
+func TestResolveAPISecretInput_File_MissingHintIsFriendly(t *testing.T) {
+	_, err := resolveAPISecretInput(strings.NewReader(""), &bytes.Buffer{}, "", false, "/nonexistent/path/secret.txt")
+	if err == nil {
+		t.Fatal("missing file should error")
+	}
+	if !strings.Contains(err.Message, "/nonexistent/path/secret.txt") {
+		t.Errorf("message should name the path; got %q", err.Message)
+	}
+	if !strings.Contains(err.Hint, "Check the path") || !strings.Contains(err.Hint, "permissions") {
+		t.Errorf("hint should reference path + permissions; got %q", err.Hint)
+	}
+}

@@ -23,6 +23,13 @@ func SetSecretStdinForTest(r io.Reader) { secretStdin = r }
 // ResetSecretStdinForTest restores the os.Stdin default.
 func ResetSecretStdinForTest() { secretStdin = os.Stdin }
 
+// maxSecretBytes caps the size of secrets read via --api-secret-stdin or
+// --api-secret-file. Real Urlbox API secrets are ~40 chars; 4 KiB is two
+// orders of magnitude beyond any real value, small enough that an
+// accidental `--api-secret-file /dev/zero` fails fast instead of OOMing
+// the process.
+const maxSecretBytes = 4096
+
 // resolveAPISecretInput picks the API secret from at most one of three
 // command-line sources, in order of safety:
 //
@@ -66,9 +73,18 @@ func resolveAPISecretInput(stdin io.Reader, stderr io.Writer, direct string, fro
 		}
 		return direct, nil
 	case fromStdin:
-		b, err := io.ReadAll(stdin)
+		// Read one byte past the cap so we can distinguish "exactly at cap"
+		// from "exceeds cap" without an extra Read call.
+		b, err := io.ReadAll(io.LimitReader(stdin, maxSecretBytes+1))
 		if err != nil {
 			return "", output.NewCLIError(output.ErrUsage, "failed to read --api-secret-stdin", err.Error())
+		}
+		if len(b) > maxSecretBytes {
+			return "", output.NewCLIError(
+				output.ErrUsage,
+				fmt.Sprintf("--api-secret-stdin input too large (>%d bytes)", maxSecretBytes),
+				"API secrets are ~40 chars. If you piped a file by mistake, use --api-secret-file <path> instead.",
+			)
 		}
 		s := strings.TrimRight(string(b), "\r\n")
 		if s == "" {
@@ -80,12 +96,28 @@ func resolveAPISecretInput(stdin io.Reader, stderr io.Writer, direct string, fro
 		}
 		return s, nil
 	case fromFile != "":
-		b, err := os.ReadFile(fromFile) //nolint:gosec // user-provided path is expected; this is the intended secret-input mechanism
+		f, err := os.Open(fromFile) //nolint:gosec // user-provided path is expected; this is the intended secret-input mechanism
 		if err != nil {
 			return "", output.NewCLIError(
 				output.ErrUsage,
-				"failed to read --api-secret-file",
-				err.Error(),
+				fmt.Sprintf("failed to read --api-secret-file %s: %s", fromFile, err.Error()),
+				"Check the path and permissions. The file must be readable by the current user and contain the API secret on a single line.",
+			)
+		}
+		defer func() { _ = f.Close() }()
+		b, err := io.ReadAll(io.LimitReader(f, maxSecretBytes+1))
+		if err != nil {
+			return "", output.NewCLIError(
+				output.ErrUsage,
+				fmt.Sprintf("failed to read --api-secret-file %s: %s", fromFile, err.Error()),
+				"Check the path and permissions.",
+			)
+		}
+		if len(b) > maxSecretBytes {
+			return "", output.NewCLIError(
+				output.ErrUsage,
+				fmt.Sprintf("--api-secret-file %s is too large (>%d bytes)", fromFile, maxSecretBytes),
+				"API secrets are ~40 chars. Pointing --api-secret-file at a non-secret file is usually a mistake.",
 			)
 		}
 		s := strings.TrimRight(string(b), "\r\n")
