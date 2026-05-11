@@ -260,11 +260,11 @@ func runRender(cmd *cobra.Command, args []string, f *renderFlags) error {
 	if err != nil {
 		return output.NewCLIError(output.ErrUsage, "failed to encode merged payload", err.Error())
 	}
-	validated, vErr := validation.ValidatePayload(mergedJSON)
+	validated, warnings, vErr := validation.ValidatePayload(mergedJSON)
 	if vErr != nil {
 		return vErr
 	}
-	for _, w := range validation.LastWarnings() {
+	for _, w := range warnings {
 		_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "warning:", w)
 	}
 

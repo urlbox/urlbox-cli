@@ -10,7 +10,7 @@ import (
 )
 
 func TestValidatePayload_AcceptsValidPayload(t *testing.T) {
-	out, err := validation.ValidatePayload([]byte(`{"url":"https://example.com","format":"png","width":1920}`))
+	out, _, err := validation.ValidatePayload([]byte(`{"url":"https://example.com","format":"png","width":1920}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %+v", err)
 	}
@@ -24,7 +24,7 @@ func TestValidatePayload_RejectsTooLarge(t *testing.T) {
 	for i := range body {
 		body[i] = 'a'
 	}
-	_, err := validation.ValidatePayload(body)
+	_, _, err := validation.ValidatePayload(body)
 	if err == nil || err.Code != output.ErrValidation {
 		t.Fatalf("expected validation error, got: %+v", err)
 	}
@@ -34,7 +34,7 @@ func TestValidatePayload_RejectsTooLarge(t *testing.T) {
 }
 
 func TestValidatePayload_RejectsMalformedJSON(t *testing.T) {
-	_, err := validation.ValidatePayload([]byte(`{"url":}`))
+	_, _, err := validation.ValidatePayload([]byte(`{"url":}`))
 	if err == nil || err.Code != output.ErrValidation {
 		t.Fatalf("expected validation error, got: %+v", err)
 	}
@@ -49,14 +49,13 @@ func TestValidatePayload_RejectsMalformedJSON(t *testing.T) {
 // v0.9.0 change: a fuzzy-matchable typo no longer errors. The CLI emits a
 // stderr warning and passes the key through verbatim — the API decides.
 func TestValidatePayload_SuggestsCorrection_OneUnknown(t *testing.T) {
-	got, err := validation.ValidatePayload([]byte(`{"url":"https://example.com","fullPage":true}`))
+	got, warnings, err := validation.ValidatePayload([]byte(`{"url":"https://example.com","fullPage":true}`))
 	if err != nil {
 		t.Fatalf("expected no error (warning-only), got: %+v", err)
 	}
 	if got["fullPage"] != true {
 		t.Errorf("expected key 'fullPage' to pass through verbatim; got %v", got["fullPage"])
 	}
-	warnings := validation.LastWarnings()
 	if len(warnings) == 0 {
 		t.Fatalf("expected at least one warning about 'fullPage'")
 	}
@@ -73,7 +72,7 @@ func TestValidatePayload_SuggestsCorrection_OneUnknown(t *testing.T) {
 
 // v0.9.0 change: multiple fuzzy-matchable typos collapse into ONE warning.
 func TestValidatePayload_SuggestsCorrection_MultipleUnknown(t *testing.T) {
-	got, err := validation.ValidatePayload([]byte(`{"url":"https://example.com","fullPage":true,"widht":1920}`))
+	got, warnings, err := validation.ValidatePayload([]byte(`{"url":"https://example.com","fullPage":true,"widht":1920}`))
 	if err != nil {
 		t.Fatalf("expected no error (warning-only), got: %+v", err)
 	}
@@ -83,7 +82,6 @@ func TestValidatePayload_SuggestsCorrection_MultipleUnknown(t *testing.T) {
 	if got["widht"] != float64(1920) {
 		t.Errorf("expected widht to pass through verbatim")
 	}
-	warnings := validation.LastWarnings()
 	if len(warnings) != 1 {
 		t.Fatalf("expected exactly one summary warning for multiple unknowns, got %d: %v", len(warnings), warnings)
 	}
@@ -98,20 +96,20 @@ func TestValidatePayload_SuggestsCorrection_MultipleUnknown(t *testing.T) {
 
 // v0.9.0 change: an unknown key with no fuzzy match passes through silently.
 func TestValidatePayload_UnknownNoNearMatch(t *testing.T) {
-	got, err := validation.ValidatePayload([]byte(`{"url":"https://example.com","xyzzy":true}`))
+	got, warnings, err := validation.ValidatePayload([]byte(`{"url":"https://example.com","xyzzy":true}`))
 	if err != nil {
 		t.Fatalf("expected no error (silent passthrough), got: %+v", err)
 	}
 	if got["xyzzy"] != true {
 		t.Errorf("expected xyzzy to pass through verbatim")
 	}
-	if warnings := validation.LastWarnings(); len(warnings) != 0 {
+	if len(warnings) != 0 {
 		t.Errorf("expected zero warnings for non-matching unknown key; got: %v", warnings)
 	}
 }
 
 func TestValidatePayload_RejectsURLControlChars(t *testing.T) {
-	_, err := validation.ValidatePayload([]byte(`{"url":"https://example.com\nfoo"}`))
+	_, _, err := validation.ValidatePayload([]byte(`{"url":"https://example.com\nfoo"}`))
 	if err == nil || err.Code != output.ErrValidation {
 		t.Fatalf("expected validation error, got: %+v", err)
 	}
@@ -137,7 +135,7 @@ func TestValidatePayload_AcceptsUnknownFields_WithWarning(t *testing.T) {
 		"video_scroll_duration": 900,
 		"video_scroll_back_duration": 600
 	}`)
-	got, err := validation.ValidatePayload(payload)
+	got, _, err := validation.ValidatePayload(payload)
 	if err != nil {
 		t.Fatalf("ValidatePayload rejected video_scroll fields: %+v", err)
 	}
@@ -154,14 +152,13 @@ func TestValidatePayload_AcceptsUnknownFields_WithWarning(t *testing.T) {
 
 func TestValidatePayload_UnknownKey_FuzzyMatch_WarnsAndPasses(t *testing.T) {
 	payload := []byte(`{"url":"https://example.com","fromat":"png"}`)
-	got, cliErr := validation.ValidatePayload(payload)
+	got, warnings, cliErr := validation.ValidatePayload(payload)
 	if cliErr != nil {
 		t.Fatalf("expected no error, got: %v", cliErr)
 	}
 	if got["fromat"] != "png" {
 		t.Errorf("expected key 'fromat' to pass through verbatim (no auto-correct); got %v", got["fromat"])
 	}
-	warnings := validation.LastWarnings()
 	if len(warnings) == 0 {
 		t.Fatalf("expected at least one warning about 'fromat'")
 	}
@@ -178,14 +175,13 @@ func TestValidatePayload_UnknownKey_FuzzyMatch_WarnsAndPasses(t *testing.T) {
 
 func TestValidatePayload_UnknownKey_NoMatch_PassesSilently(t *testing.T) {
 	payload := []byte(`{"url":"https://example.com","totally_made_up_xyz":true}`)
-	got, cliErr := validation.ValidatePayload(payload)
+	got, warnings, cliErr := validation.ValidatePayload(payload)
 	if cliErr != nil {
 		t.Fatalf("expected no error, got: %v", cliErr)
 	}
 	if got["totally_made_up_xyz"] != true {
 		t.Errorf("expected key to pass through verbatim")
 	}
-	warnings := validation.LastWarnings()
 	if len(warnings) != 0 {
 		t.Errorf("expected zero warnings for non-matching unknown key; got: %v", warnings)
 	}
@@ -193,11 +189,58 @@ func TestValidatePayload_UnknownKey_NoMatch_PassesSilently(t *testing.T) {
 
 func TestValidatePayload_KnownKey_BadType_PassesThrough(t *testing.T) {
 	payload := []byte(`{"url":"https://example.com","width":"abc"}`)
-	got, cliErr := validation.ValidatePayload(payload)
+	got, _, cliErr := validation.ValidatePayload(payload)
 	if cliErr != nil {
 		t.Fatalf("expected no local error (API will validate); got: %v", cliErr)
 	}
 	if got["width"] != "abc" {
 		t.Errorf("expected width to pass through verbatim as 'abc'")
+	}
+}
+
+// TestValidatePayload_Concurrent_NoCrossPollination is the Arch I3 guard:
+// the package no longer holds a global lastWarnings slice, so concurrent
+// callers must each see their own warning set without race / clobber.
+// Run with -race to make this assertion meaningful.
+func TestValidatePayload_Concurrent_NoCrossPollination(t *testing.T) {
+	const goroutines = 16
+	const iters = 32
+	done := make(chan struct{}, goroutines)
+	errCh := make(chan string, goroutines*iters)
+
+	for i := 0; i < goroutines; i++ {
+		go func(id int) {
+			defer func() { done <- struct{}{} }()
+			for j := 0; j < iters; j++ {
+				// Alternate between two distinct typo payloads. Each call
+				// must produce its OWN warnings — no cross-pollination.
+				if (id+j)%2 == 0 {
+					_, warnings, err := validation.ValidatePayload([]byte(`{"url":"https://example.com","fromat":"png"}`))
+					if err != nil {
+						errCh <- "unexpected error: " + err.Message
+						continue
+					}
+					if len(warnings) == 0 || !strings.Contains(warnings[0], "fromat") {
+						errCh <- "expected fromat warning; got: " + strings.Join(warnings, " | ")
+					}
+				} else {
+					_, warnings, err := validation.ValidatePayload([]byte(`{"url":"https://example.com","widht":1920}`))
+					if err != nil {
+						errCh <- "unexpected error: " + err.Message
+						continue
+					}
+					if len(warnings) == 0 || !strings.Contains(warnings[0], "widht") {
+						errCh <- "expected widht warning; got: " + strings.Join(warnings, " | ")
+					}
+				}
+			}
+		}(i)
+	}
+	for i := 0; i < goroutines; i++ {
+		<-done
+	}
+	close(errCh)
+	for msg := range errCh {
+		t.Error(msg)
 	}
 }
