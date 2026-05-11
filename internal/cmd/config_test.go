@@ -119,7 +119,7 @@ func TestConfigSet_NoProfiles_Errors(t *testing.T) {
 	if env["error"] != "No profiles configured" {
 		t.Errorf("error=%v", env["error"])
 	}
-	if got, want := env["hint"], "Run `urlbox auth --api-key <secret>` to create one."; got != want {
+	if got, want := env["hint"], "Run `urlbox auth --api-secret <secret>` to create one."; got != want {
 		t.Errorf("hint=%v want=%v", got, want)
 	}
 }

@@ -84,6 +84,71 @@ func TestNoEmptyCLIErrorHints(t *testing.T) {
 	}
 }
 
+// ghostCommandSubstrings names commands/flags that have never existed
+// in the shipped CLI, yet have appeared in error hints suggesting a user
+// run them. Each hard wall for first-time users; each one a one-character
+// fix once discovered.
+//
+//   - "urlbox config show" — no such subcommand. Closest real: `config get`,
+//     `config path`, `config profile list`.
+//   - "urlbox auth --api-key" — flag was removed in v0.6.0; auth takes
+//     `--api-secret`. Pinned removed in auth_test.go.
+var ghostCommandSubstrings = []string{
+	"urlbox config show",
+	"urlbox auth --api-key",
+}
+
+// TestNoGhostCommandsInHints walks production .go files and fails when
+// any line contains a substring naming a command/flag that doesn't exist.
+// Caught Round 1 review C1/C2 (config.go:306,359 and render.go:487,520).
+func TestNoGhostCommandsInHints(t *testing.T) {
+	root, err := repoRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var hits []string
+	err = filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() {
+			base := info.Name()
+			if base == "vendor" || base == ".git" || base == "bin" || base == "dist" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		rel, _ := filepath.Rel(root, path)
+		if !strings.HasPrefix(rel, "internal/") && !strings.HasPrefix(rel, "cmd/") {
+			return nil
+		}
+		b, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		for i, line := range strings.Split(string(b), "\n") {
+			for _, sub := range ghostCommandSubstrings {
+				if strings.Contains(line, sub) {
+					hits = append(hits, fmt.Sprintf("%s:%d: ghost command %q in: %s", rel, i+1, sub, strings.TrimSpace(line)))
+				}
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(hits) > 0 {
+		t.Errorf("ghost-command regression: %d hint(s) reference non-existent commands:\n%s",
+			len(hits), strings.Join(hits, "\n"))
+	}
+}
+
 // TestNoEmptyCLIErrorHints_RegexBehavior pins the regex semantics so a
 // future tweak that re-introduces a false positive or a false negative
 // fails loudly instead of silently weakening the guard.

@@ -303,7 +303,7 @@ profile count.`,
 					return output.NewCLIError(
 						output.ErrUsage,
 						"No profiles configured",
-						"Run `urlbox auth --api-key <secret>` to create one.",
+						"Run `urlbox auth --api-secret <secret>` to create one.",
 					)
 				}
 				if _, ok := c.Profiles[val]; !ok {
@@ -356,7 +356,7 @@ func resolveTargetProfile(cmd *cobra.Command, c *config.Config) (string, error) 
 		return "", output.NewCLIError(
 			output.ErrUsage,
 			"No profiles configured",
-			"Run `urlbox auth --api-key <secret>` to create one.",
+			"Run `urlbox auth --api-secret <secret>` to create one.",
 		)
 	}
 	flagProfile, _ := cmd.Root().PersistentFlags().GetString("profile")

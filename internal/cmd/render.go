@@ -484,7 +484,7 @@ func validateResolverFlags(cmd *cobra.Command, f *renderFlags) *output.CLIError 
 		// Non-CLIError shouldn't happen today (Resolve only emits CLIError),
 		// but route to a sensible default so we don't silently swallow.
 		return output.NewCLIError(output.ErrUsage, rerr.Error(),
-			"Check your config with `urlbox config show`.")
+			"Run `urlbox config profile list` to inspect, or `urlbox config path` to find the file.")
 	}
 	return nil
 }
@@ -517,7 +517,7 @@ func buildRenderClient(cmd *cobra.Command, f *renderFlags) (api.Client, *output.
 		return nil, output.NewCLIError(
 			output.ErrUsage,
 			rerr.Error(),
-			"Check your config with `urlbox config show`, or set --api-secret / URLBOX_API_SECRET explicitly.",
+			"Run `urlbox config profile list` to inspect, or set --api-secret / URLBOX_API_SECRET explicitly.",
 		)
 	}
 
