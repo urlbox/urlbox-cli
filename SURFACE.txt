@@ -8,6 +8,7 @@ urlbox auth --agent
 urlbox auth --api-secret
 urlbox auth --api-secret-file
 urlbox auth --api-secret-stdin
+urlbox auth --force
 urlbox auth --jq
 urlbox auth --output-format
 urlbox auth --profile
@@ -26,6 +27,7 @@ urlbox config get <key> --agent
 urlbox config get <key> --jq
 urlbox config get <key> --output-format
 urlbox config get <key> --profile
+urlbox config get <key> --reveal
 urlbox config path
 urlbox config path --agent
 urlbox config path --jq

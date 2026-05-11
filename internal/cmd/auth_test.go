@@ -382,3 +382,165 @@ func TestAuth_MutexBetweenSecretInputFlags(t *testing.T) {
 		t.Errorf("error should say 'at most one'; got %q", env["error"])
 	}
 }
+
+// TestAuth_Overwrite_NonTTY_RequiresForce pins S-C3 non-TTY behavior:
+// when the default profile already has a secret AND a different new
+// secret arrives non-interactively, refuse to overwrite. This is the
+// 2026-05-08 incident-class guard. Pass --force to opt in.
+func TestAuth_Overwrite_NonTTY_RequiresForce(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("URLBOX_API_SECRET", "")
+	cmd.SetStdinTTYForTest(false)
+	cmd.SetStderrTTYForTest(false)
+	t.Cleanup(cmd.ResetStdinTTYForTest)
+	t.Cleanup(cmd.ResetStderrTTYForTest)
+
+	// Seed an existing secret.
+	var stdout, stderr bytes.Buffer
+	if exit := cmd.Execute([]string{"auth", "--api-secret", "sec_original_abcdef"}, &stdout, &stderr); exit != 0 {
+		t.Fatalf("seed exit=%d", exit)
+	}
+
+	// Attempt a different secret WITHOUT --force.
+	stdout.Reset()
+	stderr.Reset()
+	exit := cmd.Execute([]string{"auth", "--api-secret", "sec_DIFFERENT_uvwxyz", "--output-format", "json"}, &stdout, &stderr)
+	if exit == 0 {
+		t.Fatal("expected non-zero exit when overwrite refused in non-TTY mode")
+	}
+	var env map[string]any
+	_ = json.Unmarshal(stdout.Bytes(), &env)
+	if env["code"] != "conflict" {
+		t.Errorf("code=%v, want conflict", env["code"])
+	}
+	if hint, _ := env["hint"].(string); !strings.Contains(hint, "--force") {
+		t.Errorf("hint should mention --force; got %q", hint)
+	}
+
+	// Verify original secret was NOT clobbered.
+	c, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Profiles[c.DefaultProfile].APISecret != "sec_original_abcdef" {
+		t.Errorf("secret was clobbered; got %q, want sec_original_abcdef",
+			c.Profiles[c.DefaultProfile].APISecret)
+	}
+}
+
+// TestAuth_Overwrite_Force_Overwrites pins that --force bypasses the
+// guard non-interactively.
+func TestAuth_Overwrite_Force_Overwrites(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("URLBOX_API_SECRET", "")
+	cmd.SetStdinTTYForTest(false)
+	cmd.SetStderrTTYForTest(false)
+	t.Cleanup(cmd.ResetStdinTTYForTest)
+	t.Cleanup(cmd.ResetStderrTTYForTest)
+
+	var stdout, stderr bytes.Buffer
+	if exit := cmd.Execute([]string{"auth", "--api-secret", "sec_original_abcdef"}, &stdout, &stderr); exit != 0 {
+		t.Fatalf("seed exit=%d", exit)
+	}
+	stdout.Reset()
+	stderr.Reset()
+	exit := cmd.Execute([]string{"auth", "--api-secret", "sec_NEW_overwritten12", "--force"}, &stdout, &stderr)
+	if exit != 0 {
+		t.Fatalf("exit=%d (--force should permit overwrite); stderr=%s", exit, stderr.String())
+	}
+	c, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Profiles[c.DefaultProfile].APISecret != "sec_NEW_overwritten12" {
+		t.Errorf("--force did not overwrite; got %q", c.Profiles[c.DefaultProfile].APISecret)
+	}
+}
+
+// TestAuth_Overwrite_SameSecret_NoGuard pins the idempotent case: if the
+// new secret matches the existing, no guard / prompt fires.
+func TestAuth_Overwrite_SameSecret_NoGuard(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("URLBOX_API_SECRET", "")
+	cmd.SetStdinTTYForTest(false)
+	cmd.SetStderrTTYForTest(false)
+	t.Cleanup(cmd.ResetStdinTTYForTest)
+	t.Cleanup(cmd.ResetStderrTTYForTest)
+
+	var stdout, stderr bytes.Buffer
+	if exit := cmd.Execute([]string{"auth", "--api-secret", "sec_identical_xyz789"}, &stdout, &stderr); exit != 0 {
+		t.Fatalf("seed exit=%d", exit)
+	}
+	stdout.Reset()
+	stderr.Reset()
+	exit := cmd.Execute([]string{"auth", "--api-secret", "sec_identical_xyz789"}, &stdout, &stderr)
+	if exit != 0 {
+		t.Fatalf("exit=%d (same-secret re-save should succeed silently)", exit)
+	}
+}
+
+// TestAuth_Overwrite_TTY_Prompts pins S-C3 TTY behavior: prompt y/N
+// via the test-injectable confirm-reader. "y" accepts, "n" cancels.
+func TestAuth_Overwrite_TTY_PromptAccept(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("URLBOX_API_SECRET", "")
+	cmd.SetStdinTTYForTest(true)
+	cmd.SetStderrTTYForTest(true)
+	t.Cleanup(cmd.ResetStdinTTYForTest)
+	t.Cleanup(cmd.ResetStderrTTYForTest)
+
+	var stdout, stderr bytes.Buffer
+	cmd.SetStdinTTYForTest(false)
+	if exit := cmd.Execute([]string{"auth", "--api-secret", "sec_seed_abcdefghij"}, &stdout, &stderr); exit != 0 {
+		t.Fatalf("seed exit=%d", exit)
+	}
+	cmd.SetStdinTTYForTest(true)
+
+	cmd.SetAuthConfirmReaderForTest(func() (string, error) { return "y", nil })
+	t.Cleanup(cmd.ResetAuthConfirmReaderForTest)
+
+	stdout.Reset()
+	stderr.Reset()
+	exit := cmd.Execute([]string{"auth", "--api-secret", "sec_replaced_xyz123"}, &stdout, &stderr)
+	if exit != 0 {
+		t.Fatalf("exit=%d, want 0 (prompt accepted); stderr=%s", exit, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "Replacing existing secret") {
+		t.Errorf("stderr should show overwrite confirmation prompt; got %q", stderr.String())
+	}
+	c, _ := config.Load()
+	if c.Profiles[c.DefaultProfile].APISecret != "sec_replaced_xyz123" {
+		t.Errorf("after 'y' prompt, secret = %q, want sec_replaced_xyz123",
+			c.Profiles[c.DefaultProfile].APISecret)
+	}
+}
+
+func TestAuth_Overwrite_TTY_PromptReject(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("URLBOX_API_SECRET", "")
+	cmd.SetStdinTTYForTest(false)
+	cmd.SetStderrTTYForTest(false)
+	t.Cleanup(cmd.ResetStdinTTYForTest)
+	t.Cleanup(cmd.ResetStderrTTYForTest)
+
+	var stdout, stderr bytes.Buffer
+	if exit := cmd.Execute([]string{"auth", "--api-secret", "sec_seed_abcdefghij"}, &stdout, &stderr); exit != 0 {
+		t.Fatalf("seed exit=%d", exit)
+	}
+
+	cmd.SetStdinTTYForTest(true)
+	cmd.SetStderrTTYForTest(true)
+	cmd.SetAuthConfirmReaderForTest(func() (string, error) { return "n", nil })
+	t.Cleanup(cmd.ResetAuthConfirmReaderForTest)
+
+	stdout.Reset()
+	stderr.Reset()
+	exit := cmd.Execute([]string{"auth", "--api-secret", "sec_REJECTED_abc456", "--output-format", "json"}, &stdout, &stderr)
+	if exit == 0 {
+		t.Fatal("'n' prompt should cancel and exit non-zero")
+	}
+	c, _ := config.Load()
+	if c.Profiles[c.DefaultProfile].APISecret != "sec_seed_abcdefghij" {
+		t.Errorf("after 'n' prompt, original secret was clobbered: %q", c.Profiles[c.DefaultProfile].APISecret)
+	}
+}

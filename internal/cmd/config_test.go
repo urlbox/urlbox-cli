@@ -82,7 +82,9 @@ func TestConfigSet_Get_RoundTrip_SingleProfile(t *testing.T) {
 
 	stdout.Reset()
 	stderr.Reset()
-	if exit := cmd.Execute([]string{"config", "get", "api_secret", "--output-format", "quiet"}, &stdout, &stderr); exit != 0 {
+	// --reveal: round-trip verifies raw value identity (default is now masked
+	// per UX I1; the masking behavior gets its own dedicated tests).
+	if exit := cmd.Execute([]string{"config", "get", "api_secret", "--reveal", "--output-format", "quiet"}, &stdout, &stderr); exit != 0 {
 		t.Fatalf("get: exit=%d", exit)
 	}
 	got := strings.TrimSpace(stdout.String())
@@ -454,5 +456,115 @@ func must(t *testing.T, err error) {
 	t.Helper()
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestConfigGet_APISecret_MaskedByDefault pins UX I1: `config get api_secret`
+// masks the raw value to prevent accidental scrollback / log / clipboard
+// leakage. `config profile list` already masks; `config get api_secret`
+// was the outlier.
+func TestConfigGet_APISecret_MaskedByDefault(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+
+	var stdout, stderr bytes.Buffer
+	if exit := cmd.Execute([]string{"auth", "--api-secret", "sec_supersecretvalue12"}, &stdout, &stderr); exit != 0 {
+		t.Fatalf("auth seed exit=%d stderr=%s", exit, stderr.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	exit := cmd.Execute([]string{"config", "get", "api_secret", "--output-format", "json"}, &stdout, &stderr)
+	if exit != 0 {
+		t.Fatalf("exit=%d stderr=%s", exit, stderr.String())
+	}
+	var env map[string]any
+	_ = json.Unmarshal(stdout.Bytes(), &env)
+	data, _ := env["data"].(map[string]any)
+	val, _ := data["value"].(string)
+	if strings.Contains(val, "supersecretvalue") {
+		t.Errorf("config get api_secret leaked unmasked value: %q", val)
+	}
+	if !strings.Contains(val, "sec_") || !strings.Contains(val, "…") {
+		t.Errorf("expected masked form (prefix + ellipsis); got %q", val)
+	}
+	summary, _ := env["summary"].(string)
+	if strings.Contains(summary, "supersecretvalue") {
+		t.Errorf("summary leaked unmasked value: %q", summary)
+	}
+}
+
+// TestConfigGet_APISecret_RevealFlag pins the explicit opt-in: --reveal
+// prints the raw secret. Use for clipboard-copy workflows, with eyes-on
+// awareness.
+func TestConfigGet_APISecret_RevealFlag(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+
+	var stdout, stderr bytes.Buffer
+	if exit := cmd.Execute([]string{"auth", "--api-secret", "sec_reveal_target_12"}, &stdout, &stderr); exit != 0 {
+		t.Fatalf("auth seed exit=%d stderr=%s", exit, stderr.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	exit := cmd.Execute([]string{"config", "get", "api_secret", "--reveal", "--output-format", "json"}, &stdout, &stderr)
+	if exit != 0 {
+		t.Fatalf("exit=%d stderr=%s", exit, stderr.String())
+	}
+	var env map[string]any
+	_ = json.Unmarshal(stdout.Bytes(), &env)
+	data, _ := env["data"].(map[string]any)
+	val, _ := data["value"].(string)
+	if val != "sec_reveal_target_12" {
+		t.Errorf("--reveal should print raw secret; got %q", val)
+	}
+}
+
+// TestConfigGet_APISecret_QuietMode_AlsoMasks pins the quiet-mode path:
+// even raw-value emission masks by default. The user paid attention to
+// --output-format quiet, but did NOT pass --reveal, so we still protect.
+func TestConfigGet_APISecret_QuietMode_AlsoMasks(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+
+	var stdout, stderr bytes.Buffer
+	if exit := cmd.Execute([]string{"auth", "--api-secret", "sec_quietmasked_xyz"}, &stdout, &stderr); exit != 0 {
+		t.Fatalf("auth seed exit=%d stderr=%s", exit, stderr.String())
+	}
+	stdout.Reset()
+	stderr.Reset()
+	exit := cmd.Execute([]string{"config", "get", "api_secret", "--output-format", "quiet"}, &stdout, &stderr)
+	if exit != 0 {
+		t.Fatalf("exit=%d stderr=%s", exit, stderr.String())
+	}
+	out := stdout.String()
+	if strings.Contains(out, "quietmasked_xyz") {
+		t.Errorf("quiet mode leaked unmasked value: %q", out)
+	}
+}
+
+// TestConfigGet_APIKey_NotMasked pins that api_key (publishable) is NOT
+// affected by the masking — it's, by definition, publishable.
+func TestConfigGet_APIKey_NotMasked(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+
+	var stdout, stderr bytes.Buffer
+	if exit := cmd.Execute([]string{"config", "profile", "create", "p1", "--api-key", "pub_abcdef123", "--api-secret", "sec_xxxxxxxxxxxx"}, &stdout, &stderr); exit != 0 {
+		t.Fatalf("profile create exit=%d stderr=%s", exit, stderr.String())
+	}
+	stdout.Reset()
+	stderr.Reset()
+	exit := cmd.Execute([]string{"config", "get", "api_key", "--profile", "p1", "--output-format", "json"}, &stdout, &stderr)
+	if exit != 0 {
+		t.Fatalf("exit=%d stderr=%s", exit, stderr.String())
+	}
+	var env map[string]any
+	_ = json.Unmarshal(stdout.Bytes(), &env)
+	data, _ := env["data"].(map[string]any)
+	val, _ := data["value"].(string)
+	if val != "pub_abcdef123" {
+		t.Errorf("api_key should be raw (it's publishable); got %q", val)
 	}
 }

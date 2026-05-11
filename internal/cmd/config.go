@@ -242,10 +242,17 @@ func newConfigPathCmd() *cobra.Command {
 }
 
 func newConfigGetCmd() *cobra.Command {
-	return &cobra.Command{
+	var reveal bool
+	c := &cobra.Command{
 		Use:   "get <key>",
 		Short: "Read a config value",
-		Args:  cobra.ExactArgs(1),
+		Long: `Read a config value from the resolved profile.
+
+For api_secret, the raw value is masked by default (Round 1 UX I1) to
+avoid leaking into scrollback / clipboard / log capture. Pass --reveal
+to print the unmasked secret (intended for clipboard-copy workflows
+with eyes on the screen).`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			key := args[0]
 			if !isSupportedKey(key) {
@@ -270,15 +277,21 @@ func newConfigGetCmd() *cobra.Command {
 				return perr
 			}
 			value := readKey(c, profileName, key)
+			display := value
+			if key == "api_secret" && !reveal && value != "" {
+				display = maskSecret(value)
+			}
 			env := output.NewEnvelope(
 				"config get",
-				map[string]string{"key": key, "value": value, "profile": profileName},
-				fmt.Sprintf("%s = %q", key, value),
+				map[string]string{"key": key, "value": display, "profile": profileName},
+				fmt.Sprintf("%s = %q", key, display),
 				nil,
 			)
-			return writeEnvelopeWithQuietData(cmd, env, value)
+			return writeEnvelopeWithQuietData(cmd, env, display)
 		},
 	}
+	c.Flags().BoolVar(&reveal, "reveal", false, "Print api_secret unmasked (default: masked)")
+	return c
 }
 
 func newConfigSetCmd() *cobra.Command {

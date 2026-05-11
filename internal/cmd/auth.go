@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
@@ -57,9 +58,28 @@ func defaultAuthSecretReader() (string, error) {
 	return string(b), nil
 }
 
+// AuthConfirmReader reads one line of plain text from the user — used for
+// y/N confirmation prompts (overwrite guard). Echoes input; not for
+// secrets.
+type AuthConfirmReader func() (string, error)
+
+var authConfirmReader AuthConfirmReader = defaultAuthConfirmReader
+
+// SetAuthConfirmReaderForTest injects a stub confirm reader.
+func SetAuthConfirmReaderForTest(f AuthConfirmReader) { authConfirmReader = f }
+
+// ResetAuthConfirmReaderForTest restores the default reader.
+func ResetAuthConfirmReaderForTest() { authConfirmReader = defaultAuthConfirmReader }
+
+func defaultAuthConfirmReader() (string, error) {
+	var line string
+	_, err := fmt.Fscanln(os.Stdin, &line)
+	return line, err
+}
+
 func newAuthCmd() *cobra.Command {
 	var apiSecret, apiSecretFile string
-	var apiSecretStdin bool
+	var apiSecretStdin, force bool
 	c := &cobra.Command{
 		Use:   "auth",
 		Short: "Configure API credentials",
@@ -135,6 +155,30 @@ The env var URLBOX_API_SECRET takes precedence at runtime over the saved value.`
 				cfg.DefaultProfile = profileName
 			}
 			p := cfg.Profiles[profileName]
+
+			// Overwrite guard (Round 1 S-C3): protect against the 2026-05-08
+			// incident class where an autonomous agent runs `urlbox auth
+			// --api-secret <test_value>` and silently clobbers the user's
+			// real secret. Only fires when the new value differs from the
+			// existing — same-secret re-save remains idempotent.
+			if p.APISecret != "" && p.APISecret != secret && !force {
+				if isStdinTTY(cmd.InOrStdin()) && isStderrTTY(cmd.ErrOrStderr()) {
+					if !confirmAuthOverwrite(cmd, p.APISecret, secret) {
+						return output.NewCLIError(
+							output.ErrUsage,
+							"auth cancelled — existing secret preserved",
+							"Re-run with --force to overwrite without prompt, or use `urlbox config profile create <name>` for a separate profile.",
+						)
+					}
+				} else {
+					return output.NewCLIError(
+						output.ErrConflict,
+						fmt.Sprintf("profile %q already has an API secret (%s); overwrite refused", profileName, maskSecret(p.APISecret)),
+						"Pass --force to overwrite, or use `urlbox config profile create <name>` for a separate profile. This guard prevents the 2026-05-08 incident class where an agent silently clobbers a real secret.",
+					)
+				}
+			}
+
 			p.APISecret = secret
 			cfg.Profiles[profileName] = p
 
@@ -177,7 +221,22 @@ The env var URLBOX_API_SECRET takes precedence at runtime over the saved value.`
 	c.Flags().StringVar(&apiSecret, "api-secret", "", "Urlbox API secret (skip the interactive prompt — leaks into ps and shell history; prefer --api-secret-stdin or --api-secret-file)")
 	c.Flags().BoolVar(&apiSecretStdin, "api-secret-stdin", false, "Read the API secret from stdin until EOF (recommended for CI / agents)")
 	c.Flags().StringVar(&apiSecretFile, "api-secret-file", "", "Read the API secret from the given file (trailing newline trimmed)")
+	c.Flags().BoolVar(&force, "force", false, "Overwrite an existing secret on the default profile without confirmation (CI-safe escape hatch for the overwrite guard)")
 	return c
+}
+
+// confirmAuthOverwrite prompts the user on stderr whether to replace the
+// existing default-profile secret. Returns true if the user types y / yes
+// (case-insensitive). Used only on interactive TTYs; non-TTY callers
+// require --force instead.
+func confirmAuthOverwrite(cmd *cobra.Command, existing, replacement string) bool {
+	_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
+		"Replacing existing secret %s with %s. Proceed? [y/N]: ",
+		maskSecret(existing), maskSecret(replacement))
+	answer, _ := authConfirmReader()
+	_, _ = fmt.Fprintln(cmd.ErrOrStderr())
+	answer = strings.ToLower(strings.TrimSpace(answer))
+	return answer == "y" || answer == "yes"
 }
 
 // maskSecret returns a redacted form of the API secret for safe display.
