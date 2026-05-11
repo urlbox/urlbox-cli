@@ -11,8 +11,15 @@
 //
 // Set URLBOX_SKIP_VERIFY=1 to bypass verification (NOT recommended —
 // exists only as an escape hatch for offline / air-gapped installs).
+//
+// Set URLBOX_ALLOW_UNSIGNED=1 to allow a missing sigstore bundle
+// (sha256-only verification) on v1.0.0+ releases. By default the bundle
+// is required for v1.0.0+ to prevent a network attacker from downgrading
+// verification by serving a 404 for the bundle while substituting both
+// checksums.txt and the archive. Older 0.x releases predate the bundle
+// and don't require it.
 
-const { execSync } = require("child_process");
+const { execFileSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
@@ -95,23 +102,25 @@ function expectedSha256For(archiveName, checksumsText) {
 
 function verifyCosignBundle(checksumsPath, bundlePath) {
   try {
-    execSync("cosign version", { stdio: "ignore" });
+    execFileSync("cosign", ["version"], { stdio: "ignore" });
   } catch {
     console.log("  cosign not found — skipping signature verification (sha256 already verified).");
     console.log("  Install cosign for cryptographic provenance: https://github.com/sigstore/cosign");
     return;
   }
   try {
-    execSync(
+    execFileSync(
+      "cosign",
       [
-        "cosign",
         "verify-blob",
-        JSON.stringify(checksumsPath),
+        checksumsPath,
         "--bundle",
-        JSON.stringify(bundlePath),
-        `--certificate-identity-regexp='${COSIGN_IDENTITY_REGEXP}'`,
-        `--certificate-oidc-issuer='${COSIGN_OIDC_ISSUER}'`,
-      ].join(" "),
+        bundlePath,
+        "--certificate-identity-regexp",
+        COSIGN_IDENTITY_REGEXP,
+        "--certificate-oidc-issuer",
+        COSIGN_OIDC_ISSUER,
+      ],
       { stdio: "ignore" },
     );
   } catch (e) {
@@ -141,7 +150,11 @@ async function main() {
   fs.writeFileSync(tmpArchive, archiveData);
 
   if (process.env.URLBOX_SKIP_VERIFY === "1") {
-    console.log("URLBOX_SKIP_VERIFY=1 — bypassing checksum + signature verification (not recommended)");
+    console.log("================================================================");
+    console.log("WARNING: URLBOX_SKIP_VERIFY=1 — bypassing checksum + signature");
+    console.log("verification. This is NOT recommended outside of air-gapped");
+    console.log("installs where the artifact has been verified out-of-band.");
+    console.log("================================================================");
   } else {
     console.log("Verifying release...");
     const checksumsBuf = await fetch(`${base}/checksums.txt`);
@@ -151,7 +164,15 @@ async function main() {
     }
     const checksumsText = checksumsBuf.toString("utf8");
 
-    // sigstore bundle is best-effort: older releases predate it.
+    // Sigstore bundle policy:
+    //   - v0.x  : bundle is best-effort (older releases predate it).
+    //   - v1.0+ : bundle is REQUIRED unless URLBOX_ALLOW_UNSIGNED=1.
+    // The "bundle missing → sha256-only" downgrade is exactly what a network
+    // attacker would force to defeat publisher-identity verification while
+    // serving substituted-but-internally-consistent checksums.txt + archive.
+    const bundleRequired =
+      !version.startsWith("0.") && process.env.URLBOX_ALLOW_UNSIGNED !== "1";
+
     const bundleBuf = await fetch(`${base}/checksums.txt.sigstore.json`, { allowMissing: true });
     if (bundleBuf) {
       const tmpChecksums = path.join(__dirname, "_tmp_checksums.txt");
@@ -164,6 +185,11 @@ async function main() {
         fs.unlinkSync(tmpChecksums);
         fs.unlinkSync(tmpBundle);
       }
+    } else if (bundleRequired) {
+      fs.unlinkSync(tmpArchive);
+      throw new Error(
+        `sigstore bundle (checksums.txt.sigstore.json) missing for v${version}. Refusing to downgrade to sha256-only — set URLBOX_ALLOW_UNSIGNED=1 to override (NOT recommended for v1.0+ releases).`,
+      );
     } else {
       console.log("  no sigstore bundle on this release — sha256-only verification");
     }
@@ -180,9 +206,9 @@ async function main() {
   }
 
   if (ext === "zip") {
-    execSync(`unzip -o "${tmpArchive}" ${BINARY}.exe -d "${__dirname}"`, { stdio: "ignore" });
+    execFileSync("unzip", ["-o", tmpArchive, `${BINARY}.exe`, "-d", __dirname], { stdio: "ignore" });
   } else {
-    execSync(`tar -xzf "${tmpArchive}" -C "${__dirname}" ${BINARY}`, { stdio: "ignore" });
+    execFileSync("tar", ["-xzf", tmpArchive, "-C", __dirname, BINARY], { stdio: "ignore" });
   }
 
   fs.unlinkSync(tmpArchive);

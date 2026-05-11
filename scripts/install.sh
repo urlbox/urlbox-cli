@@ -13,6 +13,12 @@ set -eu
 # Set URLBOX_SKIP_VERIFY=1 to bypass verification (NOT recommended — exists
 # only as an escape hatch for offline / air-gapped installs where the user
 # has out-of-band-verified the artifact themselves).
+#
+# Set URLBOX_ALLOW_UNSIGNED=1 to allow a missing sigstore bundle (sha256-only
+# verification) on v1.0.0+ releases. By default the bundle is required for
+# v1.0.0+ to prevent a network attacker from downgrading verification by
+# serving a 404 for the bundle while substituting both checksums.txt and
+# the archive. Older 0.x releases predate the bundle and don't require it.
 
 REPO="urlbox/urlbox-cli"
 INSTALL_DIR="/usr/local/bin"
@@ -148,17 +154,34 @@ main() {
   curl -fsSL "${base}/${archive_name}" -o "$archive"
 
   if [ "${URLBOX_SKIP_VERIFY:-}" = "1" ]; then
-    info "URLBOX_SKIP_VERIFY=1 — bypassing checksum + signature verification (not recommended)"
+    info "================================================================"
+    info "WARNING: URLBOX_SKIP_VERIFY=1 — bypassing checksum + signature"
+    info "verification. This is NOT recommended outside of air-gapped"
+    info "installs where the artifact has been verified out-of-band."
+    info "================================================================"
   else
     info "Verifying release..."
     curl -fsSL "${base}/checksums.txt" -o "$checksums" \
       || error "could not download checksums.txt — refusing to install without verification"
 
-    # The sigstore bundle is best-effort: older releases predate it. If it's
-    # absent we proceed with sha256-only verification (still cryptographic;
-    # just no publisher-identity provenance).
+    # Sigstore bundle policy:
+    #   - v0.x  : bundle is best-effort (older releases predate it).
+    #   - v1.0+ : bundle is REQUIRED unless URLBOX_ALLOW_UNSIGNED=1.
+    # The "bundle missing → sha256-only" downgrade is exactly what a network
+    # attacker would force to defeat publisher-identity verification while
+    # serving substituted-but-internally-consistent checksums.txt + archive.
+    case "$version" in
+      0.*) bundle_required=0 ;;
+      *)   bundle_required=1 ;;
+    esac
+    if [ "${URLBOX_ALLOW_UNSIGNED:-}" = "1" ]; then
+      bundle_required=0
+    fi
+
     if curl -fsSL "${base}/checksums.txt.sigstore.json" -o "$bundle" 2>/dev/null; then
       verify_cosign_bundle "$checksums" "$bundle"
+    elif [ "$bundle_required" = "1" ]; then
+      error "sigstore bundle (checksums.txt.sigstore.json) missing for v${version}. Refusing to downgrade to sha256-only — set URLBOX_ALLOW_UNSIGNED=1 to override (NOT recommended for v1.0+ releases)."
     else
       info "  no sigstore bundle on this release — sha256-only verification"
     fi
