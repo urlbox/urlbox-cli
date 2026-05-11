@@ -686,3 +686,30 @@ func TestAuth_EnvProfile_TargetsNamedProfile(t *testing.T) {
 		t.Errorf("default.APISecret unexpectedly mutated: %q", c.Profiles["default"].APISecret)
 	}
 }
+
+// TestAuth_APISecretFlag_EmptyValue_Errors pins Round 4 M3: explicit
+// `--api-secret ""` previously fell through silently to env/profile,
+// which is the worst option for a user trying to test "what happens
+// with no auth?". Now it errors loudly.
+func TestAuth_APISecretFlag_EmptyValue_Errors(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("URLBOX_API_SECRET", "")
+	cmd.SetStdinTTYForTest(false)
+	cmd.SetStderrTTYForTest(false)
+	t.Cleanup(cmd.ResetStdinTTYForTest)
+	t.Cleanup(cmd.ResetStderrTTYForTest)
+
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{"auth", "--api-secret", "", "--output-format", "json"}, &stdout, &stderr)
+	if exit == 0 {
+		t.Fatalf("--api-secret \"\" should error; got exit 0, stdout=%s", stdout.String())
+	}
+	var env map[string]any
+	_ = json.Unmarshal(stdout.Bytes(), &env)
+	if env["code"] != "usage" {
+		t.Errorf("code=%v, want usage", env["code"])
+	}
+	if !strings.Contains(env["error"].(string), "empty") {
+		t.Errorf("error should mention empty; got %q", env["error"])
+	}
+}

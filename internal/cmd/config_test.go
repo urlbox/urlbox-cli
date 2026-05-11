@@ -568,3 +568,60 @@ func TestConfigGet_APIKey_NotMasked(t *testing.T) {
 		t.Errorf("api_key should be raw (it's publishable); got %q", val)
 	}
 }
+
+// TestConfigSet_APISecret_MaskedInEnvelope pins Round 4 M4: `config set
+// api_secret <value>` echoed the raw secret back in .data.value and in
+// the summary string. UX I1 (Round 1) only fixed `config get`. The set
+// path still leaked into CI logs and terminal scrollback.
+func TestConfigSet_APISecret_MaskedInEnvelope(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	seedConfig(t, dir, map[string]config.Profile{"default": {}})
+
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{"config", "set", "api_secret", "sec_leaktest_abcdef", "--output-format", "json"}, &stdout, &stderr)
+	if exit != 0 {
+		t.Fatalf("exit=%d stderr=%s", exit, stderr.String())
+	}
+	var env map[string]any
+	_ = json.Unmarshal(stdout.Bytes(), &env)
+	data, _ := env["data"].(map[string]any)
+	val, _ := data["value"].(string)
+	if strings.Contains(val, "leaktest_abcdef") {
+		t.Errorf("envelope .data.value leaked raw secret: %q", val)
+	}
+	if !strings.Contains(val, "sec_") || !strings.Contains(val, "…") {
+		t.Errorf("expected masked form (prefix + ellipsis); got %q", val)
+	}
+	summary, _ := env["summary"].(string)
+	if strings.Contains(summary, "leaktest_abcdef") {
+		t.Errorf("summary leaked raw secret: %q", summary)
+	}
+
+	// Sanity check: the FILE actually has the raw secret saved (we mask
+	// the envelope, not the storage).
+	b, _ := os.ReadFile(filepath.Join(dir, "urlbox", "config.json"))
+	if !strings.Contains(string(b), "sec_leaktest_abcdef") {
+		t.Errorf("config file is missing the raw secret (set should still persist it):\n%s", string(b))
+	}
+}
+
+// TestConfigSet_APIKey_NotMasked pins that api_key (publishable) is NOT
+// affected by the masking — same contract as `config get`.
+func TestConfigSet_APIKey_NotMasked(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	seedConfig(t, dir, map[string]config.Profile{"default": {}})
+
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{"config", "set", "api_key", "pub_visible_abc", "--output-format", "json"}, &stdout, &stderr)
+	if exit != 0 {
+		t.Fatalf("exit=%d", exit)
+	}
+	var env map[string]any
+	_ = json.Unmarshal(stdout.Bytes(), &env)
+	data, _ := env["data"].(map[string]any)
+	if data["value"] != "pub_visible_abc" {
+		t.Errorf("api_key should be raw (publishable); got %v", data["value"])
+	}
+}

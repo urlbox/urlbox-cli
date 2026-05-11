@@ -99,7 +99,7 @@ Interactive (humans, on a TTY):
 The env var URLBOX_API_SECRET takes precedence at runtime over the saved value.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			secret, cliErr := resolveAPISecretInput(secretStdin, cmd.ErrOrStderr(), apiSecret, apiSecretStdin, apiSecretFile)
+			secret, cliErr := resolveAPISecretInput(secretStdin, cmd.ErrOrStderr(), apiSecret, cmd.Flags().Changed("api-secret"), apiSecretStdin, apiSecretFile)
 			if cliErr != nil {
 				return cliErr
 			}

@@ -62,7 +62,7 @@ func newProfileCreateCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
-			resolvedSecret, cliErr := resolveAPISecretInput(secretStdin, cmd.ErrOrStderr(), apiSecret, apiSecretStdin, apiSecretFile)
+			resolvedSecret, cliErr := resolveAPISecretInput(secretStdin, cmd.ErrOrStderr(), apiSecret, cmd.Flags().Changed("api-secret"), apiSecretStdin, apiSecretFile)
 			if cliErr != nil {
 				return cliErr
 			}
@@ -356,9 +356,18 @@ profile count.`,
 			if err := config.Save(c); err != nil {
 				return output.NewCLIError(output.ErrServer, "failed to save config", err.Error())
 			}
+			// Round 4 M4: mirror the masking that `config get api_secret`
+			// already does — never echo a freshly-set secret back through
+			// the envelope (CI logs, scrollback, --output-format quiet pipes).
+			// The raw value is still persisted on disk; only the
+			// human/agent-facing echo is masked.
+			displayVal := val
+			if key == "api_secret" && val != "" {
+				displayVal = maskSecret(val)
+			}
 			env := output.NewEnvelope(
 				"config set",
-				map[string]string{"key": key, "value": val, "profile": profileName},
+				map[string]string{"key": key, "value": displayVal, "profile": profileName},
 				fmt.Sprintf("%s set in profile %q", key, profileName),
 				[]output.Breadcrumb{{Action: "verify", Cmd: "urlbox config get " + key}},
 			)

@@ -55,11 +55,25 @@ const maxSecretBytes = 4096
 // trimmed result must be non-empty (an empty file or empty stdin is a
 // user mistake worth flagging).
 //
+// directExplicit distinguishes `--api-secret ""` (passed explicitly with
+// an empty value) from `--api-secret` not being passed at all. cobra
+// collapses both to direct == "" at the Go level — only Flags().Changed()
+// can tell them apart. Explicit empty is a usage error (Round 4 M3) so
+// the user isn't silently fed env/profile when they were trying to test
+// "what happens with no auth?".
+//
 // When direct (--api-secret) is non-empty AND stderr is a TTY, a warning
 // is emitted about shell-history preservation and `ps` visibility — the
 // 2026-05-08 incident class. Suppressed in non-TTY (CI / agents) to keep
 // pipeline output clean.
-func resolveAPISecretInput(stdin io.Reader, stderr io.Writer, direct string, fromStdin bool, fromFile string) (string, *output.CLIError) {
+func resolveAPISecretInput(stdin io.Reader, stderr io.Writer, direct string, directExplicit, fromStdin bool, fromFile string) (string, *output.CLIError) {
+	if directExplicit && direct == "" {
+		return "", output.NewCLIError(
+			output.ErrUsage,
+			`--api-secret cannot be empty`,
+			"Either pass a non-empty value, or omit --api-secret entirely (the CLI will fall back to URLBOX_API_SECRET or the saved profile).",
+		)
+	}
 	chosen := 0
 	if direct != "" {
 		chosen++

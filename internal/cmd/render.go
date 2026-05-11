@@ -176,10 +176,18 @@ func runRender(cmd *cobra.Command, args []string, f *renderFlags) error {
 		)
 	}
 
-	if resolved, cliErr := resolveAPISecretInput(secretStdin, cmd.ErrOrStderr(), f.apiSecret, f.apiSecretStdin, f.apiSecretFile); cliErr != nil {
+	if resolved, cliErr := resolveAPISecretInput(secretStdin, cmd.ErrOrStderr(), f.apiSecret, cmd.Flags().Changed("api-secret"), f.apiSecretStdin, f.apiSecretFile); cliErr != nil {
 		return cliErr
 	} else if resolved != "" {
 		f.apiSecret = resolved
+	}
+
+	// Round 4 M2: reject numeric flags outside the JSON safe-int range
+	// (±2^53-1). Go int64 accepts values JSON marshalling silently rounds
+	// to a nearby float64, so the payload that reaches the API differs
+	// from what the user typed. Catch it locally with a precise error.
+	if cliErr := validateIntFlagRanges(f); cliErr != nil {
+		return cliErr
 	}
 
 	// 1. Parse --json source (flag value, stdin, or @file).
@@ -415,6 +423,40 @@ func breadcrumbsForResp(resp *api.Response, f *renderFlags) []output.Breadcrumb 
 //   - "-"       → read all of stdin
 //   - "@path"   → read the file at path
 //   - anything else → treat as a literal JSON string
+//
+// jsonSafeIntMax is 2^53 - 1 — the largest integer that JSON's float64
+// representation can round-trip exactly. Anything larger silently rounds
+// to a nearby even number when marshaled. Schema documents this as the
+// width/height/etc. maximum.
+const jsonSafeIntMax = 9007199254740991
+
+// validateIntFlagRanges rejects --width / --height / --delay / --quality
+// / --max-retries values outside ±2^53-1. The Go int64 flag accepts much
+// larger; we have to catch it here before json.Marshal silently rounds.
+// Round 4 M2.
+func validateIntFlagRanges(f *renderFlags) *output.CLIError {
+	checks := []struct {
+		flag string
+		val  int
+	}{
+		{"--width", f.width},
+		{"--height", f.height},
+		{"--delay", f.delay},
+		{"--quality", f.quality},
+		{"--max-retries", f.maxRetries},
+	}
+	for _, c := range checks {
+		if int64(c.val) > jsonSafeIntMax || int64(c.val) < -jsonSafeIntMax {
+			return output.NewCLIError(
+				output.ErrValidation,
+				fmt.Sprintf("%s value %d is outside the JSON safe-integer range (±%d)", c.flag, c.val, int64(jsonSafeIntMax)),
+				"Pass a value between -9007199254740991 and 9007199254740991. Larger values would silently round when marshaled to JSON.",
+			)
+		}
+	}
+	return nil
+}
+
 func parseJSONFlag(value string, stdin io.Reader) ([]byte, *output.CLIError) {
 	switch {
 	case value == "":

@@ -75,7 +75,7 @@ func runLink(cmd *cobra.Command, f *linkFlags) error {
 		)
 	}
 
-	if resolved, cliErr := resolveAPISecretInput(secretStdin, cmd.ErrOrStderr(), f.apiSecret, f.apiSecretStdin, f.apiSecretFile); cliErr != nil {
+	if resolved, cliErr := resolveAPISecretInput(secretStdin, cmd.ErrOrStderr(), f.apiSecret, cmd.Flags().Changed("api-secret"), f.apiSecretStdin, f.apiSecretFile); cliErr != nil {
 		return cliErr
 	} else if resolved != "" {
 		f.apiSecret = resolved

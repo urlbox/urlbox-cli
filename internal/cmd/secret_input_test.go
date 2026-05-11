@@ -10,7 +10,7 @@ import (
 )
 
 func TestResolveAPISecretInput_NoSourceReturnsEmpty(t *testing.T) {
-	s, err := resolveAPISecretInput(strings.NewReader(""), &bytes.Buffer{}, "", false, "")
+	s, err := resolveAPISecretInput(strings.NewReader(""), &bytes.Buffer{}, "", false, false, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -24,7 +24,7 @@ func TestResolveAPISecretInput_DirectFlag_NoTTY_NoWarning(t *testing.T) {
 	t.Cleanup(ResetStderrTTYForTest)
 
 	var stderr bytes.Buffer
-	s, err := resolveAPISecretInput(strings.NewReader(""), &stderr, "sec_direct", false, "")
+	s, err := resolveAPISecretInput(strings.NewReader(""), &stderr, "sec_direct", false, false, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -41,7 +41,7 @@ func TestResolveAPISecretInput_DirectFlag_TTY_WarnsAboutShellHistory(t *testing.
 	t.Cleanup(ResetStderrTTYForTest)
 
 	var stderr bytes.Buffer
-	s, err := resolveAPISecretInput(strings.NewReader(""), &stderr, "sec_direct", false, "")
+	s, err := resolveAPISecretInput(strings.NewReader(""), &stderr, "sec_direct", false, false, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -59,7 +59,7 @@ func TestResolveAPISecretInput_DirectFlag_TTY_WarnsAboutShellHistory(t *testing.
 
 func TestResolveAPISecretInput_Stdin_ReadsAndTrimsNewline(t *testing.T) {
 	stdin := strings.NewReader("sec_from_stdin\n")
-	s, err := resolveAPISecretInput(stdin, &bytes.Buffer{}, "", true, "")
+	s, err := resolveAPISecretInput(stdin, &bytes.Buffer{}, "", false, true, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -70,7 +70,7 @@ func TestResolveAPISecretInput_Stdin_ReadsAndTrimsNewline(t *testing.T) {
 
 func TestResolveAPISecretInput_Stdin_TrimsCRLF(t *testing.T) {
 	stdin := strings.NewReader("sec_crlf\r\n")
-	s, err := resolveAPISecretInput(stdin, &bytes.Buffer{}, "", true, "")
+	s, err := resolveAPISecretInput(stdin, &bytes.Buffer{}, "", false, true, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -80,7 +80,7 @@ func TestResolveAPISecretInput_Stdin_TrimsCRLF(t *testing.T) {
 }
 
 func TestResolveAPISecretInput_Stdin_EmptyErrors(t *testing.T) {
-	_, err := resolveAPISecretInput(strings.NewReader(""), &bytes.Buffer{}, "", true, "")
+	_, err := resolveAPISecretInput(strings.NewReader(""), &bytes.Buffer{}, "", false, true, "")
 	if err == nil {
 		t.Fatal("empty stdin should error")
 	}
@@ -98,7 +98,7 @@ func TestResolveAPISecretInput_File_ReadsAndTrimsNewline(t *testing.T) {
 	if err := os.WriteFile(p, []byte("sec_from_file\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	s, err := resolveAPISecretInput(strings.NewReader(""), &bytes.Buffer{}, "", false, p)
+	s, err := resolveAPISecretInput(strings.NewReader(""), &bytes.Buffer{}, "", false, false, p)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -108,7 +108,7 @@ func TestResolveAPISecretInput_File_ReadsAndTrimsNewline(t *testing.T) {
 }
 
 func TestResolveAPISecretInput_File_MissingErrors(t *testing.T) {
-	_, err := resolveAPISecretInput(strings.NewReader(""), &bytes.Buffer{}, "", false, "/nonexistent/path/secret.txt")
+	_, err := resolveAPISecretInput(strings.NewReader(""), &bytes.Buffer{}, "", false, false, "/nonexistent/path/secret.txt")
 	if err == nil {
 		t.Fatal("missing file should error")
 	}
@@ -123,7 +123,7 @@ func TestResolveAPISecretInput_File_EmptyErrors(t *testing.T) {
 	if err := os.WriteFile(p, []byte("\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	_, err := resolveAPISecretInput(strings.NewReader(""), &bytes.Buffer{}, "", false, p)
+	_, err := resolveAPISecretInput(strings.NewReader(""), &bytes.Buffer{}, "", false, false, p)
 	if err == nil {
 		t.Fatal("empty file should error")
 	}
@@ -143,7 +143,7 @@ func TestResolveAPISecretInput_MultipleSourcesError(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			_, err := resolveAPISecretInput(strings.NewReader(""), &bytes.Buffer{}, c.direct, c.stdin, c.file)
+			_, err := resolveAPISecretInput(strings.NewReader(""), &bytes.Buffer{}, c.direct, false, c.stdin, c.file)
 			if err == nil {
 				t.Fatal("expected mutex error")
 			}
@@ -160,7 +160,7 @@ func TestResolveAPISecretInput_MultipleSourcesError(t *testing.T) {
 func TestResolveAPISecretInput_Stdin_RejectsTooLarge(t *testing.T) {
 	// Build a payload larger than the cap.
 	big := strings.Repeat("a", 4097)
-	_, err := resolveAPISecretInput(strings.NewReader(big), &bytes.Buffer{}, "", true, "")
+	_, err := resolveAPISecretInput(strings.NewReader(big), &bytes.Buffer{}, "", false, true, "")
 	if err == nil {
 		t.Fatal("oversized stdin should error")
 	}
@@ -179,7 +179,7 @@ func TestResolveAPISecretInput_File_RejectsTooLarge(t *testing.T) {
 	if err := os.WriteFile(p, big, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	_, err := resolveAPISecretInput(strings.NewReader(""), &bytes.Buffer{}, "", false, p)
+	_, err := resolveAPISecretInput(strings.NewReader(""), &bytes.Buffer{}, "", false, false, p)
 	if err == nil {
 		t.Fatal("oversized file should error")
 	}
@@ -192,7 +192,7 @@ func TestResolveAPISecretInput_File_RejectsTooLarge(t *testing.T) {
 }
 
 func TestResolveAPISecretInput_File_MissingHintIsFriendly(t *testing.T) {
-	_, err := resolveAPISecretInput(strings.NewReader(""), &bytes.Buffer{}, "", false, "/nonexistent/path/secret.txt")
+	_, err := resolveAPISecretInput(strings.NewReader(""), &bytes.Buffer{}, "", false, false, "/nonexistent/path/secret.txt")
 	if err == nil {
 		t.Fatal("missing file should error")
 	}
@@ -210,12 +210,37 @@ func TestResolveAPISecretInput_File_MissingHintIsFriendly(t *testing.T) {
 // open /p: no such file or directory" with the path appearing twice.
 // Unwrap via errors.As(*os.PathError) and use the inner cause.
 func TestResolveAPISecretInput_File_MissingMessage_NoPathDuplicate(t *testing.T) {
-	_, err := resolveAPISecretInput(strings.NewReader(""), &bytes.Buffer{}, "", false, "/nonexistent/abc.txt")
+	_, err := resolveAPISecretInput(strings.NewReader(""), &bytes.Buffer{}, "", false, false, "/nonexistent/abc.txt")
 	if err == nil {
 		t.Fatal("missing file should error")
 	}
 	count := strings.Count(err.Message, "/nonexistent/abc.txt")
 	if count != 1 {
 		t.Errorf("path should appear exactly once in message; got %d occurrences in %q", count, err.Message)
+	}
+}
+
+func TestResolveAPISecretInput_ExplicitEmpty_Errors(t *testing.T) {
+	_, err := resolveAPISecretInput(strings.NewReader(""), &bytes.Buffer{}, "", true, false, "")
+	if err == nil {
+		t.Fatal("explicit empty --api-secret should error")
+	}
+	if string(err.Code) != "usage" {
+		t.Errorf("code=%q, want usage", err.Code)
+	}
+	if !strings.Contains(err.Message, "empty") {
+		t.Errorf("message should mention empty; got %q", err.Message)
+	}
+}
+
+func TestResolveAPISecretInput_NotPassed_NoError(t *testing.T) {
+	// directExplicit=false means the user did NOT pass --api-secret.
+	// Must fall through (empty result, no error) so env/profile resolution runs.
+	s, err := resolveAPISecretInput(strings.NewReader(""), &bytes.Buffer{}, "", false, false, "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if s != "" {
+		t.Errorf("expected empty result; got %q", s)
 	}
 }

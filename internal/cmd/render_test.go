@@ -979,3 +979,62 @@ func TestRender_OutputPath_WritabilityPreflight(t *testing.T) {
 		t.Errorf("API was hit %d times despite unwritable --output; preflight failed", hits)
 	}
 }
+
+// TestRender_NumericFlag_BeyondJSONSafeInt_Errors pins Round 4 M2:
+// width/height/etc. accepted Go int64 values past 2^53 and JSON-marshaled
+// them as float64 — silently rounding to a different value than the user
+// passed. The schema documents [-9007199254740991, 9007199254740991]; the
+// CLI now enforces it on typed flags before payload assembly.
+func TestRender_NumericFlag_BeyondJSONSafeInt_Errors(t *testing.T) {
+	cases := []struct {
+		name string
+		flag string
+		val  string
+	}{
+		{"width too large", "--width", "9007199254740993"},
+		{"width too negative", "--width", "-9007199254740993"},
+		{"height too large", "--height", "9223372036854775807"},
+		{"delay too large", "--delay", "9007199254740993"},
+		{"quality too large", "--quality", "9007199254740993"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+			t.Setenv("URLBOX_API_SECRET", "sec_test")
+
+			var stdout, stderr bytes.Buffer
+			exit := cmd.Execute([]string{
+				"render", "https://example.com",
+				c.flag, c.val,
+				"--dry-run",
+				"--output-format", "json",
+			}, &stdout, &stderr)
+			if exit != 2 {
+				t.Fatalf("%s=%s should exit 2 (validation); got %d. stdout=%s", c.flag, c.val, exit, stdout.String())
+			}
+			var env map[string]any
+			_ = json.Unmarshal(stdout.Bytes(), &env)
+			if env["code"] != "validation" {
+				t.Errorf("code=%v, want validation", env["code"])
+			}
+		})
+	}
+}
+
+// TestRender_NumericFlag_AtBoundary_Allowed pins that exactly 2^53-1 is
+// permitted — it's the documented schema max.
+func TestRender_NumericFlag_AtBoundary_Allowed(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("URLBOX_API_SECRET", "sec_test")
+
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{
+		"render", "https://example.com",
+		"--width", "9007199254740991",
+		"--dry-run",
+		"--output-format", "json",
+	}, &stdout, &stderr)
+	if exit != 0 {
+		t.Fatalf("boundary value should succeed; got exit %d, stdout=%s", exit, stdout.String())
+	}
+}
