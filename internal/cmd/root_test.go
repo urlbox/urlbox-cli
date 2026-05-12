@@ -259,3 +259,84 @@ func TestUnknownCommand_FarTypo_NoSuggestion(t *testing.T) {
 		t.Errorf("expected error to name unknown command 'xyzzy'; got %q", combined)
 	}
 }
+
+// TestRoot_DidYouMean_NoSelfSuggestion pins Round 6 Tester #2 + Adv-8:
+// the suggester used to return the exact rejected flag back as the
+// suggestion, because its candidate pool was the union of every flag
+// across every command in the tree. If the typed flag existed on ANY
+// command (even an unrelated one), ClosestMatch returned it as "the
+// closest match" — the rejected flag itself.
+//
+// Class-fix: the suggester now scopes its candidate pool to the active
+// command's own flag set (plus inherited persistent flags). Flags from
+// unrelated commands are no longer fair game. The rejected token is
+// also explicitly excluded as a belt-and-braces guard.
+func TestRoot_DidYouMean_NoSelfSuggestion(t *testing.T) {
+	cases := []struct {
+		name string
+		args []string
+	}{
+		// `render` has no --url (it takes positional URL). Without the
+		// class-fix, this suggests --url (from link).
+		{"render --url tautology", []string{"render", "--url", "https://example.com"}},
+		// `link` accepts only api-* + format + jq + json + output-format + profile + url.
+		// --width is render's. Used to suggest --width back to itself.
+		{"link --width tautology", []string{"link", "--width", "100"}},
+		// `doctor` doesn't take --api-secret-file. Used to suggest itself.
+		{"doctor --api-secret-file tautology", []string{"doctor", "--api-secret-file", "/tmp/x"}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+			t.Setenv("URLBOX_API_SECRET", "sec_test")
+
+			args := append([]string(nil), c.args...)
+			args = append(args, "--output-format", "json")
+			var stdout, stderr bytes.Buffer
+			exit := cmd.Execute(args, &stdout, &stderr)
+			if exit == 0 {
+				t.Fatalf("expected non-zero exit on unknown flag; got 0. stdout=%s", stdout.String())
+			}
+			var env map[string]any
+			_ = json.Unmarshal(stdout.Bytes(), &env)
+			hint, _ := env["hint"].(string)
+			// The flag the user TYPED must not appear in the suggestion. Locate
+			// the rejected flag from the args and assert the hint doesn't
+			// repeat it back.
+			var rejected string
+			for _, a := range c.args {
+				if strings.HasPrefix(a, "--") {
+					rejected = a
+					break
+				}
+			}
+			if rejected == "" {
+				t.Fatalf("test bug: couldn't find a -- flag in args %v", c.args)
+			}
+			suggested := `Did you mean "` + rejected + `"`
+			if strings.Contains(hint, suggested) {
+				t.Errorf("hint contains tautological suggestion %q: %s", suggested, hint)
+			}
+		})
+	}
+}
+
+// TestRoot_DidYouMean_TyposStillWork pins that legitimate typos still
+// get a useful suggestion — the class-fix narrows the pool, it doesn't
+// eliminate suggestions.
+func TestRoot_DidYouMean_TyposStillWork(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("URLBOX_API_SECRET", "sec_test")
+
+	var stdout, stderr bytes.Buffer
+	cmd.Execute([]string{"render", "--widht", "100", "--output-format", "json"}, &stdout, &stderr)
+	var env map[string]any
+	_ = json.Unmarshal(stdout.Bytes(), &env)
+	hint, _ := env["hint"].(string)
+	if !strings.Contains(hint, `--width`) {
+		t.Errorf("--widht should suggest --width on render; got hint %q", hint)
+	}
+	if strings.Contains(hint, `--widht`) {
+		t.Errorf("hint contains the typo back: %q", hint)
+	}
+}

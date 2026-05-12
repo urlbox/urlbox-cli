@@ -61,7 +61,7 @@ func Execute(args []string, stdout, stderr io.Writer) int {
 		// did_you_mean behaviour is preserved.
 		if suggestion, ok := suggestUnknownCommand(rootCmd, msg); ok {
 			hint = `Did you mean "` + suggestion + `"? ` + hint
-		} else if suggestion, ok := suggestUnknownFlag(rootCmd, msg); ok {
+		} else if suggestion, ok := suggestUnknownFlag(rootCmd, args, msg); ok {
 			// pflag's "unknown flag: --xxx" carries no suggestion either.
 			hint = `Did you mean "--` + suggestion + `"? ` + hint
 		}
@@ -191,16 +191,18 @@ func suggestUnknownCommand(root *cobra.Command, msg string) (string, bool) {
 
 // suggestUnknownFlag inspects an error message of the form
 // `unknown flag: --xxx` (emitted by pflag) and returns the closest known
-// long flag name across the root and all its subcommands. The flag prefix
-// (`--`) is NOT included in the returned name.
+// long flag name on the ACTIVE subcommand (plus its inherited persistent
+// flags). The flag prefix (`--`) is NOT included in the returned name.
 //
-// Known limitation (tracked for v0.12.0+ polish): the candidate pool is the
-// UNION of every flag in the command tree. A typo on one command can match
-// a flag from an unrelated command (e.g. `urlbox auth status --widht`
-// would suggest `--width`, a render flag). Scoping per active command would
-// require parsing the active command path out of pflag's error string,
-// which doesn't include it. Defensible as-is for v0.12.0; revisit later.
-func suggestUnknownFlag(root *cobra.Command, msg string) (string, bool) {
+// Round 6 AA class-fix: the candidate pool used to be the union of every
+// flag in the command tree. A typo on one command could match a flag
+// from an unrelated command — including the rejected flag itself when
+// it happened to live on a sibling. `urlbox render --url` would suggest
+// "--url" back (render takes positional URL; --url lives on link). The
+// pool is now scoped to the active command, and the rejected token is
+// explicitly excluded as a belt-and-braces guard against the tautology
+// re-emerging via some future fuzzy-match edge case.
+func suggestUnknownFlag(root *cobra.Command, args []string, msg string) (string, bool) {
 	// PFLAG VERSION COUPLING: this prefix matches pflag's "unknown flag:"
 	// error string. A `go get -u pflag` reviewer should re-verify.
 	const prefix = "unknown flag: --"
@@ -219,23 +221,43 @@ func suggestUnknownFlag(root *cobra.Command, msg string) (string, bool) {
 		return "", false
 	}
 
-	candidates := collectFlagNames(root)
+	// Scope the candidate pool to the active subcommand. cobra.Find walks
+	// args and returns the deepest matched command; flags on its parents
+	// reach it via inheritance, so we collect them too.
+	active := findActiveCommand(root, args)
+	candidates := collectActiveFlagNames(active, typed)
 	return validation.ClosestMatch(typed, candidates)
 }
 
-// collectFlagNames returns the union of long flag names defined on cmd and
-// all its descendants (deduplicated).
-func collectFlagNames(cmd *cobra.Command) []string {
-	seen := map[string]struct{}{}
-	var walk func(*cobra.Command)
-	walk = func(c *cobra.Command) {
-		c.Flags().VisitAll(func(f *pflag.Flag) { seen[f.Name] = struct{}{} })
-		c.PersistentFlags().VisitAll(func(f *pflag.Flag) { seen[f.Name] = struct{}{} })
-		for _, sub := range c.Commands() {
-			walk(sub)
-		}
+// findActiveCommand returns the deepest cobra.Command matched by args.
+// Falls back to root when no subcommand matches (e.g. typo at the root).
+func findActiveCommand(root *cobra.Command, args []string) *cobra.Command {
+	c, _, err := root.Find(args)
+	if err != nil || c == nil {
+		return root
 	}
-	walk(cmd)
+	return c
+}
+
+// collectActiveFlagNames returns the long-flag-name pool for the active
+// command: its own flags + every ancestor's persistent flags. The exact
+// rejected token (`typed`) is explicitly excluded — even if the same
+// name happens to live on the command, suggesting it back is never the
+// right answer.
+func collectActiveFlagNames(active *cobra.Command, typed string) []string {
+	seen := map[string]struct{}{}
+	for c := active; c != nil; c = c.Parent() {
+		c.PersistentFlags().VisitAll(func(f *pflag.Flag) {
+			if f.Name != typed {
+				seen[f.Name] = struct{}{}
+			}
+		})
+	}
+	active.Flags().VisitAll(func(f *pflag.Flag) {
+		if f.Name != typed {
+			seen[f.Name] = struct{}{}
+		}
+	})
 	out := make([]string, 0, len(seen))
 	for name := range seen {
 		out = append(out, name)
