@@ -687,3 +687,70 @@ func TestConfigGet_ValidEnvProfile_TargetsThatProfile(t *testing.T) {
 		t.Errorf("value=%v, want sec_work_yyyyyy (env-selected profile)", data["value"])
 	}
 }
+
+// TestConfigProfileCreate_RejectsDangerousNames pins Round 5 Adv-4:
+// profile names could contain path separators, control chars, and null
+// bytes. Null-byte truncation in particular is a footgun — "a\x00b"
+// silently collides with "a" because the JSON store keys by the
+// truncated string. Reject all unsafe shapes at creation time.
+func TestConfigProfileCreate_RejectsDangerousNames(t *testing.T) {
+	cases := []struct {
+		name string
+		give string
+	}{
+		{"path traversal", "../evil"},
+		{"forward slash", "team/work"},
+		{"backslash", `team\work`},
+		{"null byte", "a\x00b"},
+		{"newline", "foo\nbar"},
+		{"carriage return", "foo\rbar"},
+		{"tab", "foo\tbar"},
+		{"leading space", " foo"},
+		{"trailing space", "foo "},
+		{"leading dot", ".hidden"},
+		{"leading hyphen", "-arg"},
+		{"empty string", ""},
+		{"too long", strings.Repeat("a", 65)},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+			var stdout, stderr bytes.Buffer
+			exit := cmd.Execute([]string{"config", "profile", "create", c.give, "--output-format", "json"}, &stdout, &stderr)
+			if exit == 0 {
+				t.Fatalf("profile create %q should error; got exit 0 stdout=%s", c.give, stdout.String())
+			}
+			var env map[string]any
+			_ = json.Unmarshal(stdout.Bytes(), &env)
+			if env["code"] != "usage" {
+				t.Errorf("code=%v, want usage", env["code"])
+			}
+		})
+	}
+}
+
+// TestConfigProfileCreate_AcceptsSafeNames pins the positive cases —
+// alphanumerics + underscore + hyphen, max 64 chars, first char must be
+// alphanumeric.
+func TestConfigProfileCreate_AcceptsSafeNames(t *testing.T) {
+	cases := []string{
+		"default",
+		"work",
+		"team-staging",
+		"team_x",
+		"a", // single char
+		"team-staging-prod",
+		"P_1",
+		strings.Repeat("a", 64), // boundary
+	}
+	for _, name := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+			var stdout, stderr bytes.Buffer
+			exit := cmd.Execute([]string{"config", "profile", "create", name}, &stdout, &stderr)
+			if exit != 0 {
+				t.Fatalf("profile create %q should succeed; got exit %d stderr=%s", name, exit, stderr.String())
+			}
+		})
+	}
+}

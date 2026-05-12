@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -16,6 +17,32 @@ import (
 )
 
 var supportedConfigKeys = []string{"api_key", "api_secret", "api_host", "default_profile"}
+
+// profileNameRE pins the allowed shape of a profile name: must start with
+// an alphanumeric, then 0–63 more alphanumerics / underscore / hyphen,
+// totalling 1–64 chars. Round 5 Adv-4: profile names previously accepted
+// path separators (`/`, `..`), control chars (\n, \r, \t), null bytes
+// (silent truncation collisions: a\0b vs a), leading whitespace or dots,
+// and arbitrarily long strings. All footguns in their own way.
+//
+// The character class is deliberately narrow — profiles are user-facing
+// keys that appear in URLs/CLI args/file paths, and we don't need the
+// power of Unicode identifiers for what is essentially a label.
+var profileNameRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`)
+
+// validateProfileName returns ErrUsage when name violates profileNameRE.
+// Called from `config profile create` before any persistence so an
+// invalid name can never reach the config file.
+func validateProfileName(name string) *output.CLIError {
+	if !profileNameRE.MatchString(name) {
+		return output.NewCLIError(
+			output.ErrUsage,
+			fmt.Sprintf("invalid profile name %q", name),
+			"Profile names must be 1–64 characters, start with a letter or digit, and contain only letters, digits, '_', and '-'. Rejected to prevent path traversal, null-byte truncation, control characters, and ambiguous leading characters.",
+		)
+	}
+	return nil
+}
 
 func unknownKeyError(key string) *output.CLIError {
 	return output.NewCLIError(
@@ -63,6 +90,9 @@ func newProfileCreateCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
+			if cliErr := validateProfileName(name); cliErr != nil {
+				return cliErr
+			}
 			resolvedSecret, cliErr := resolveAPISecretInput(secretStdin, cmd.ErrOrStderr(), apiSecret, cmd.Flags().Changed("api-secret"), apiSecretStdin, apiSecretFile)
 			if cliErr != nil {
 				return cliErr
