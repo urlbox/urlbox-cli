@@ -70,7 +70,16 @@ func Execute(args []string, stdout, stderr io.Writer) int {
 
 	if !cliErr.Silent {
 		env := output.NewErrorEnvelope(calledCommandFromArgs(rootCmd, args), cliErr)
-		_ = formatter.WriteError(stdout, env)
+		// Round 8 OO: honor --jq on error envelopes too. Before this,
+		// `urlbox … --jq '.code'` extracted on success but the failure
+		// path always dumped the full envelope, breaking agents that
+		// scripted around a single jq expression across both paths.
+		jqExpr, _ := rootCmd.PersistentFlags().GetString("jq")
+		if jqExpr != "" {
+			_ = output.WriteErrorEnvelopeWithJQ(stdout, env, jqExpr, format == output.FormatQuiet)
+		} else {
+			_ = formatter.WriteError(stdout, env)
+		}
 	}
 	return cliErr.ExitCode()
 }

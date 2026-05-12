@@ -107,3 +107,23 @@ func TestProfileFlag_EmptyOrWhitespace_Rejected(t *testing.T) {
 		})
 	}
 }
+
+// TestJQ_AppliedToErrorEnvelope pins Round 8 OO / Adv-4 M3: --jq used
+// to be ignored on the error path, so `urlbox render --jq '.code'`
+// emitted a clean string on success but dumped the full envelope on
+// failure. Now both paths honor the same jq expression.
+func TestJQ_AppliedToErrorEnvelope(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("URLBOX_API_SECRET", "")
+	var stdout, stderr bytes.Buffer
+	// link with no credentials → auth-error envelope path.
+	exit := cmd.Execute([]string{"link", "--url", "https://example.com", "--output-format", "json", "--jq", ".code"}, &stdout, &stderr)
+	if exit == 0 {
+		t.Fatalf("missing credentials should error")
+	}
+	got := strings.TrimSpace(stdout.String())
+	// jq output is JSON-encoded — string values are quoted.
+	if got != `"auth"` {
+		t.Errorf("jq output = %q, want \"auth\"", got)
+	}
+}

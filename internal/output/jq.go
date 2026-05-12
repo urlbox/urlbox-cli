@@ -72,3 +72,30 @@ func WriteEnvelopeWithJQ(w io.Writer, env *Envelope, jqExpr string, quiet bool) 
 	_, err = w.Write(out)
 	return err
 }
+
+// WriteErrorEnvelopeWithJQ is the error-envelope analogue. Round 8 OO:
+// before this commit, --jq was only applied to success envelopes —
+// error envelopes always printed the full structure regardless of
+// --jq. Agents that did `urlbox … --jq '.code'` expecting a single
+// code string got the whole envelope on the failure path.
+//
+// Quiet on error: jq filters against the full envelope (no .data on
+// errors). This mirrors how `quiet` mode prints data on success and
+// just the error message on failure — but with --jq the user chose
+// what to extract.
+func WriteErrorEnvelopeWithJQ(w io.Writer, env *ErrorEnvelope, jqExpr string, quiet bool) error {
+	raw, err := json.Marshal(env)
+	if err != nil {
+		return err
+	}
+	// On error envelopes there's no .data slot to filter into when
+	// quiet, so we always filter the full envelope. Quiet still
+	// applies the "scalar emitted raw" rule via ApplyJQ.
+	_ = quiet
+	out, err := ApplyJQ(raw, jqExpr, false)
+	if err != nil {
+		return NewCLIError(ErrUsage, err.Error(), "Check the --jq expression (uses gojq syntax)")
+	}
+	_, err = w.Write(out)
+	return err
+}
