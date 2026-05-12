@@ -821,3 +821,140 @@ func TestConfigSet_MultipleProfiles_NoDefaultProfile_Errors(t *testing.T) {
 		t.Errorf("hint=%v want=%v", env["hint"], wantHint)
 	}
 }
+
+// TestConfigSet_APISecret_RejectsBadValues pins Round 6 Adv-4 + Adv-5:
+// config set api_secret silently accepted whitespace-only and empty
+// strings, AND its empty-string path silently cleared the saved secret
+// (bypassing the auth overwrite guard entirely). Now: validateSecretValue
+// is the single gate every secret-writing path uses.
+func TestConfigSet_APISecret_RejectsBadValues(t *testing.T) {
+	cases := []struct {
+		name string
+		val  string
+	}{
+		{"empty string", ""},
+		{"spaces only", "   "},
+		{"tabs only", "\t\t"},
+		{"newlines only", "\n"},
+		{"internal newline", "abc\ndef"},
+		{"null byte", "abc\x00def"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			dir := t.TempDir()
+			t.Setenv("XDG_CONFIG_HOME", dir)
+			seedConfig(t, dir, map[string]config.Profile{
+				"default": {APISecret: "sec_preserve_me_xx"},
+			})
+
+			var stdout, stderr bytes.Buffer
+			exit := cmd.Execute([]string{"config", "set", "api_secret", c.val, "--output-format", "json"}, &stdout, &stderr)
+			if exit == 0 {
+				t.Fatalf("config set api_secret %q should error; got exit 0 stdout=%s", c.val, stdout.String())
+			}
+			var env map[string]any
+			_ = json.Unmarshal(stdout.Bytes(), &env)
+			if env["code"] != "usage" {
+				t.Errorf("code=%v, want usage", env["code"])
+			}
+
+			// Critical: the existing secret must NOT have been clobbered.
+			cl, _ := config.Load()
+			if cl.Profiles["default"].APISecret != "sec_preserve_me_xx" {
+				t.Errorf("existing secret was overwritten by invalid input %q: now %q", c.val, cl.Profiles["default"].APISecret)
+			}
+		})
+	}
+}
+
+// TestConfigSet_APISecret_OverwriteGuard pins the parity with auth's
+// guard: setting a DIFFERENT secret without --force should refuse, the
+// same way `urlbox auth --api-secret <new>` refuses. Previously config
+// set was the unguarded back door.
+func TestConfigSet_APISecret_OverwriteGuard(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	seedConfig(t, dir, map[string]config.Profile{
+		"default": {APISecret: "sec_original_abcdef"},
+	})
+
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{"config", "set", "api_secret", "sec_DIFFERENT_xyz", "--output-format", "json"}, &stdout, &stderr)
+	if exit != 7 {
+		t.Fatalf("exit=%d, want 7 (conflict); stdout=%s", exit, stdout.String())
+	}
+	var env map[string]any
+	_ = json.Unmarshal(stdout.Bytes(), &env)
+	if env["code"] != "conflict" {
+		t.Errorf("code=%v, want conflict", env["code"])
+	}
+	// Critical: no silent overwrite.
+	cl, _ := config.Load()
+	if cl.Profiles["default"].APISecret != "sec_original_abcdef" {
+		t.Errorf("default.APISecret was clobbered without --force: %q", cl.Profiles["default"].APISecret)
+	}
+}
+
+// TestConfigSet_APISecret_ForceOverwrites pins the CI escape hatch.
+func TestConfigSet_APISecret_ForceOverwrites(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	seedConfig(t, dir, map[string]config.Profile{
+		"default": {APISecret: "sec_original_abcdef"},
+	})
+
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{"config", "set", "api_secret", "sec_NEW_uvwxyz12", "--force"}, &stdout, &stderr)
+	if exit != 0 {
+		t.Fatalf("exit=%d stderr=%s", exit, stderr.String())
+	}
+	cl, _ := config.Load()
+	if cl.Profiles["default"].APISecret != "sec_NEW_uvwxyz12" {
+		t.Errorf("--force did not overwrite: %q", cl.Profiles["default"].APISecret)
+	}
+}
+
+// TestConfigSet_APISecret_SameValueIdempotent pins that re-setting the
+// SAME secret is a no-op (no guard fires).
+func TestConfigSet_APISecret_SameValueIdempotent(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	seedConfig(t, dir, map[string]config.Profile{
+		"default": {APISecret: "sec_same_xyzxyzxy"},
+	})
+
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{"config", "set", "api_secret", "sec_same_xyzxyzxy"}, &stdout, &stderr)
+	if exit != 0 {
+		t.Fatalf("idempotent re-set should succeed; exit=%d stderr=%s", exit, stderr.String())
+	}
+}
+
+// TestConfigProfileCreate_RejectsBadSecretValues pins that profile-create
+// also goes through validateSecretValue. Whitespace/control chars cannot
+// land in a new profile any more than in an existing one.
+func TestConfigProfileCreate_RejectsBadSecretValues(t *testing.T) {
+	cases := []struct {
+		name string
+		val  string
+	}{
+		{"whitespace only", "   "},
+		{"newline only", "\n"},
+		{"control char", "abc\x00def"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+			var stdout, stderr bytes.Buffer
+			exit := cmd.Execute([]string{"config", "profile", "create", "p1", "--api-secret", c.val, "--output-format", "json"}, &stdout, &stderr)
+			if exit == 0 {
+				t.Fatalf("profile create with bad secret should error; got exit 0 stdout=%s", stdout.String())
+			}
+			var env map[string]any
+			_ = json.Unmarshal(stdout.Bytes(), &env)
+			if env["code"] != "usage" {
+				t.Errorf("code=%v, want usage", env["code"])
+			}
+		})
+	}
+}

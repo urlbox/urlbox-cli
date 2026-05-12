@@ -138,6 +138,16 @@ The env var URLBOX_API_SECRET takes precedence at runtime over the saved value.`
 				)
 			}
 
+			// Validate the resolved secret value through the same gate every
+			// secret-writing path uses (auth / config set / profile create).
+			// Catches whitespace-only, leading/trailing whitespace artifacts,
+			// and embedded control characters. Round 6 class-fix.
+			validated, vErr := validateSecretValue(secret)
+			if vErr != nil {
+				return vErr
+			}
+			secret = validated
+
 			cfg, err := config.Load()
 			if err != nil {
 				return output.NewCLIError(

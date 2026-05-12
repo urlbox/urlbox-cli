@@ -97,8 +97,18 @@ func newProfileCreateCmd() *cobra.Command {
 			if cliErr != nil {
 				return cliErr
 			}
-			if resolvedSecret == "" {
-				resolvedSecret = apiSecret
+			// Validate the resolved secret value when one was provided. Round 6
+			// class-fix: profile create must go through the same gate every
+			// secret-writing path uses. An empty resolvedSecret here means
+			// no flag was passed — that's allowed for profile create (the
+			// profile can be created secretless and have the secret added
+			// later via auth or config set).
+			if resolvedSecret != "" {
+				validated, vErr := validateSecretValue(resolvedSecret)
+				if vErr != nil {
+					return vErr
+				}
+				resolvedSecret = validated
 			}
 			cfg, err := config.Load()
 			if err != nil {
@@ -326,7 +336,8 @@ with eyes on the screen).`,
 }
 
 func newConfigSetCmd() *cobra.Command {
-	return &cobra.Command{
+	var force bool
+	c := &cobra.Command{
 		Use:   "set <key> <value>",
 		Short: "Set a config value on the target profile",
 		Long: `Set a config value.
@@ -337,6 +348,9 @@ For per-profile keys (api_key, api_secret, api_host) the target profile is:
   - otherwise an error: with 0 profiles, run urlbox auth first;
     with 2+, --profile is required.
 
+Setting api_secret on a profile that already has a different secret
+refuses unless --force is passed — the same guard ` + "`urlbox auth`" + ` uses.
+
 The default_profile key is top-level and always writes regardless of
 profile count.`,
 		Args: cobra.ExactArgs(2),
@@ -344,6 +358,16 @@ profile count.`,
 			key, val := args[0], args[1]
 			if !isSupportedKey(key) {
 				return unknownKeyError(key)
+			}
+			// Validate api_secret value through the same gate every secret-
+			// writing path uses. Rejects empty / whitespace / control chars.
+			// Round 6 class-fix.
+			if key == "api_secret" {
+				validated, vErr := validateSecretValue(val)
+				if vErr != nil {
+					return vErr
+				}
+				val = validated
 			}
 			c, err := config.Load()
 			if err != nil {
@@ -383,6 +407,20 @@ profile count.`,
 			if perr != nil {
 				return perr
 			}
+			// Overwrite guard for api_secret — same shape as `urlbox auth`'s
+			// guard (Round 1 S-C3). Without this, `config set api_secret X`
+			// was the unguarded back door past the auth-side protection.
+			// Round 6 class-fix.
+			if key == "api_secret" && !force {
+				existing := c.Profiles[profileName].APISecret
+				if existing != "" && existing != val {
+					return output.NewCLIError(
+						output.ErrConflict,
+						fmt.Sprintf("profile %q already has an API secret (%s); overwrite refused", profileName, maskSecret(existing)),
+						"Pass --force to overwrite, or use `urlbox config profile create <name>` for a separate profile. This guard mirrors `urlbox auth`'s protection.",
+					)
+				}
+			}
 			writeKey(c, profileName, key, val)
 			if err := config.Save(c); err != nil {
 				return output.NewCLIError(output.ErrServer, "failed to save config", err.Error())
@@ -405,6 +443,8 @@ profile count.`,
 			return writeEnvelope(cmd, env)
 		},
 	}
+	c.Flags().BoolVar(&force, "force", false, "Overwrite an existing api_secret without confirmation (mirrors `urlbox auth --force`).")
+	return c
 }
 
 // resolveTargetProfile picks which profile a per-profile config key acts on,

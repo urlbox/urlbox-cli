@@ -65,6 +65,7 @@ urlbox config profile list --output-format
 urlbox config profile list --profile
 urlbox config set <key> <value>
 urlbox config set <key> <value> --agent
+urlbox config set <key> <value> --force
 urlbox config set <key> <value> --jq
 urlbox config set <key> <value> --output-format
 urlbox config set <key> <value> --profile
