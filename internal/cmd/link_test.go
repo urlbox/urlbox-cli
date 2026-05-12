@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/urlbox/urlbox-cli/internal/cmd"
+	"github.com/urlbox/urlbox-cli/internal/config"
 )
 
 // PIN: HMAC-SHA256(sec_test_AAA, "url=https%3A%2F%2Fexample.com").
@@ -390,8 +391,11 @@ func TestLink_MissingAPIKey_AuthError(t *testing.T) {
 	if env["error"] != "Missing publishable API key" {
 		t.Errorf("error=%q", env["error"])
 	}
-	if !strings.Contains(env["hint"].(string), "urlbox auth") {
-		t.Errorf("hint should mention 'urlbox auth'; got: %s", env["hint"])
+	// Round 5 First-1: hint no longer references `urlbox auth` (dead end —
+	// auth doesn't take --api-key). New hint points at config set / config
+	// profile create. Verified by TestLink_MissingAPIKey_HintDoesNotMisleadUserToAuth.
+	if !strings.Contains(env["hint"].(string), "config set api_key") && !strings.Contains(env["hint"].(string), "config profile create") {
+		t.Errorf("hint should point at config set / config profile create; got: %s", env["hint"])
 	}
 }
 
@@ -489,5 +493,86 @@ func TestLink_BadJSON_ValidationError(t *testing.T) {
 	json.Unmarshal(stdout.Bytes(), &env)
 	if env["code"] != "validation" {
 		t.Errorf("code != 'validation': %v", env["code"])
+	}
+}
+
+// TestLink_PositionalURL pins Round 5 First-1: link now accepts a
+// positional URL like render does. Previously `urlbox link
+// https://example.com` errored with "unknown command", forcing the
+// user to discover --url. The inconsistency was confusing — render
+// accepts both positional and --url, link should too.
+func TestLink_PositionalURL(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	seedConfig(t, dir, map[string]config.Profile{
+		"default": {APIKey: "pub_test_key", APISecret: "sec_test_yyyyyyyyyy"},
+	})
+
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{"link", "https://example.com", "--output-format", "quiet"}, &stdout, &stderr)
+	if exit != 0 {
+		t.Fatalf("exit=%d, want 0; stderr=%s; stdout=%s", exit, stderr.String(), stdout.String())
+	}
+	out := strings.TrimSpace(stdout.String())
+	if !strings.Contains(out, "pub_test_key") {
+		t.Errorf("output should contain api_key; got %q", out)
+	}
+	if !strings.Contains(out, "example.com") {
+		t.Errorf("output should contain target url; got %q", out)
+	}
+}
+
+// TestLink_PositionalAndURLFlag_FlagWins pins precedence when both are
+// passed — the flag wins (consistent with render: explicit flag beats
+// inferred positional). Tester provides positional URL; --url overrides.
+func TestLink_PositionalAndURLFlag_FlagWins(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	seedConfig(t, dir, map[string]config.Profile{
+		"default": {APIKey: "pub_test_key", APISecret: "sec_test_yyyyyyyyyy"},
+	})
+
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{"link", "https://positional.invalid", "--url", "https://flag.example.com", "--output-format", "quiet"}, &stdout, &stderr)
+	if exit != 0 {
+		t.Fatalf("exit=%d, want 0; stderr=%s", exit, stderr.String())
+	}
+	out := strings.TrimSpace(stdout.String())
+	if !strings.Contains(out, "flag.example.com") {
+		t.Errorf("--url should win over positional; got %q", out)
+	}
+	if strings.Contains(out, "positional.invalid") {
+		t.Errorf("positional should NOT appear when --url is set; got %q", out)
+	}
+}
+
+// TestLink_MissingAPIKey_HintDoesNotMisleadUserToAuth pins Round 5
+// First-1: the "Missing publishable API key" hint used to say "run
+// urlbox auth" but auth doesn't take an --api-key flag — running it
+// won't fix the error. Hint must point at a command that ACTUALLY
+// sets the api_key.
+func TestLink_MissingAPIKey_HintDoesNotMisleadUserToAuth(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	seedConfig(t, dir, map[string]config.Profile{
+		"default": {APISecret: "sec_test_yyyyyyyyyy"}, // no APIKey
+	})
+
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{"link", "--url", "https://example.com", "--output-format", "json"}, &stdout, &stderr)
+	if exit == 0 {
+		t.Fatalf("missing api_key should error; got exit 0")
+	}
+	var env map[string]any
+	_ = json.Unmarshal(stdout.Bytes(), &env)
+	hint, _ := env["hint"].(string)
+	// The misleading "run urlbox auth" reference must be gone — auth
+	// has no --api-key flag, so the hint led users into a dead end.
+	if strings.Contains(hint, "urlbox auth") {
+		t.Errorf("hint must NOT reference `urlbox auth` (it has no --api-key); got %q", hint)
+	}
+	// The hint must point at a command that actually does set api_key.
+	if !strings.Contains(hint, "config set") && !strings.Contains(hint, "config profile create") {
+		t.Errorf("hint should point at `config set api_key` or `config profile create --api-key`; got %q", hint)
 	}
 }

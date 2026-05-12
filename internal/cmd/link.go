@@ -35,7 +35,7 @@ type linkFlags struct {
 func newLinkCmd() *cobra.Command {
 	f := &linkFlags{}
 	c := &cobra.Command{
-		Use:   "link",
+		Use:   "link [url]",
 		Short: "Generate an HMAC-SHA256 signed render URL (no API call)",
 		Long: `Generate an HMAC-SHA256 signed render URL of the form
   https://api.urlbox.com/v1/<api_key>/<token>/<format>?<encoded_options>
@@ -43,16 +43,22 @@ func newLinkCmd() *cobra.Command {
 Pure local computation — no API call is made. Requires both the publishable
 API key and the API secret.
 
+Specify the target URL via positional argument or --url (the flag wins
+on conflict):
+
+  urlbox link https://example.com
+  urlbox link --url https://example.com
+
 For pipelines, --output-format quiet emits the bare signed URL on
 stdout (no envelope), e.g.:
 
-  urlbox link --url https://example.com --output-format quiet
+  urlbox link https://example.com --output-format quiet
 
 If you actually want the rendered asset, use:
   urlbox render --json '{"url":"..."}'`,
-		Args: cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runLink(cmd, f)
+		Args: cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runLink(cmd, args, f)
 		},
 	}
 	c.Flags().StringVar(&f.urlFlag, "url", "", "URL to render (required unless --json provides one)")
@@ -65,7 +71,14 @@ If you actually want the rendered asset, use:
 	return c
 }
 
-func runLink(cmd *cobra.Command, f *linkFlags) error {
+func runLink(cmd *cobra.Command, args []string, f *linkFlags) error {
+	// Round 5 First-1: accept a positional URL like `render` does so
+	// `urlbox link https://example.com` is the obvious entry point. --url
+	// still wins when both are present, matching render's precedence.
+	if len(args) == 1 && f.urlFlag == "" {
+		f.urlFlag = args[0]
+	}
+
 	// Both --api-secret-stdin and `--json -` consume stdin; at most one wins.
 	if f.apiSecretStdin && f.jsonInput == "-" {
 		return output.NewCLIError(
@@ -152,10 +165,13 @@ func runLink(cmd *cobra.Command, f *linkFlags) error {
 	}
 
 	if resolved.APIKey == "" {
+		// Round 5 First-1: the previous hint referenced `urlbox auth`
+		// which doesn't take --api-key — sent users down a dead end.
+		// Both surviving suggestions actually set api_key.
 		return output.NewCLIError(
 			output.ErrAuth,
 			"Missing publishable API key",
-			"Pass --api-key, run `urlbox auth`, or set it on a profile via `urlbox config profile create`.",
+			"Pass --api-key <key>, run `urlbox config set api_key <key>`, or include --api-key when creating a profile via `urlbox config profile create <name> --api-key <key>`. The publishable key is on your project dashboard, distinct from the API secret.",
 		)
 	}
 	if resolved.APISecret == "" {

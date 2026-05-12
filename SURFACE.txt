@@ -78,18 +78,18 @@ urlbox doctor --agent
 urlbox doctor --jq
 urlbox doctor --output-format
 urlbox doctor --profile
-urlbox link
-urlbox link --agent
-urlbox link --api-key
-urlbox link --api-secret
-urlbox link --api-secret-file
-urlbox link --api-secret-stdin
-urlbox link --format
-urlbox link --jq
-urlbox link --json
-urlbox link --output-format
-urlbox link --profile
-urlbox link --url
+urlbox link [url]
+urlbox link [url] --agent
+urlbox link [url] --api-key
+urlbox link [url] --api-secret
+urlbox link [url] --api-secret-file
+urlbox link [url] --api-secret-stdin
+urlbox link [url] --format
+urlbox link [url] --jq
+urlbox link [url] --json
+urlbox link [url] --output-format
+urlbox link [url] --profile
+urlbox link [url] --url
 urlbox pdf [url]
 urlbox pdf [url] --agent
 urlbox pdf [url] --api-secret
