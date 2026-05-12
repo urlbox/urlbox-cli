@@ -1,21 +1,23 @@
-// internal/cmd/secret_validate_test.go — class-fix tests for secret-value
+// internal/config/secret_validate_test.go — class-fix tests for secret-value
 // validation. Round 6 surfaced four sibling bypasses of the secret guard:
 // whitespace-only --api-secret accepted (auth + config set); control
 // chars accepted; config set api_secret "" silently cleared the secret
 // (bypassing the auth overwrite guard); leading/trailing whitespace
 // silently saved with the padding.
 //
-// The fix lives in one validateSecretValue helper that every secret-
+// The fix lives in one ValidateSecretValue helper that every secret-
 // writing path now routes through. These tests probe that helper
 // directly. Integration tests in auth_test.go and config_test.go then
 // confirm each entry point (auth --api-secret, --api-secret-stdin,
 // --api-secret-file, config set api_secret, profile create --api-secret)
 // gives identical behavior.
-package cmd
+package config_test
 
 import (
 	"strings"
 	"testing"
+
+	"github.com/urlbox/urlbox-cli/internal/config"
 )
 
 func TestValidateSecretValue_RejectsEmptyAndWhitespace(t *testing.T) {
@@ -32,9 +34,9 @@ func TestValidateSecretValue_RejectsEmptyAndWhitespace(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			_, err := validateSecretValue(c.in)
+			_, err := config.ValidateSecretValue(c.in)
 			if err == nil {
-				t.Fatalf("validateSecretValue(%q) should error", c.in)
+				t.Fatalf("config.ValidateSecretValue(%q) should error", c.in)
 			}
 			if string(err.Code) != "usage" {
 				t.Errorf("code=%q, want usage", err.Code)
@@ -57,9 +59,9 @@ func TestValidateSecretValue_RejectsControlChars(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			_, err := validateSecretValue(c.in)
+			_, err := config.ValidateSecretValue(c.in)
 			if err == nil {
-				t.Fatalf("validateSecretValue(%q) should error", c.in)
+				t.Fatalf("config.ValidateSecretValue(%q) should error", c.in)
 			}
 			if string(err.Code) != "usage" {
 				t.Errorf("code=%q, want usage", err.Code)
@@ -83,9 +85,9 @@ func TestValidateSecretValue_TrimsSurroundingWhitespace(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			got, err := validateSecretValue(c.in)
+			got, err := config.ValidateSecretValue(c.in)
 			if err != nil {
-				t.Fatalf("validateSecretValue(%q) errored: %v", c.in, err)
+				t.Fatalf("config.ValidateSecretValue(%q) errored: %v", c.in, err)
 			}
 			if got != c.want {
 				t.Errorf("got %q, want %q", got, c.want)
@@ -129,9 +131,9 @@ func TestValidateSecretValue_RejectsInvisibleUnicode(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			_, err := validateSecretValue(c.in)
+			_, err := config.ValidateSecretValue(c.in)
 			if err == nil {
-				t.Fatalf("validateSecretValue(%q) should error — contains invisible Unicode", c.in)
+				t.Fatalf("config.ValidateSecretValue(%q) should error — contains invisible Unicode", c.in)
 			}
 			if string(err.Code) != "usage" {
 				t.Errorf("code=%q, want usage", err.Code)
@@ -161,9 +163,9 @@ func TestValidateSecretValue_TrimsUnicodeWhitespace(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			got, err := validateSecretValue(c.in)
+			got, err := config.ValidateSecretValue(c.in)
 			if err != nil {
-				t.Fatalf("validateSecretValue(%q) errored: %v", c.in, err)
+				t.Fatalf("config.ValidateSecretValue(%q) errored: %v", c.in, err)
 			}
 			if got != c.want {
 				t.Errorf("got %q, want %q", got, c.want)
@@ -185,9 +187,9 @@ func TestValidateSecretValue_AcceptsNormalSecrets(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c, func(t *testing.T) {
-			got, err := validateSecretValue(c)
+			got, err := config.ValidateSecretValue(c)
 			if err != nil {
-				t.Fatalf("validateSecretValue(%q) errored: %v", c, err)
+				t.Fatalf("config.ValidateSecretValue(%q) errored: %v", c, err)
 			}
 			if got != c {
 				t.Errorf("got %q, want %q (no mutation expected)", got, c)
@@ -221,9 +223,9 @@ func TestValidateSecretValue_RejectsCombiningMarks(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			_, err := validateSecretValue(c.in)
+			_, err := config.ValidateSecretValue(c.in)
 			if err == nil {
-				t.Fatalf("validateSecretValue(%q) should error — contains combining/variation-selector Mark", c.in)
+				t.Fatalf("config.ValidateSecretValue(%q) should error — contains combining/variation-selector Mark", c.in)
 			}
 			if string(err.Code) != "usage" {
 				t.Errorf("code=%q, want usage", err.Code)
@@ -254,9 +256,9 @@ func TestValidateSecretValue_RejectsInvalidUTF8(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			_, err := validateSecretValue(c.in)
+			_, err := config.ValidateSecretValue(c.in)
 			if err == nil {
-				t.Fatalf("validateSecretValue(%q) should error — invalid UTF-8", c.in)
+				t.Fatalf("config.ValidateSecretValue(%q) should error — invalid UTF-8", c.in)
 			}
 			if string(err.Code) != "usage" {
 				t.Errorf("code=%q, want usage", err.Code)

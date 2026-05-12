@@ -105,7 +105,7 @@ func newProfileCreateCmd() *cobra.Command {
 			// profile can be created secretless and have the secret added
 			// later via auth or config set).
 			if resolvedSecret != "" {
-				validated, vErr := validateSecretValue(resolvedSecret)
+				validated, vErr := config.ValidateSecretValue(resolvedSecret)
 				if vErr != nil {
 					return vErr
 				}
@@ -385,7 +385,7 @@ profile count.`,
 			// writing path uses. Rejects empty / whitespace / control chars.
 			// Round 6 class-fix.
 			if key == "api_secret" {
-				validated, vErr := validateSecretValue(val)
+				validated, vErr := config.ValidateSecretValue(val)
 				if vErr != nil {
 					return vErr
 				}
