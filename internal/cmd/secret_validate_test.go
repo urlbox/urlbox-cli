@@ -195,3 +195,72 @@ func TestValidateSecretValue_AcceptsNormalSecrets(t *testing.T) {
 		})
 	}
 }
+
+// TestValidateSecretValue_RejectsCombiningMarks pins Round 8 Class A:
+// Mn "Mark, Nonspacing" Unicode characters (combining marks like U+0300
+// COMBINING GRAVE, variation selectors U+FE00..FE0F) are invisible by
+// design — they decorate the preceding char. Pasting "à" composed as
+// "a" + U+0300 silently writes a different secret than what the user
+// sees. DD caught Cf (Format) chars; this extends to Mn (the other
+// invisible class). Real Urlbox secrets are ASCII alphanumeric, so any
+// Mn anywhere is a paste artefact.
+func TestValidateSecretValue_RejectsCombiningMarks(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+	}{
+		{"combining grave (U+0300)", "sec̀abc"},
+		{"combining acute (U+0301)", "sećabc"},
+		{"combining tilde (U+0303)", "sec̃abc"},
+		{"combining diaeresis (U+0308)", "sec̈abc"},
+		{"combining cedilla (U+0327)", "seçabc"},
+		{"variation selector-1 (U+FE00)", "sec︀abc"},
+		{"variation selector-16 (U+FE0F)", "sec️abc"},
+		{"leading combining mark", "̀sec_abc"},
+		{"trailing combining mark", "sec_abc̀"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			_, err := validateSecretValue(c.in)
+			if err == nil {
+				t.Fatalf("validateSecretValue(%q) should error — contains combining/variation-selector Mark", c.in)
+			}
+			if string(err.Code) != "usage" {
+				t.Errorf("code=%q, want usage", err.Code)
+			}
+		})
+	}
+}
+
+// TestValidateSecretValue_RejectsInvalidUTF8 pins Round 8 Class A:
+// invalid UTF-8 byte sequences — lone surrogates (U+D800..U+DFFF range
+// when encoded as raw bytes), overlong encodings (e.g. C0 80 for NUL),
+// bare 5th/6th-byte continuation forms (0xFF), truncated multi-byte
+// sequences — must be rejected outright. These are never legitimate
+// Urlbox secrets; they corrupt the config JSON file on write and break
+// HMAC parity when signing requests.
+func TestValidateSecretValue_RejectsInvalidUTF8(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+	}{
+		{"lone high surrogate (WTF-8 ED A0 80)", "sec_aaa\xed\xa0\x80bbb"},
+		{"overlong NUL (C0 80)", "sec_aaa\xc0\x80bbb"},
+		{"bare 0xFF", "sec_aaa\xffbbb"},
+		{"bare 0xFE", "sec_aaa\xfebbb"},
+		{"truncated 2-byte (leading byte only)", "sec_aaa\xc2"},
+		{"truncated 3-byte sequence", "sec_aaa\xe2\x82"},
+		{"truncated 4-byte sequence", "sec_aaa\xf0\x9f\x98"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			_, err := validateSecretValue(c.in)
+			if err == nil {
+				t.Fatalf("validateSecretValue(%q) should error — invalid UTF-8", c.in)
+			}
+			if string(err.Code) != "usage" {
+				t.Errorf("code=%q, want usage", err.Code)
+			}
+		})
+	}
+}

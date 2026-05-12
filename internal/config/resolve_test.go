@@ -265,3 +265,79 @@ func TestResolve_APIKey_FromRepoOverlay(t *testing.T) {
 		t.Errorf("APIKey=%q Source=%q", r.APIKey, r.Source.APIKey)
 	}
 }
+
+// TestResolve_EnvAPISecret_InvalidUTF8_Rejected pins Round 8 FF:
+// URLBOX_API_SECRET used to bypass ValidateSecretValue entirely. The
+// adversarial demo: signing HMACs with control-char-corrupted env
+// bytes. Resolve now applies the same gate the flag/stdin/file paths
+// already enforce.
+func TestResolve_EnvAPISecret_InvalidUTF8_Rejected(t *testing.T) {
+	_, err := config.Resolve(config.ResolveOptions{
+		EnvAPISecret: "sec_aaa\xed\xa0\x80bbb", // lone surrogate
+	})
+	if err == nil {
+		t.Fatal("invalid UTF-8 env secret should error")
+	}
+	var cli *output.CLIError
+	if !errors.As(err, &cli) {
+		t.Fatalf("expected CLIError, got %T", err)
+	}
+	if cli.Code != output.ErrUsage {
+		t.Errorf("code=%q, want usage", cli.Code)
+	}
+	if !strings.Contains(cli.Message, "URLBOX_API_SECRET") {
+		t.Errorf("message should name the env var; got %q", cli.Message)
+	}
+}
+
+// TestResolve_EnvAPISecret_ControlChar_Rejected — covers the H1
+// adversarial repro directly: env secret with \x01 was accepted.
+func TestResolve_EnvAPISecret_ControlChar_Rejected(t *testing.T) {
+	_, err := config.Resolve(config.ResolveOptions{
+		EnvAPISecret: "sec_aaa\x01bbb",
+	})
+	if err == nil {
+		t.Fatal("env secret with control char should error")
+	}
+	var cli *output.CLIError
+	if !errors.As(err, &cli) || cli.Code != output.ErrUsage {
+		t.Errorf("expected ErrUsage; got %v", err)
+	}
+}
+
+// TestResolve_EnvAPISecret_ZWJ_Rejected — Cf-category char in env path.
+func TestResolve_EnvAPISecret_ZWJ_Rejected(t *testing.T) {
+	_, err := config.Resolve(config.ResolveOptions{
+		EnvAPISecret: "sec_aaa\u200dbbb", // zero-width joiner
+	})
+	if err == nil {
+		t.Fatal("env secret with ZWJ should error")
+	}
+}
+
+// TestResolve_EnvAPISecret_CombiningMark_Rejected — Mn-category char in env path.
+func TestResolve_EnvAPISecret_CombiningMark_Rejected(t *testing.T) {
+	_, err := config.Resolve(config.ResolveOptions{
+		EnvAPISecret: "sec_aaàbbb", // combining grave
+	})
+	if err == nil {
+		t.Fatal("env secret with combining mark should error")
+	}
+}
+
+// TestResolve_EnvAPISecret_Trimmed pins paste-safety: leading/trailing
+// whitespace (incl. Unicode space cats) is trimmed, not rejected.
+func TestResolve_EnvAPISecret_Trimmed(t *testing.T) {
+	r, err := config.Resolve(config.ResolveOptions{
+		EnvAPISecret: "  sec_clean_abc  \n",
+	})
+	if err != nil {
+		t.Fatalf("clean env secret with surrounding whitespace should succeed: %v", err)
+	}
+	if r.APISecret != "sec_clean_abc" {
+		t.Errorf("APISecret=%q, want sec_clean_abc (trimmed)", r.APISecret)
+	}
+	if r.Source.APISecret != "env" {
+		t.Errorf("Source.APISecret=%q, want env", r.Source.APISecret)
+	}
+}

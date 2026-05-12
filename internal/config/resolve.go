@@ -40,11 +40,27 @@ type Source struct {
 	APIKey, APISecret, APIHost, Profile string
 }
 
-// Resolve flattens opts into a single Resolved. The only error is when an
-// explicit FlagProfile names a profile that doesn't exist in opts.Config.
+// Resolve flattens opts into a single Resolved.
+//
+// Errors:
+//   - FlagProfile or EnvProfile names a profile that doesn't exist in
+//     opts.Config (Round 5 Adv-2 + Round 7 EE).
+//   - EnvAPISecret fails ValidateSecretValue (Round 8 FF — env path used
+//     to bypass the rule the flag/stdin/file paths enforce, letting
+//     malformed bytes flow through to HMAC signing).
 //
 //nolint:gocritic // ResolveOptions is intentionally passed by value: this is a pure resolver and the input is immutable. A pointer would invite callers to mutate.
 func Resolve(opts ResolveOptions) (*Resolved, error) {
+	if opts.EnvAPISecret != "" {
+		cleaned, vErr := ValidateSecretValue(opts.EnvAPISecret)
+		if vErr != nil {
+			// Re-frame the error so the user knows the bad value came from
+			// the env var, not a --api-secret flag.
+			vErr.Message = "URLBOX_API_SECRET: " + vErr.Message
+			return nil, vErr
+		}
+		opts.EnvAPISecret = cleaned
+	}
 	r := &Resolved{}
 
 	switch {
