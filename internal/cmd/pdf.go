@@ -9,7 +9,16 @@ func newPdfCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "pdf [url]",
 		Short: "Render a URL as PDF (alias for `render --format pdf --full-page`)",
-		Args:  cobra.MaximumNArgs(1),
+		Long: `Render a URL as PDF. Thin alias over ` + "`render --format pdf --full-page`" + `.
+
+The full-page default exists because PDF output usually means "the whole
+document" — pass ` + "`--full-page=false`" + ` to render only the viewport-sized
+slice.
+
+The Urlbox API uses a single ` + "`/v1/screenshot`" + ` endpoint for every render
+format. ` + "`urlbox pdf --curl`" + ` will show ` + "`/v1/screenshot`" + ` in the URL — that's
+correct, not a bug.`,
+		Args: cobra.MaximumNArgs(1),
 		PreRunE: func(cmd *cobra.Command, _ []string) error {
 			if !cmd.Flags().Changed("format") {
 				if err := cmd.Flags().Set("format", "pdf"); err != nil {
