@@ -160,12 +160,16 @@ func newRootCmd(stdout, stderr io.Writer) *cobra.Command {
 }
 
 // suggestUnknownCommand inspects an error message of the form
-// `unknown command "X" for "..."` (emitted by cobra.NoArgs) and returns the
-// closest known immediate-subcommand name of root, if any.
+// `unknown command "X" for "urlbox <parent-path>"` (emitted by
+// cobra.NoArgs) and returns the closest known IMMEDIATE-subcommand name
+// of that parent, if any.
 //
-// Known limitation (tracked for v0.12.0+ polish): only walks root.Commands().
-// Subcommand-level typos (e.g. `urlbox config gett`) won't be suggested
-// because the parent path is not parsed out of the error message.
+// Round 6 BB class-fix: the previous version always walked root.Commands(),
+// which meant `urlbox schema list` (where schema has no `list`) cross-
+// suggested top-level commands like `link`. Now the parent path is
+// parsed from the error string and the candidate pool is scoped to
+// that parent's actual subcommands. The typed token is excluded as a
+// belt-and-braces guard against the AA-class tautology emerging here.
 func suggestUnknownCommand(root *cobra.Command, msg string) (string, bool) {
 	// COBRA VERSION COUPLING: this prefix matches cobra v1.x emitted under
 	// Args=cobra.NoArgs. A `go get -u cobra` reviewer should re-verify.
@@ -180,11 +184,36 @@ func suggestUnknownCommand(root *cobra.Command, msg string) (string, bool) {
 		return "", false
 	}
 	typed := rest[:end]
-	candidates := make([]string, 0, len(root.Commands()))
-	for _, sub := range root.Commands() {
-		if sub.IsAvailableCommand() {
-			candidates = append(candidates, sub.Name())
+
+	// Parent path: cobra appends ` for "urlbox <parent...>"` after the
+	// typed token. The ` for "` substring starts at the same `"` that
+	// closes the typed name, so we look for it at-or-after `end`.
+	parent := root
+	if forIdx := strings.Index(rest, `" for "`); forIdx >= end {
+		parentPath := rest[forIdx+len(`" for "`):]
+		if closeQuote := strings.IndexByte(parentPath, '"'); closeQuote > 0 {
+			parentPath = parentPath[:closeQuote]
 		}
+		// Strip the root's own name (e.g. "urlbox foo bar" -> ["foo","bar"])
+		// and walk the tree.
+		tokens := strings.Fields(parentPath)
+		if len(tokens) > 0 && tokens[0] == root.Name() {
+			tokens = tokens[1:]
+		}
+		if c, _, err := root.Find(tokens); err == nil && c != nil {
+			parent = c
+		}
+	}
+
+	candidates := make([]string, 0, len(parent.Commands()))
+	for _, sub := range parent.Commands() {
+		if !sub.IsAvailableCommand() {
+			continue
+		}
+		if sub.Name() == typed {
+			continue // belt-and-braces (matches AA's class-fix shape)
+		}
+		candidates = append(candidates, sub.Name())
 	}
 	return validation.ClosestMatch(typed, candidates)
 }

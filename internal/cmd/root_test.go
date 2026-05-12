@@ -340,3 +340,84 @@ func TestRoot_DidYouMean_TyposStillWork(t *testing.T) {
 		t.Errorf("hint contains the typo back: %q", hint)
 	}
 }
+
+// TestRoot_UnknownSubcommand_ScopedSuggestion pins Round 6 Adv-9 bonus
+// finding: `urlbox schema list` suggested "link" — a sibling top-level
+// command — because the suggester walked root.Commands() instead of
+// the actual parent's subcommands. Class-fix: scope candidates to the
+// parent path mentioned in cobra's error string ("for `urlbox schema`").
+func TestRoot_UnknownSubcommand_ScopedSuggestion(t *testing.T) {
+	cases := []struct {
+		name string
+		args []string
+		// Either "no suggestion" (empty string) OR an expected scoped
+		// suggestion. Cross-tree suggestions (like "link" for schema
+		// list) must NOT appear.
+		mustNotContain []string
+	}{
+		{"schema list -> no cross-tree link", []string{"schema", "list"}, []string{`"link"`, `"render"` /* render is sibling */}},
+		{"config nonsense -> no cross-tree", []string{"config", "nonsense"}, []string{`"render"`, `"link"`, `"doctor"`}},
+		{"config profile nonsense -> no cross-tree", []string{"config", "profile", "nonsense"}, []string{`"render"`, `"link"`}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+			args := append(append([]string(nil), c.args...), "--output-format", "json")
+			var stdout, stderr bytes.Buffer
+			cmd.Execute(args, &stdout, &stderr)
+			var env map[string]any
+			_ = json.Unmarshal(stdout.Bytes(), &env)
+			hint, _ := env["hint"].(string)
+			for _, bad := range c.mustNotContain {
+				if strings.Contains(hint, `Did you mean `+bad) {
+					t.Errorf("hint cross-suggested %s for %v: %q", bad, c.args, hint)
+				}
+			}
+		})
+	}
+}
+
+// TestRoot_EnvelopeOkMatchesExit_Contract is the meta-test: every
+// command/scenario that produces ok:false in the envelope MUST also
+// exit non-zero, and vice versa. Round 6 Adv-9 surfaced sibling
+// suspicions on schema list / config profile show; this test walks a
+// representative slice of error paths and pins the contract.
+func TestRoot_EnvelopeOkMatchesExit_Contract(t *testing.T) {
+	cases := []struct {
+		name string
+		args []string
+	}{
+		{"unknown top command", []string{"nonsense"}},
+		{"unknown subcommand of schema", []string{"schema", "list"}},
+		{"unknown subcommand of config", []string{"config", "nonsense"}},
+		{"unknown subcommand of config profile", []string{"config", "profile", "nonsense"}},
+		{"unknown subcommand of skill", []string{"skill", "nonsense"}},
+		{"unknown flag root-level", []string{"--nonsense"}},
+		{"render missing url", []string{"render"}},
+		{"status missing renderid", []string{"status"}},
+		{"link missing url", []string{"link"}},
+		{"config get unknown key", []string{"config", "get", "noKey"}},
+		{"config set wrong arity", []string{"config", "set", "api_secret"}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+			t.Setenv("URLBOX_API_SECRET", "sec_test")
+			args := append(append([]string(nil), c.args...), "--output-format", "json")
+			var stdout, stderr bytes.Buffer
+			exit := cmd.Execute(args, &stdout, &stderr)
+			var env map[string]any
+			if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+				t.Fatalf("envelope not JSON: %v\nstdout=%s", err, stdout.String())
+			}
+			ok, _ := env["ok"].(bool)
+			// Contract: ok:false <-> exit != 0
+			if ok && exit != 0 {
+				t.Errorf("envelope ok=true but exit=%d (non-zero); args=%v stdout=%s", exit, c.args, stdout.String())
+			}
+			if !ok && exit == 0 {
+				t.Errorf("envelope ok=false but exit=0; args=%v stdout=%s", c.args, stdout.String())
+			}
+		})
+	}
+}
