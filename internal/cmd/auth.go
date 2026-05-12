@@ -97,7 +97,18 @@ Non-interactive (preferred for agents and CI):
 Interactive (humans, on a TTY):
   urlbox auth         # prompts once for the secret with masked echo
 
-The env var URLBOX_API_SECRET takes precedence at runtime over the saved value.`,
+The env var URLBOX_API_SECRET takes precedence at runtime over the saved value.
+
+Profile selection: --profile <name> writes to <name>; URLBOX_PROFILE=<name>
+writes to that name; otherwise auth writes to the configured
+default_profile (creating "default" if no profiles exist).
+
+The per-repo overlay (.urlbox/config.json with a "profile" field) is
+DELIBERATELY IGNORED by auth. Overlay is a runtime-only read layer for
+render/link/status/doctor — auth is a write command and must target a
+concrete, named profile to avoid surprise clobbers when CWD changes.
+If you want auth to target the overlay's profile, pass --profile
+<name> explicitly.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			secret, cliErr := resolveAPISecretInput(secretStdin, cmd.ErrOrStderr(), apiSecret, cmd.Flags().Changed("api-secret"), apiSecretStdin, apiSecretFile)
