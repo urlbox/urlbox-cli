@@ -450,3 +450,31 @@ func TestHTTPClient_Render_NonJSONErrorBody_FallsBackToBodyString(t *testing.T) 
 		t.Errorf("Message=%q should fall back to body string", cli.Message)
 	}
 }
+
+// TestHTTPClient_Render_InvalidURLError_MapsToValidation pins Round 5
+// First-2: when the API returns HTTP 400 with apiCode="InvalidURLError"
+// (typical for unreachable target URLs like https://nonexistent.invalid),
+// the CLI used to map it to ErrUsage (exit 1) — implying the user
+// misused the CLI. But the user passed a syntactically-valid URL; the
+// failure is that the API couldn't reach the target. ErrValidation
+// (exit 2) is the more accurate class: "your input was rejected".
+func TestHTTPClient_Render_InvalidURLError_MapsToValidation(t *testing.T) {
+	m := apitest.New(apitest.ScriptedResponse{
+		Status: http.StatusBadRequest,
+		Body:   `{"error":{"message":"Invalid URL","code":"InvalidURLError"}}`,
+	})
+	t.Cleanup(m.Close)
+	c := newTestClient(t, m)
+	_, err := c.Render(context.Background(), map[string]any{"url": "https://nonexistent.invalid"})
+
+	var cli *output.CLIError
+	if !errors.As(err, &cli) {
+		t.Fatalf("err=%v, want *output.CLIError", err)
+	}
+	if cli.Code != output.ErrValidation {
+		t.Errorf("Code=%q, want %q (Round 5 First-2)", cli.Code, output.ErrValidation)
+	}
+	if !strings.Contains(cli.Message, "Invalid URL") {
+		t.Errorf("Message=%q should surface the API's text", cli.Message)
+	}
+}

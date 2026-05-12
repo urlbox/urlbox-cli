@@ -268,12 +268,19 @@ func isAuthErrorCode(code string) bool {
 // CLI surfaces a validation envelope. Mirrors the ClientError subclasses in
 // urlbox-mono apps/api/src/lib/errors.ts (ValidateRequestErrors namespace
 // + a few peers used at the same layer).
+//
+// Round 5 First-2: target-URL rejection codes (InvalidURLError) also
+// land here. The user passed a syntactically-valid URL the API couldn't
+// reach — ErrValidation ("your input was rejected") reads more
+// accurately than ErrUsage ("you misused the CLI") for retry-logic and
+// human triage alike.
 func isValidationErrorCode(code string) bool {
 	switch code {
 	case "InvalidOptions",
 		"InvalidInput",
 		"InvalidTtl",
 		"InvalidQuery",
+		"InvalidURLError",
 		"DuplicateThumbnailSuffixError",
 		"ConflictingStorageOptionsError":
 		return true
