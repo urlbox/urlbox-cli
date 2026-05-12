@@ -1346,3 +1346,112 @@ func TestRender_JSONEmptyURL_Errors(t *testing.T) {
 		})
 	}
 }
+
+// TestRender_JSONPath_RecursiveBigIntGuard pins Round 6 Adv-1 class-fix:
+// the original guard (Round 5 Commit O) only walked the top-level keys
+// width/height/delay/quality, leaving every other integer in the JSON
+// tree unchecked. The adversarial agent demonstrated the bypass with
+// {"viewport":{"width":9007199254740993}} — same incident class, one
+// level deeper.
+//
+// The class-fix walks the entire tree (nested objects + arrays + deep
+// combinations). Any integer past ±2^53-1 anywhere is rejected with
+// a path-qualified error message.
+func TestRender_JSONPath_RecursiveBigIntGuard(t *testing.T) {
+	cases := []struct {
+		name string
+		json string
+	}{
+		// Top-level (already worked, regression guard)
+		{"top-level width", `{"url":"https://e.com","width":9007199254740993}`},
+
+		// Nested object — the original Adv-1 Round 6 repro
+		{"nested in viewport", `{"url":"https://e.com","viewport":{"width":9007199254740993}}`},
+
+		// Array element
+		{"array element", `{"url":"https://e.com","sizes":[9007199254740993]}`},
+		{"array of ints with one bad", `{"url":"https://e.com","sizes":[100,9007199254740993,200]}`},
+
+		// Deeply nested
+		{"deep nesting", `{"url":"https://e.com","a":{"b":{"c":{"d":9007199254740993}}}}`},
+
+		// Array of objects with nested int
+		{"array of objects", `{"url":"https://e.com","items":[{"width":9007199254740993},{"width":100}]}`},
+
+		// Negative past safe range
+		{"negative deep", `{"url":"https://e.com","viewport":{"offset":-9007199254740993}}`},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+			t.Setenv("URLBOX_API_SECRET", "sec_test")
+
+			var stdout, stderr bytes.Buffer
+			exit := cmd.Execute([]string{
+				"render", "--json", c.json,
+				"--dry-run", "--output-format", "json",
+			}, &stdout, &stderr)
+			if exit != 2 {
+				t.Fatalf("%s: exit=%d, want 2 (validation); stdout=%s", c.name, exit, stdout.String())
+			}
+			var env map[string]any
+			_ = json.Unmarshal(stdout.Bytes(), &env)
+			if env["code"] != "validation" {
+				t.Errorf("code=%v, want validation", env["code"])
+			}
+		})
+	}
+}
+
+// TestRender_JSONPath_RecursiveBigIntGuard_PathInMessage pins that the
+// error message names the path where the bad integer was found, so the
+// user knows what to fix when the structure is non-trivial.
+func TestRender_JSONPath_RecursiveBigIntGuard_PathInMessage(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("URLBOX_API_SECRET", "sec_test")
+
+	var stdout, stderr bytes.Buffer
+	cmd.Execute([]string{
+		"render", "--json", `{"url":"https://e.com","viewport":{"width":9007199254740993}}`,
+		"--dry-run", "--output-format", "json",
+	}, &stdout, &stderr)
+	var env map[string]any
+	_ = json.Unmarshal(stdout.Bytes(), &env)
+	msg, _ := env["error"].(string)
+	// We want something like "viewport.width" in the message — at minimum the leaf key.
+	if !strings.Contains(msg, "width") {
+		t.Errorf("error should name the bad path leaf; got %q", msg)
+	}
+}
+
+// TestRender_JSONPath_RecursiveBigIntGuard_AcceptsValid pins that the
+// recursive walker doesn't false-positive on valid nested ints (small
+// or at-boundary), floats, strings, booleans, or nulls.
+func TestRender_JSONPath_RecursiveBigIntGuard_AcceptsValid(t *testing.T) {
+	cases := []struct {
+		name string
+		json string
+	}{
+		{"nested boundary 2^53-1", `{"url":"https://e.com","viewport":{"width":9007199254740991}}`},
+		{"nested floats", `{"url":"https://e.com","viewport":{"width":1.5,"height":2.5}}`},
+		{"array of small ints", `{"url":"https://e.com","sizes":[100,200,300]}`},
+		{"mixed types", `{"url":"https://e.com","data":{"name":"x","count":5,"enabled":true,"tag":null}}`},
+		{"deeply nested small ints", `{"url":"https://e.com","a":{"b":{"c":{"d":42}}}}`},
+		{"array of small floats", `{"url":"https://e.com","ratios":[0.1,0.2,0.3]}`},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+			t.Setenv("URLBOX_API_SECRET", "sec_test")
+
+			var stdout, stderr bytes.Buffer
+			exit := cmd.Execute([]string{
+				"render", "--json", c.json,
+				"--dry-run", "--output-format", "json",
+			}, &stdout, &stderr)
+			if exit != 0 {
+				t.Fatalf("%s should succeed; got exit %d stdout=%s", c.name, exit, stdout.String())
+			}
+		})
+	}
+}

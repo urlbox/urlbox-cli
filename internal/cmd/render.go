@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -471,10 +472,12 @@ const jsonSafeIntMax = 9007199254740991
 // they become float64. Then it converts the surviving numbers back to
 // float64 to preserve the existing map[string]any contract downstream.
 //
-// Round 5 Adv-1 fix: the typed-flag guard (validateIntFlagRanges) only
-// caught --width / --height on argv. The same payload via --json bypassed
-// it because regular json.Unmarshal rounds at parse time. Now both paths
-// reject identically.
+// Round 6 class-fix: walks the ENTIRE JSON tree (nested maps + arrays).
+// The previous version only checked top-level keys width/height/delay/
+// quality, leaving every other integer — including legitimate fields
+// like {"viewport":{"width":...}} — unchecked. The fundamental rule is
+// "no integer anywhere should silently round when marshaled to JSON",
+// independent of which key it sits under.
 func parseJSONWithIntRangeCheck(jsonBytes []byte) (map[string]any, *output.CLIError) {
 	raw := map[string]any{}
 	dec := json.NewDecoder(bytes.NewReader(jsonBytes))
@@ -486,33 +489,69 @@ func parseJSONWithIntRangeCheck(jsonBytes []byte) (map[string]any, *output.CLIEr
 			"--json accepts a literal JSON string, '-' (stdin), or '@path' (file). Got: "+err.Error(),
 		)
 	}
-	intBoundKeys := []string{"width", "height", "delay", "quality"}
-	for _, k := range intBoundKeys {
-		v, ok := raw[k]
-		if !ok {
-			continue
+	if cliErr := walkAndCheckInts(raw, ""); cliErr != nil {
+		return nil, cliErr
+	}
+	convertNumbersToFloat64(raw)
+	return raw, nil
+}
+
+// walkAndCheckInts recursively visits every json.Number in the parsed
+// payload and rejects any integer outside ±jsonSafeIntMax. Floats pass
+// through verbatim (their precision is already <= 2^53 and the API
+// validates value-semantic constraints per the schema-as-docs contract).
+//
+// `path` is dotted key notation (`viewport.width`) with `[N]` for array
+// indices (`items[0].width`), echoed in the error message so the user
+// can locate the offending value in a non-trivial payload.
+func walkAndCheckInts(v any, path string) *output.CLIError {
+	switch v := v.(type) {
+	case map[string]any:
+		// Sort keys so error reports are deterministic when multiple keys
+		// are out of range (we surface the first; sorted order makes it
+		// stable across runs and across Go map iteration orders).
+		keys := make([]string, 0, len(v))
+		for k := range v {
+			keys = append(keys, k)
 		}
-		n, ok := v.(json.Number)
-		if !ok {
-			continue
+		sort.Strings(keys)
+		for _, k := range keys {
+			next := k
+			if path != "" {
+				next = path + "." + k
+			}
+			if cliErr := walkAndCheckInts(v[k], next); cliErr != nil {
+				return cliErr
+			}
 		}
-		// Int64 parse — succeeds only for integer literals. Floats parse
-		// to float64 via the helper without range trouble (their precision
-		// is already <= 2^53 anyway).
-		i, err := n.Int64()
+	case []any:
+		for i, elem := range v {
+			next := fmt.Sprintf("%s[%d]", path, i)
+			if cliErr := walkAndCheckInts(elem, next); cliErr != nil {
+				return cliErr
+			}
+		}
+	case json.Number:
+		// Only integer-valued numbers can silently round. Floats parsed
+		// via json.Number that have a fractional part return an error
+		// from Int64(), and they pass through unchanged.
+		i, err := v.Int64()
 		if err != nil {
-			continue
+			return nil
 		}
 		if i > jsonSafeIntMax || i < -jsonSafeIntMax {
-			return nil, output.NewCLIError(
+			location := "--json"
+			if path != "" {
+				location = "--json key \"" + path + "\""
+			}
+			return output.NewCLIError(
 				output.ErrValidation,
-				fmt.Sprintf("--json key %q value %d is outside the JSON safe-integer range (±%d)", k, i, int64(jsonSafeIntMax)),
+				fmt.Sprintf("%s value %d is outside the JSON safe-integer range (±%d)", location, i, int64(jsonSafeIntMax)),
 				"Pass an integer between -9007199254740991 and 9007199254740991. Larger values silently round when marshaled to JSON.",
 			)
 		}
 	}
-	convertNumbersToFloat64(raw)
-	return raw, nil
+	return nil
 }
 
 // convertNumbersToFloat64 walks a parsed JSON map (json.Decoder with
