@@ -111,6 +111,16 @@ func newProfileCreateCmd() *cobra.Command {
 				}
 				resolvedSecret = validated
 			}
+			// Round 8 GG: same gate for api_host as for api_secret —
+			// validates scheme, rejects embedded creds + CRLF + control
+			// chars before persisting.
+			if apiHost != "" {
+				validated, vErr := config.ValidateAPIHost(apiHost)
+				if vErr != nil {
+					return vErr
+				}
+				apiHost = validated
+			}
 			// Atomic check + create under the config-file lock (Round 7 CC
 			// class-fix): the previous Load -> check -> Save sequence raced
 			// when parallel `config profile create` calls hit the same
@@ -372,6 +382,15 @@ profile count.`,
 			// Round 6 class-fix.
 			if key == "api_secret" {
 				validated, vErr := validateSecretValue(val)
+				if vErr != nil {
+					return vErr
+				}
+				val = validated
+			}
+			// Round 8 GG: api_host gets the same treatment — was accepting
+			// javascript:, file://, embedded credentials, CRLF before.
+			if key == "api_host" {
+				validated, vErr := config.ValidateAPIHost(val)
 				if vErr != nil {
 					return vErr
 				}

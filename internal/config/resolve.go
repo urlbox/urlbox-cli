@@ -61,6 +61,26 @@ func Resolve(opts ResolveOptions) (*Resolved, error) {
 		}
 		opts.EnvAPISecret = cleaned
 	}
+	// Round 8 GG: api_host got no validation at all before this — accepted
+	// javascript:, file://, embedded credentials, CRLF. Validate every
+	// non-empty external source (env + flag) so the rule is enforced
+	// regardless of who set the value.
+	if opts.EnvAPIHost != "" {
+		cleaned, vErr := ValidateAPIHost(opts.EnvAPIHost)
+		if vErr != nil {
+			vErr.Message = "URLBOX_API_HOST: " + vErr.Message
+			return nil, vErr
+		}
+		opts.EnvAPIHost = cleaned
+	}
+	if opts.FlagAPIHost != "" {
+		cleaned, vErr := ValidateAPIHost(opts.FlagAPIHost)
+		if vErr != nil {
+			vErr.Message = "--api-host: " + vErr.Message
+			return nil, vErr
+		}
+		opts.FlagAPIHost = cleaned
+	}
 	r := &Resolved{}
 
 	switch {
