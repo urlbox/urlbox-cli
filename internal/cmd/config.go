@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -110,26 +111,29 @@ func newProfileCreateCmd() *cobra.Command {
 				}
 				resolvedSecret = validated
 			}
-			cfg, err := config.Load()
-			if err != nil {
-				return output.NewCLIError(output.ErrServer, "failed to read config", err.Error())
-			}
-			if _, exists := cfg.Profiles[name]; exists {
-				return output.NewCLIError(
-					output.ErrConflict,
-					`Profile "`+name+`" already exists`,
-					"Use 'urlbox config set <key> <value> --profile "+name+"' to update it.",
-				)
-			}
-			if cfg.Profiles == nil {
-				cfg.Profiles = map[string]config.Profile{}
-			}
-			cfg.Profiles[name] = config.Profile{APIKey: apiKey, APISecret: resolvedSecret, APIHost: apiHost}
-			if cfg.DefaultProfile == "" {
-				cfg.DefaultProfile = name
-			}
-			if err := config.Save(cfg); err != nil {
-				return output.NewCLIError(output.ErrServer, "failed to save config", err.Error())
+			// Atomic check + create under the config-file lock (Round 7 CC
+			// class-fix): the previous Load -> check -> Save sequence raced
+			// when parallel `config profile create` calls hit the same
+			// XDG_CONFIG_HOME — 20 parallel calls used to lose 5-6.
+			if err := config.Update(func(cfg *config.Config) error {
+				if _, exists := cfg.Profiles[name]; exists {
+					return output.NewCLIError(
+						output.ErrConflict,
+						`Profile "`+name+`" already exists`,
+						"Use 'urlbox config set <key> <value> --profile "+name+"' to update it.",
+					)
+				}
+				cfg.Profiles[name] = config.Profile{APIKey: apiKey, APISecret: resolvedSecret, APIHost: apiHost}
+				if cfg.DefaultProfile == "" {
+					cfg.DefaultProfile = name
+				}
+				return nil
+			}); err != nil {
+				var cli *output.CLIError
+				if errors.As(err, &cli) {
+					return cli
+				}
+				return output.NewCLIError(output.ErrServer, "failed to write config", err.Error())
 			}
 			env := output.NewEnvelope(
 				"config profile create",
@@ -192,20 +196,22 @@ func newProfileDefaultCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
-			cfg, err := config.Load()
-			if err != nil {
-				return output.NewCLIError(output.ErrServer, "failed to read config", err.Error())
-			}
-			if _, ok := cfg.Profiles[name]; !ok {
-				return output.NewCLIError(
-					output.ErrNotFound,
-					`Profile "`+name+`" does not exist`,
-					"Run 'urlbox config profile list' to see available profiles.",
-				)
-			}
-			cfg.DefaultProfile = name
-			if err := config.Save(cfg); err != nil {
-				return output.NewCLIError(output.ErrServer, "failed to save config", err.Error())
+			if err := config.Update(func(cfg *config.Config) error {
+				if _, ok := cfg.Profiles[name]; !ok {
+					return output.NewCLIError(
+						output.ErrNotFound,
+						`Profile "`+name+`" does not exist`,
+						"Run 'urlbox config profile list' to see available profiles.",
+					)
+				}
+				cfg.DefaultProfile = name
+				return nil
+			}); err != nil {
+				var cli *output.CLIError
+				if errors.As(err, &cli) {
+					return cli
+				}
+				return output.NewCLIError(output.ErrServer, "failed to write config", err.Error())
 			}
 			env := output.NewEnvelope(
 				"config profile default",
@@ -225,34 +231,36 @@ func newProfileDeleteCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
-			cfg, err := config.Load()
-			if err != nil {
-				return output.NewCLIError(output.ErrServer, "failed to read config", err.Error())
-			}
-			if _, ok := cfg.Profiles[name]; !ok {
-				return output.NewCLIError(
-					output.ErrNotFound,
-					`Profile "`+name+`" does not exist`,
-					"Run 'urlbox config profile list' to see available profiles.",
-				)
-			}
-			if name == cfg.DefaultProfile && len(cfg.Profiles) == 1 {
-				return output.NewCLIError(
-					output.ErrConflict,
-					`Cannot delete the only profile "`+name+`"`,
-					"Create another profile first, or run 'urlbox auth' to start fresh.",
-				)
-			}
-			if name == cfg.DefaultProfile {
-				return output.NewCLIError(
-					output.ErrConflict,
-					`Cannot delete the default profile "`+name+`"`,
-					"Run 'urlbox config profile default <other>' to switch the default first.",
-				)
-			}
-			delete(cfg.Profiles, name)
-			if err := config.Save(cfg); err != nil {
-				return output.NewCLIError(output.ErrServer, "failed to save config", err.Error())
+			if err := config.Update(func(cfg *config.Config) error {
+				if _, ok := cfg.Profiles[name]; !ok {
+					return output.NewCLIError(
+						output.ErrNotFound,
+						`Profile "`+name+`" does not exist`,
+						"Run 'urlbox config profile list' to see available profiles.",
+					)
+				}
+				if name == cfg.DefaultProfile && len(cfg.Profiles) == 1 {
+					return output.NewCLIError(
+						output.ErrConflict,
+						`Cannot delete the only profile "`+name+`"`,
+						"Create another profile first, or run 'urlbox auth' to start fresh.",
+					)
+				}
+				if name == cfg.DefaultProfile {
+					return output.NewCLIError(
+						output.ErrConflict,
+						`Cannot delete the default profile "`+name+`"`,
+						"Run 'urlbox config profile default <other>' to switch the default first.",
+					)
+				}
+				delete(cfg.Profiles, name)
+				return nil
+			}); err != nil {
+				var cli *output.CLIError
+				if errors.As(err, &cli) {
+					return cli
+				}
+				return output.NewCLIError(output.ErrServer, "failed to write config", err.Error())
 			}
 			env := output.NewEnvelope(
 				"config profile delete",
@@ -369,31 +377,33 @@ profile count.`,
 				}
 				val = validated
 			}
-			c, err := config.Load()
-			if err != nil {
-				return output.NewCLIError(output.ErrServer, "failed to read config", err.Error())
-			}
 			// default_profile is top-level (no profile-target resolution), but the
 			// named profile MUST exist — silently accepting a dangling default_profile
 			// would break credential resolution downstream.
 			if key == "default_profile" {
-				if len(c.Profiles) == 0 {
-					return output.NewCLIError(
-						output.ErrUsage,
-						"No profiles configured",
-						"Run `urlbox auth --api-secret <secret>` to create one.",
-					)
-				}
-				if _, ok := c.Profiles[val]; !ok {
-					return output.NewCLIError(
-						output.ErrUsage,
-						"Unknown profile: "+val,
-						"Configured profiles: "+quotedSortedProfileNames(c.Profiles)+".",
-					)
-				}
-				c.DefaultProfile = val
-				if err := config.Save(c); err != nil {
-					return output.NewCLIError(output.ErrServer, "failed to save config", err.Error())
+				if err := config.Update(func(c *config.Config) error {
+					if len(c.Profiles) == 0 {
+						return output.NewCLIError(
+							output.ErrUsage,
+							"No profiles configured",
+							"Run `urlbox auth --api-secret <secret>` to create one.",
+						)
+					}
+					if _, ok := c.Profiles[val]; !ok {
+						return output.NewCLIError(
+							output.ErrUsage,
+							"Unknown profile: "+val,
+							"Configured profiles: "+quotedSortedProfileNames(c.Profiles)+".",
+						)
+					}
+					c.DefaultProfile = val
+					return nil
+				}); err != nil {
+					var cli *output.CLIError
+					if errors.As(err, &cli) {
+						return cli
+					}
+					return output.NewCLIError(output.ErrServer, "failed to write config", err.Error())
 				}
 				env := output.NewEnvelope(
 					"config set",
@@ -403,27 +413,38 @@ profile count.`,
 				)
 				return writeEnvelope(cmd, env)
 			}
-			profileName, perr := resolveTargetProfile(cmd, c)
-			if perr != nil {
-				return perr
-			}
-			// Overwrite guard for api_secret — same shape as `urlbox auth`'s
-			// guard (Round 1 S-C3). Without this, `config set api_secret X`
-			// was the unguarded back door past the auth-side protection.
-			// Round 6 class-fix.
-			if key == "api_secret" && !force {
-				existing := c.Profiles[profileName].APISecret
-				if existing != "" && existing != val {
-					return output.NewCLIError(
-						output.ErrConflict,
-						fmt.Sprintf("profile %q already has an API secret (%s); overwrite refused", profileName, maskSecret(existing)),
-						"Pass --force to overwrite, or use `urlbox config profile create <name>` for a separate profile. This guard mirrors `urlbox auth`'s protection.",
-					)
+
+			// Per-profile key (api_key / api_secret / api_host). Profile
+			// resolution + overwrite-guard + write all happen under one
+			// Update so the read-modify-write window is atomic. Round 7 CC.
+			var profileName string
+			if err := config.Update(func(c *config.Config) error {
+				name, perr := resolveTargetProfile(cmd, c)
+				if perr != nil {
+					return perr
 				}
-			}
-			writeKey(c, profileName, key, val)
-			if err := config.Save(c); err != nil {
-				return output.NewCLIError(output.ErrServer, "failed to save config", err.Error())
+				profileName = name
+				// Overwrite guard for api_secret — same shape as `urlbox auth`'s
+				// guard (Round 1 S-C3). Without this, `config set api_secret X`
+				// was the unguarded back door past the auth-side protection.
+				if key == "api_secret" && !force {
+					existing := c.Profiles[name].APISecret
+					if existing != "" && existing != val {
+						return output.NewCLIError(
+							output.ErrConflict,
+							fmt.Sprintf("profile %q already has an API secret (%s); overwrite refused", name, maskSecret(existing)),
+							"Pass --force to overwrite, or use `urlbox config profile create <name>` for a separate profile. This guard mirrors `urlbox auth`'s protection.",
+						)
+					}
+				}
+				writeKey(c, name, key, val)
+				return nil
+			}); err != nil {
+				var cli *output.CLIError
+				if errors.As(err, &cli) {
+					return cli
+				}
+				return output.NewCLIError(output.ErrServer, "failed to write config", err.Error())
 			}
 			// Round 4 M4: mirror the masking that `config get api_secret`
 			// already does — never echo a freshly-set secret back through

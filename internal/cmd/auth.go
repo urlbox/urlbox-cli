@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -148,92 +149,95 @@ The env var URLBOX_API_SECRET takes precedence at runtime over the saved value.`
 			}
 			secret = validated
 
-			cfg, err := config.Load()
-			if err != nil {
-				return output.NewCLIError(
-					output.ErrServer,
-					"failed to read config",
-					err.Error(),
-				)
-			}
-			if cfg.Profiles == nil {
-				cfg.Profiles = map[string]config.Profile{}
-			}
-
-			// Round 4 C1 fix: honor --profile and URLBOX_PROFILE. Before this,
-			// auth always wrote to cfg.DefaultProfile, silently dropping any
-			// --profile flag the user passed. With --force, that turned the
-			// overwrite guard into a 2026-05-08-incident-class clobber of the
-			// default profile when the caller intended a non-default target.
-			//
-			// Precedence: --profile flag > URLBOX_PROFILE env > cfg.DefaultProfile > "default".
-			// When the flag or env names a non-existent profile, error rather than
-			// silently fall back. This matches render / status / link / config set.
+			// Round 7 CC class-fix: the entire read-modify-write happens
+			// inside config.Update so the file lock makes it atomic w.r.t.
+			// parallel processes. The TTY prompt logic stays outside the
+			// mutate fn (prompting under a lock would deadlock other
+			// processes for the prompt's lifetime); on conflict, prompt
+			// then retry the Update with force=true.
 			flagProfile, _ := cmd.Root().PersistentFlags().GetString("profile")
 			envProfile := os.Getenv(config.EnvProfile)
 
 			var profileName string
-			switch {
-			case flagProfile != "":
-				if _, ok := cfg.Profiles[flagProfile]; !ok {
-					return output.NewCLIError(
-						output.ErrUsage,
-						"Unknown profile: "+flagProfile,
-						"Configured profiles: "+quotedSortedProfileNames(cfg.Profiles)+". Use `urlbox config profile create "+flagProfile+"` first, or drop --profile to target the default.",
-					)
-				}
-				profileName = flagProfile
-			case envProfile != "":
-				if _, ok := cfg.Profiles[envProfile]; !ok {
-					return output.NewCLIError(
-						output.ErrUsage,
-						"Unknown profile (URLBOX_PROFILE): "+envProfile,
-						"Configured profiles: "+quotedSortedProfileNames(cfg.Profiles)+". Unset URLBOX_PROFILE or create the profile first.",
-					)
-				}
-				profileName = envProfile
-			default:
-				profileName = cfg.DefaultProfile
-				if profileName == "" {
-					profileName = "default"
-					cfg.DefaultProfile = profileName
-				}
-			}
-			p := cfg.Profiles[profileName]
+			runUpdate := func(allowOverwrite bool) error {
+				return config.Update(func(cfg *config.Config) error {
+					// Round 4 C1: honor --profile and URLBOX_PROFILE. Before this,
+					// auth always wrote to cfg.DefaultProfile, silently dropping
+					// any --profile flag, which turned the overwrite guard into
+					// the 2026-05-08-incident-class clobber when callers
+					// intended a non-default target. Precedence: flag > env >
+					// cfg.DefaultProfile > "default".
+					switch {
+					case flagProfile != "":
+						if _, ok := cfg.Profiles[flagProfile]; !ok {
+							return output.NewCLIError(
+								output.ErrUsage,
+								"Unknown profile: "+flagProfile,
+								"Configured profiles: "+quotedSortedProfileNames(cfg.Profiles)+". Use `urlbox config profile create "+flagProfile+"` first, or drop --profile to target the default.",
+							)
+						}
+						profileName = flagProfile
+					case envProfile != "":
+						if _, ok := cfg.Profiles[envProfile]; !ok {
+							return output.NewCLIError(
+								output.ErrUsage,
+								"Unknown profile (URLBOX_PROFILE): "+envProfile,
+								"Configured profiles: "+quotedSortedProfileNames(cfg.Profiles)+". Unset URLBOX_PROFILE or create the profile first.",
+							)
+						}
+						profileName = envProfile
+					default:
+						profileName = cfg.DefaultProfile
+						if profileName == "" {
+							profileName = "default"
+							cfg.DefaultProfile = profileName
+						}
+					}
+					p := cfg.Profiles[profileName]
 
-			// Overwrite guard (Round 1 S-C3): protect against the 2026-05-08
-			// incident class where an autonomous agent runs `urlbox auth
-			// --api-secret <test_value>` and silently clobbers the user's
-			// real secret. Only fires when the new value differs from the
-			// existing — same-secret re-save remains idempotent.
-			// Both branches return ErrConflict — the existing secret is the
-			// conflict in both cases, and unified exit code 7 lets CI scripts
-			// classify "we did not save" without caring whether the user typed
-			// 'n' or whether they forgot --force. The error message and code
-			// field still distinguish the variants for humans / structured
-			// log consumers.
-			if p.APISecret != "" && p.APISecret != secret && !force {
-				if isStdinTTY(cmd.InOrStdin()) && isStderrTTY(cmd.ErrOrStderr()) {
-					if !confirmAuthOverwrite(cmd, p.APISecret, secret) {
+					// Overwrite guard (Round 1 S-C3): same-secret re-save is
+					// idempotent; different-secret overwrite needs allowOverwrite.
+					if p.APISecret != "" && p.APISecret != secret && !allowOverwrite {
 						return output.NewCLIError(
 							output.ErrConflict,
-							"auth cancelled — existing secret preserved",
-							"Re-run with --force to overwrite without prompt, or use `urlbox config profile create <name>` for a separate profile.",
+							fmt.Sprintf("profile %q already has an API secret (%s); overwrite refused", profileName, maskSecret(p.APISecret)),
+							"Pass --force to overwrite, or use `urlbox config profile create <name>` for a separate profile. This guard prevents the 2026-05-08 incident class where an agent silently clobbers a real secret.",
 						)
 					}
-				} else {
-					return output.NewCLIError(
-						output.ErrConflict,
-						fmt.Sprintf("profile %q already has an API secret (%s); overwrite refused", profileName, maskSecret(p.APISecret)),
-						"Pass --force to overwrite, or use `urlbox config profile create <name>` for a separate profile. This guard prevents the 2026-05-08 incident class where an agent silently clobbers a real secret.",
-					)
-				}
+					p.APISecret = secret
+					cfg.Profiles[profileName] = p
+					return nil
+				})
 			}
 
-			p.APISecret = secret
-			cfg.Profiles[profileName] = p
-
-			if err := config.Save(cfg); err != nil {
+			err := runUpdate(force)
+			if err != nil {
+				// Interactive TTY: if the inner conflict was an overwrite
+				// guard and we're on a TTY, prompt the user. On confirm,
+				// retry the Update with allowOverwrite=true.
+				var cli *output.CLIError
+				if errors.As(err, &cli) && cli.Code == output.ErrConflict &&
+					isStdinTTY(cmd.InOrStdin()) && isStderrTTY(cmd.ErrOrStderr()) {
+					// Re-read just for the prompt display (out-of-lock; we
+					// re-check inside Update on retry).
+					if existing, _ := config.Load(); existing != nil {
+						p := existing.Profiles[profileName]
+						if !confirmAuthOverwrite(cmd, p.APISecret, secret) {
+							return output.NewCLIError(
+								output.ErrConflict,
+								"auth cancelled — existing secret preserved",
+								"Re-run with --force to overwrite without prompt, or use `urlbox config profile create <name>` for a separate profile.",
+							)
+						}
+					}
+					err = runUpdate(true)
+				}
+			}
+			if err != nil {
+				var cli *output.CLIError
+				if errors.As(err, &cli) {
+					return cli
+				}
 				return output.NewCLIError(
 					output.ErrServer,
 					"failed to save config",
