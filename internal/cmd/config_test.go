@@ -126,34 +126,13 @@ func TestConfigSet_NoProfiles_Errors(t *testing.T) {
 	}
 }
 
-func TestConfigSet_MultipleProfiles_NoFlag_Errors(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", dir)
-	seedConfig(t, dir, map[string]config.Profile{
-		"default": {APIKey: "k1"},
-		"work":    {APIKey: "k2"},
-	})
-
-	var stdout, stderr bytes.Buffer
-	exit := cmd.Execute([]string{"config", "set", "api_secret", "sec_xxx"}, &stdout, &stderr)
-	if exit != 1 {
-		t.Fatalf("expected exit 1, got %d", exit)
-	}
-	var env map[string]any
-	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
-		t.Fatalf("not JSON: %v", err)
-	}
-	if env["code"] != "usage" {
-		t.Errorf("code=%v", env["code"])
-	}
-	if env["error"] != "--profile is required" {
-		t.Errorf("error=%v", env["error"])
-	}
-	want := `Configured profiles: "default", "work". Add --profile <name> to choose one.`
-	if env["hint"] != want {
-		t.Errorf("hint=%v want=%v", env["hint"], want)
-	}
-}
+// Historical TestConfigSet_MultipleProfiles_NoFlag_Errors asserted that
+// 2+ profiles always errored without --profile. Round 5 CI-2 changed
+// that to honor default_profile transparently (matching how render /
+// status / link resolve). Coverage moved to:
+//   - TestConfigSet_MultipleProfiles_UsesDefaultProfile (positive)
+//   - TestConfigSet_MultipleProfiles_NoDefaultProfile_Errors (fallback)
+// — both at the bottom of this file.
 
 func TestConfigSet_MultipleProfiles_WithFlag_Writes(t *testing.T) {
 	dir := t.TempDir()
@@ -752,5 +731,93 @@ func TestConfigProfileCreate_AcceptsSafeNames(t *testing.T) {
 				t.Fatalf("profile create %q should succeed; got exit %d stderr=%s", name, exit, stderr.String())
 			}
 		})
+	}
+}
+
+// TestConfigSet_MultipleProfiles_UsesDefaultProfile pins Round 5 CI-2:
+// when 2+ profiles exist AND default_profile is set, config get/set
+// should target the default rather than require --profile. Previously
+// a CI script that ran `config set api_key X` after creating a second
+// profile started failing with exit 1, inconsistent with how render /
+// status / link resolve the default profile.
+func TestConfigSet_MultipleProfiles_UsesDefaultProfile(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	// seedConfig sets DefaultProfile to the alphabetically-first profile,
+	// so "default" here is the default.
+	seedConfig(t, dir, map[string]config.Profile{
+		"default": {APIKey: "k1"},
+		"work":    {APIKey: "k2"},
+	})
+
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{"config", "set", "api_secret", "sec_to_default"}, &stdout, &stderr)
+	if exit != 0 {
+		t.Fatalf("config set should succeed using default_profile; got exit %d stderr=%s", exit, stderr.String())
+	}
+	c, err := config.Load()
+	must(t, err)
+	if got := c.Profiles["default"].APISecret; got != "sec_to_default" {
+		t.Errorf("default.api_secret=%q, want sec_to_default", got)
+	}
+	if got := c.Profiles["work"].APISecret; got != "" {
+		t.Errorf("work.api_secret=%q, want untouched (empty)", got)
+	}
+}
+
+// TestConfigGet_MultipleProfiles_UsesDefaultProfile mirrors the above
+// for the read side.
+func TestConfigGet_MultipleProfiles_UsesDefaultProfile(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	seedConfig(t, dir, map[string]config.Profile{
+		"default": {APIKey: "k_default"},
+		"work":    {APIKey: "k_work"},
+	})
+
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{"config", "get", "api_key", "--output-format", "quiet"}, &stdout, &stderr)
+	if exit != 0 {
+		t.Fatalf("config get should succeed using default_profile; got exit %d stderr=%s", exit, stderr.String())
+	}
+	got := strings.TrimSpace(stdout.String())
+	if got != strconvQuote("k_default") {
+		t.Errorf("got %s, want %s", got, strconvQuote("k_default"))
+	}
+}
+
+// TestConfigSet_MultipleProfiles_NoDefaultProfile_Errors keeps the
+// ambiguous-error path under coverage: 2+ profiles AND default_profile
+// is empty (rare; manually-edited config) is still a usage error.
+func TestConfigSet_MultipleProfiles_NoDefaultProfile_Errors(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	// Construct the config manually to leave DefaultProfile blank.
+	cfgDir := filepath.Join(dir, "urlbox")
+	must(t, os.MkdirAll(cfgDir, 0o700))
+	c := &config.Config{
+		DefaultProfile: "",
+		Profiles: map[string]config.Profile{
+			"a": {APIKey: "k1"},
+			"b": {APIKey: "k2"},
+		},
+	}
+	b, err := json.MarshalIndent(c, "", "  ")
+	must(t, err)
+	must(t, os.WriteFile(filepath.Join(cfgDir, "config.json"), b, 0o600))
+
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{"config", "set", "api_secret", "sec_xxx", "--output-format", "json"}, &stdout, &stderr)
+	if exit != 1 {
+		t.Fatalf("expected exit 1 (no default_profile, no --profile); got %d stdout=%s", exit, stdout.String())
+	}
+	var env map[string]any
+	_ = json.Unmarshal(stdout.Bytes(), &env)
+	if env["error"] != "--profile is required" {
+		t.Errorf("error=%v, want '--profile is required'", env["error"])
+	}
+	wantHint := `Configured profiles: "a", "b". Add --profile <name> to choose one.`
+	if env["hint"] != wantHint {
+		t.Errorf("hint=%v want=%v", env["hint"], wantHint)
 	}
 }

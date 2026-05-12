@@ -416,7 +416,9 @@ profile count.`,
 //   - URLBOX_PROFILE set → must exist, else ErrUsage (Round 5 Adv-2: env-var
 //     typos previously fell through silently and leaked the wrong profile)
 //   - 1 profile, no flag/env → that profile (implicit)
-//   - 2+ profiles, no flag/env → ErrUsage "--profile is required" + sorted list
+//   - 2+ profiles, default_profile set and exists → default_profile (Round 5
+//     CI-2: matches how render/status/link resolve)
+//   - 2+ profiles, no default_profile → ErrUsage "--profile is required"
 func resolveTargetProfile(cmd *cobra.Command, c *config.Config) (string, error) {
 	if len(c.Profiles) == 0 {
 		return "", output.NewCLIError(
@@ -449,6 +451,16 @@ func resolveTargetProfile(cmd *cobra.Command, c *config.Config) (string, error) 
 	if len(c.Profiles) == 1 {
 		for name := range c.Profiles {
 			return name, nil
+		}
+	}
+	// 2+ profiles, no flag, no env: fall back to default_profile if set.
+	// Round 5 CI-2 — config get/set used to require --profile here, but
+	// render/status/link already resolved default_profile transparently,
+	// breaking CI scripts that ran `config set api_key X` after creating
+	// a second profile.
+	if c.DefaultProfile != "" {
+		if _, ok := c.Profiles[c.DefaultProfile]; ok {
+			return c.DefaultProfile, nil
 		}
 	}
 	return "", output.NewCLIError(
