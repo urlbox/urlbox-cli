@@ -97,17 +97,22 @@ Exits non-zero if any check fails.`,
 			if anyFail {
 				summary = "Some checks failed — see hints for next steps"
 			}
+			// Overall status string for quiet-mode scalar output and JSON
+			// consumers who want a single field to switch on.
+			overall := "ok"
+			if anyFail {
+				overall = "fail"
+			}
 			env := output.NewEnvelope(
 				"doctor",
-				map[string]any{"checks": checks},
+				map[string]any{"checks": checks, "status": overall},
 				summary,
 				[]output.Breadcrumb{
 					{Action: "auth", Cmd: "urlbox auth --api-secret <secret>"},
 				},
 			)
 			// Reflect failure state on the envelope's `ok` field so JSON
-			// consumers see `ok: false` alongside the failed checks. Exit
-			// code stays 10 via the silent CLIError below.
+			// consumers see `ok: false` alongside the failed checks.
 			if anyFail {
 				env.OK = false
 			}
@@ -119,9 +124,15 @@ Exits non-zero if any check fails.`,
 			styles := output.NewStylesForWriter(stdout)
 
 			var writeErr error
-			if jqExpr != "" {
+			switch {
+			case jqExpr != "":
 				writeErr = output.WriteEnvelopeWithJQ(stdout, env, jqExpr, format == output.FormatQuiet)
-			} else {
+			case format == output.FormatQuiet:
+				// Round 8 JJ: quiet mode used to print the whole checks
+				// tree (broke the "single scalar" contract). Print the
+				// overall status string instead — agents can pipe it.
+				_, writeErr = fmt.Fprintln(stdout, overall)
+			default:
 				formatter := output.NewFormatter(format, styles)
 				writeErr = formatter.WriteSuccess(stdout, env)
 			}
@@ -130,8 +141,14 @@ Exits non-zero if any check fails.`,
 			}
 
 			if anyFail {
+				// Round 8 JJ: pick the exit code based on which checks
+				// failed, rather than always returning ErrServer (10).
+				// The contract:
+				//   3  (auth)    — credential / api_secret problem
+				//   11 (network) — DNS / unreachable
+				//   10 (server)  — last resort / non-2xx auth response
 				return &output.CLIError{
-					Code:    output.ErrServer,
+					Code:    doctorExitCode(checks),
 					Message: summary,
 					Silent:  true,
 				}
@@ -139,6 +156,36 @@ Exits non-zero if any check fails.`,
 			return nil
 		},
 	}
+}
+
+// doctorExitCode maps the worst failing check to the closed-set exit
+// code so agents reading the exit value can branch on the failure
+// category. Priority: auth-related credential issues first (3), then
+// network/DNS reachability (11), then everything else as server (10).
+func doctorExitCode(checks []Check) output.ErrorCode {
+	var hasAuth, hasNetwork, hasOther bool
+	for _, c := range checks {
+		if c.Status != "fail" {
+			continue
+		}
+		switch c.Name {
+		case "api_secret", "auth":
+			hasAuth = true
+		case "dns", "api_reachable":
+			hasNetwork = true
+		default:
+			hasOther = true
+		}
+	}
+	switch {
+	case hasAuth:
+		return output.ErrAuth
+	case hasNetwork:
+		return output.ErrNetwork
+	case hasOther:
+		return output.ErrServer
+	}
+	return output.ErrServer // unreachable when anyFail, defensive default
 }
 
 func runDoctorChecks(ctx context.Context, resolved *config.Resolved) []Check {

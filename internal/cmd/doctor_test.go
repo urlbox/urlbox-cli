@@ -270,3 +270,61 @@ func TestDoctor_HonorsProfileFlag_ValidTargetsThatProfile(t *testing.T) {
 		t.Errorf("auth check used wrong profile's secret; saw %q, want Bearer sec_work_yy", seenAuth)
 	}
 }
+
+// TestDoctor_QuietMode_PrintsScalar pins Round 8 JJ: doctor's quiet
+// mode used to dump the full JSON tree, violating the "quiet = single
+// useful scalar" contract. Now prints the overall status ("ok" or
+// "fail") on one line.
+func TestDoctor_QuietMode_PrintsScalar(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	t.Setenv("URLBOX_API_SECRET", "")
+
+	var stdout, stderr bytes.Buffer
+	_ = cmd.Execute([]string{"doctor", "--output-format", "quiet"}, &stdout, &stderr)
+	out := strings.TrimSpace(stdout.String())
+	if strings.HasPrefix(out, "{") || strings.Contains(out, "\"checks\"") {
+		t.Errorf("quiet mode emitted JSON tree: %s", out)
+	}
+	if out != "ok" && out != "fail" {
+		t.Errorf("quiet mode should print 'ok' or 'fail' only; got %q", out)
+	}
+}
+
+// TestDoctor_ExitCode_AuthFail pins Round 8 JJ: when only credential
+// checks fail (no api_secret), exit code should be 3 (auth), not 10
+// (server). The contract maps exit 10 to upstream-server problems,
+// which is misleading when the actual issue is local config.
+func TestDoctor_ExitCode_AuthFail(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	t.Setenv("URLBOX_API_SECRET", "")
+
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{"doctor", "--output-format", "json"}, &stdout, &stderr)
+	// We can't be 100% sure DNS will succeed in CI, so accept either
+	// auth-only (exit 3) or network+auth (exit 11 — network wins by
+	// priority). 10 (server) without an upstream problem is wrong.
+	if exit != 3 && exit != 11 {
+		t.Errorf("exit=%d, want 3 (auth) or 11 (network) — not 10", exit)
+	}
+}
+
+// TestDoctor_OverallStatusField pins that the new data.status scalar
+// is present in JSON output (agents can read this without iterating
+// data.checks).
+func TestDoctor_OverallStatusField(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	t.Setenv("URLBOX_API_SECRET", "")
+
+	var stdout, stderr bytes.Buffer
+	_ = cmd.Execute([]string{"doctor", "--output-format", "json"}, &stdout, &stderr)
+	var env map[string]any
+	_ = json.Unmarshal(stdout.Bytes(), &env)
+	data, _ := env["data"].(map[string]any)
+	status, _ := data["status"].(string)
+	if status != "ok" && status != "fail" {
+		t.Errorf("data.status=%q, want 'ok' or 'fail'", status)
+	}
+}
