@@ -19,7 +19,14 @@ import (
 	"github.com/urlbox/urlbox-cli/internal/version"
 )
 
-const httpTimeout = 5 * time.Second
+// httpTimeout caps each individual HTTP check (api_reachable, auth).
+// Set to 10s rather than the original 5s to absorb cold-container
+// startup costs — Round 5 CI-1 reproed a false-fail on the first
+// invocation in a fresh container because DNS+TCP+TLS to api.urlbox.com
+// blew through the 5s budget even though warm-cache curl returned in
+// ~350ms. The outer doctor context is sized to fit all checks at this
+// per-check limit.
+const httpTimeout = 10 * time.Second
 
 // Check is one diagnostic result.
 type Check struct {
@@ -38,7 +45,10 @@ API key, DNS resolution, API reachability, and credential validity.
 Exits non-zero if any check fails.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			// Sized to fit DNS + api_reachable + auth (each httpTimeout
+			// = 10s) plus a little headroom. Round 5 CI-1 bumped the
+			// per-check timeout to absorb cold-start latency.
+			ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 			defer cancel()
 
 			checks := runDoctorChecks(ctx)
