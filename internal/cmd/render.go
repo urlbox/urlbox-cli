@@ -168,6 +168,18 @@ func runRender(cmd *cobra.Command, args []string, f *renderFlags) error {
 		f.url = args[0]
 	}
 
+	// Round 5 Adv-5: reject negative --timeout up front. Without this,
+	// `--timeout -5s` produced the nonsense diagnostic "Render timed out
+	// after -5s" — the per-attempt context immediately expired and the
+	// timeout-error path interpolated the negative duration verbatim.
+	if f.timeout < 0 {
+		return output.NewCLIError(
+			output.ErrUsage,
+			fmt.Sprintf("--timeout must be a positive duration; got %s", f.timeout),
+			"Pass a positive duration like --timeout 30s or --timeout 2m. Omit the flag to use the default.",
+		)
+	}
+
 	// Both --api-secret-stdin and `--json -` consume stdin; at most one wins.
 	if f.apiSecretStdin && f.jsonInput == "-" {
 		return output.NewCLIError(
@@ -233,12 +245,23 @@ func runRender(cmd *cobra.Command, args []string, f *renderFlags) error {
 	// that came from --json or a preset.
 	applyFlagsToMap(cmd, f, merged)
 
-	// 4. Require url somewhere.
-	if _, ok := merged["url"]; !ok {
+	// 4. Require url somewhere — and require it to be a non-empty string.
+	// Round 5 Adv-7: --json '{"url":""}' and --json '{"url":null}' used to
+	// bypass this check because it only verified the key's presence.
+	urlVal, urlPresent := merged["url"]
+	missing := !urlPresent
+	if !missing {
+		if urlVal == nil {
+			missing = true
+		} else if s, ok := urlVal.(string); ok && s == "" {
+			missing = true
+		}
+	}
+	if missing {
 		return output.NewCLIError(
 			output.ErrUsage,
 			"missing required url",
-			"Provide a positional URL (urlbox render <url>) or include \"url\" in --json.",
+			"Provide a positional URL (urlbox render <url>) or include a non-empty \"url\" in --json.",
 		)
 	}
 
@@ -300,13 +323,29 @@ func runRender(cmd *cobra.Command, args []string, f *renderFlags) error {
 
 	// 6. --dry-run short-circuits with the validated payload in the envelope.
 	if f.dryRun {
+		// Round 5 Adv-3: flag the silent precedence when --dry-run wins
+		// over --curl / --output. Without this the user has no signal
+		// that their --curl print / --output save wasn't performed.
+		breadcrumbs := []output.Breadcrumb{
+			{Action: "send", Cmd: "urlbox render <url>"},
+		}
+		if f.curl {
+			breadcrumbs = append(breadcrumbs, output.Breadcrumb{
+				Action: "ignored",
+				Cmd:    "--curl was dropped because --dry-run wins; re-run without --dry-run to print the curl command",
+			})
+		}
+		if f.output != "" {
+			breadcrumbs = append(breadcrumbs, output.Breadcrumb{
+				Action: "ignored",
+				Cmd:    "--output " + f.output + " was dropped because --dry-run wins; re-run without --dry-run to save the file",
+			})
+		}
 		env := output.NewEnvelope(
 			"render",
 			validated,
 			"Dry run: payload validated, no API call made",
-			[]output.Breadcrumb{
-				{Action: "send", Cmd: "urlbox render <url>"},
-			},
+			breadcrumbs,
 		)
 		return writeRenderEnvelope(cmd, env)
 	}
