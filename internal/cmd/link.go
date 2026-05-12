@@ -140,9 +140,9 @@ func runLink(cmd *cobra.Command, args []string, f *linkFlags) error {
 	// 4. Resolve credentials. Flag overrides win at the resolver layer; we
 	// also fall back to env (URLBOX_API_SECRET) so users with the env var
 	// already set don't need to pass --api-secret.
-	cfg, err := config.Load()
-	if err != nil {
-		return output.NewCLIError(output.ErrServer, "failed to read config", err.Error())
+	cfg, cfgErr := config.LoadOrCLIError()
+	if cfgErr != nil {
+		return cfgErr
 	}
 	profile, _ := cmd.Root().PersistentFlags().GetString("profile")
 	overlay, ovErr := loadRepoOverlay()

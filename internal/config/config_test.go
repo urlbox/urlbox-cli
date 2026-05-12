@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/urlbox/urlbox-cli/internal/config"
+	"github.com/urlbox/urlbox-cli/internal/output"
 )
 
 func must(t *testing.T, err error) {
@@ -284,5 +285,69 @@ func TestConfig_Save_AtomicViaRename(t *testing.T) {
 	must(t, err)
 	if perm := info.Mode().Perm(); perm != 0o600 {
 		t.Errorf("config perm = %o, want 0600", perm)
+	}
+}
+
+// TestLoadOrCLIError_PermissionDenied pins Round 8 review M1: config-read
+// permission errors used to be wrapped as ErrServer at 6 cmd-side call
+// sites. Now they map to ErrForbidden via LoadOrCLIError, symmetric with
+// the Update/write path's KK class-fix.
+func TestLoadOrCLIError_PermissionDenied(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("running as root; chmod 0000 won't block reads")
+	}
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	// Create a config file then make it unreadable. macOS+linux both
+	// honor 0000 against the file owner unless root.
+	must(t, os.MkdirAll(filepath.Join(dir, "urlbox"), 0o700))
+	path := filepath.Join(dir, "urlbox", "config.json")
+	must(t, os.WriteFile(path, []byte(`{"profiles":{}}`), 0o600))
+	must(t, os.Chmod(path, 0o000))
+	t.Cleanup(func() { _ = os.Chmod(path, 0o600) })
+
+	_, cliErr := config.LoadOrCLIError()
+	if cliErr == nil {
+		t.Fatal("expected error reading 0o000 file")
+	}
+	if cliErr.Code != output.ErrForbidden {
+		t.Errorf("code=%q, want forbidden (exit 4), not server (10)", cliErr.Code)
+	}
+}
+
+// TestLoadOrCLIError_MalformedJSON maps json.SyntaxError to ErrUsage with
+// a hint that points at the offending file.
+func TestLoadOrCLIError_MalformedJSON(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	must(t, os.MkdirAll(filepath.Join(dir, "urlbox"), 0o700))
+	path := filepath.Join(dir, "urlbox", "config.json")
+	must(t, os.WriteFile(path, []byte(`NOT JSON {[`), 0o600))
+
+	_, cliErr := config.LoadOrCLIError()
+	if cliErr == nil {
+		t.Fatal("expected error parsing malformed JSON")
+	}
+	if cliErr.Code != output.ErrUsage {
+		t.Errorf("code=%q, want usage (exit 2)", cliErr.Code)
+	}
+}
+
+// TestLoadOrCLIError_HappyPath pins that valid configs return (cfg, nil).
+func TestLoadOrCLIError_HappyPath(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	must(t, os.MkdirAll(filepath.Join(dir, "urlbox"), 0o700))
+	must(t, os.WriteFile(
+		filepath.Join(dir, "urlbox", "config.json"),
+		[]byte(`{"default_profile":"default","profiles":{"default":{"api_secret":"sec_xx"}}}`),
+		0o600,
+	))
+	cfg, cliErr := config.LoadOrCLIError()
+	if cliErr != nil {
+		t.Fatalf("unexpected error: %v", cliErr)
+	}
+	if cfg.DefaultProfile != "default" {
+		t.Errorf("DefaultProfile=%q", cfg.DefaultProfile)
 	}
 }

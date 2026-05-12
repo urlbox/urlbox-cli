@@ -373,9 +373,9 @@ func buildStatusClient(cmd *cobra.Command, f *statusFlags) (api.Client, *output.
 		return statusClientOverride, nil
 	}
 
-	cfg, err := config.Load()
-	if err != nil {
-		return nil, output.NewCLIError(output.ErrServer, "failed to read config", err.Error())
+	cfg, cfgErr := config.LoadOrCLIError()
+	if cfgErr != nil {
+		return nil, cfgErr
 	}
 	profile, _ := cmd.Root().PersistentFlags().GetString("profile")
 	overlay, ovErr := loadRepoOverlay()

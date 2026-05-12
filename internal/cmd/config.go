@@ -168,9 +168,9 @@ func newProfileListCmd() *cobra.Command {
 		Short: "List all profiles",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			cfg, err := config.Load()
-			if err != nil {
-				return output.NewCLIError(output.ErrServer, "failed to read config", err.Error())
+			cfg, cfgErr := config.LoadOrCLIError()
+			if cfgErr != nil {
+				return cfgErr
 			}
 			names := make([]string, 0, len(cfg.Profiles))
 			for n := range cfg.Profiles {
@@ -321,9 +321,9 @@ with eyes on the screen).`,
 			if !isSupportedKey(key) {
 				return unknownKeyError(key)
 			}
-			c, err := config.Load()
-			if err != nil {
-				return output.NewCLIError(output.ErrServer, "failed to read config", err.Error())
+			c, cfgErr := config.LoadOrCLIError()
+			if cfgErr != nil {
+				return cfgErr
 			}
 			if key == "default_profile" {
 				value := c.DefaultProfile

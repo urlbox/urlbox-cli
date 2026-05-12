@@ -856,9 +856,9 @@ func validateResolverFlags(cmd *cobra.Command, f *renderFlags) *output.CLIError 
 	if renderClientOverride != nil {
 		return nil
 	}
-	cfg, err := config.Load()
-	if err != nil {
-		return output.NewCLIError(output.ErrServer, "failed to read config", err.Error())
+	cfg, cfgErr := config.LoadOrCLIError()
+	if cfgErr != nil {
+		return cfgErr
 	}
 	profile, _ := cmd.Root().PersistentFlags().GetString("profile")
 	overlay, ovErr := loadRepoOverlay()
@@ -894,9 +894,9 @@ func buildRenderClient(cmd *cobra.Command, f *renderFlags) (api.Client, *output.
 		return renderClientOverride, nil
 	}
 
-	cfg, err := config.Load()
-	if err != nil {
-		return nil, output.NewCLIError(output.ErrServer, "failed to read config", err.Error())
+	cfg, cfgErr := config.LoadOrCLIError()
+	if cfgErr != nil {
+		return nil, cfgErr
 	}
 	profile, _ := cmd.Root().PersistentFlags().GetString("profile")
 	overlay, ovErr := loadRepoOverlay()
