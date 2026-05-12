@@ -1455,3 +1455,95 @@ func TestRender_JSONPath_RecursiveBigIntGuard_AcceptsValid(t *testing.T) {
 		})
 	}
 }
+
+// TestRender_JSON_LargeIntBeyondInt64_Rejected pins Round 8 LL: numbers
+// > 2^63-1 were silently coerced to float scientific notation (the Y
+// commit's walker called Int64() and silently passed through on error,
+// missing the case where the error was "out of int64 range" not "not
+// an integer").
+func TestRender_JSON_LargeIntBeyondInt64_Rejected(t *testing.T) {
+	cases := []struct {
+		name, payload string
+	}{
+		{"width >2^63", `{"url":"https://e.com","width":99999999999999999999}`},
+		{"negative width <-2^63", `{"url":"https://e.com","width":-99999999999999999999}`},
+		{"nested >2^63", `{"url":"https://e.com","viewport":{"width":99999999999999999999}}`},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+			fc := &fakeClient{}
+			cmd.SetClientForTest(fc)
+			t.Cleanup(cmd.ResetClientForTest)
+			var stdout, stderr bytes.Buffer
+			exit := cmd.Execute([]string{"render", "--api-secret", "sec_xxx", "--json", c.payload, "--dry-run", "--output-format", "json"}, &stdout, &stderr)
+			if exit == 0 {
+				t.Fatalf("expected non-zero exit for >2^63 int; got 0 stdout=%s", stdout.String())
+			}
+			var env map[string]any
+			_ = json.Unmarshal(stdout.Bytes(), &env)
+			if env["code"] != "validation" {
+				t.Errorf("code=%v, want validation", env["code"])
+			}
+		})
+	}
+}
+
+// TestRender_JSON_DuplicateKey_Rejected pins Round 8 LL: standard
+// json.Unmarshal silently takes the last value when keys repeat. The
+// Adv-2 demo `{"url":"a","url":"b"}` signed b with no warning.
+func TestRender_JSON_DuplicateKey_Rejected(t *testing.T) {
+	cases := []struct {
+		name, payload string
+	}{
+		{"top-level dup url", `{"url":"https://a.com","url":"https://b.com"}`},
+		{"top-level dup width", `{"url":"https://e.com","width":100,"width":200}`},
+		{"nested dup", `{"url":"https://e.com","viewport":{"width":100,"width":200}}`},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+			fc := &fakeClient{}
+			cmd.SetClientForTest(fc)
+			t.Cleanup(cmd.ResetClientForTest)
+			var stdout, stderr bytes.Buffer
+			exit := cmd.Execute([]string{"render", "--api-secret", "sec_xxx", "--json", c.payload, "--dry-run", "--output-format", "json"}, &stdout, &stderr)
+			if exit == 0 {
+				t.Fatalf("duplicate-key JSON should error; got 0 stdout=%s", stdout.String())
+			}
+			var env map[string]any
+			_ = json.Unmarshal(stdout.Bytes(), &env)
+			if env["code"] != "validation" {
+				t.Errorf("code=%v, want validation", env["code"])
+			}
+			if errMsg, _ := env["error"].(string); !strings.Contains(errMsg, "duplicate key") {
+				t.Errorf("error should mention 'duplicate key'; got %q", errMsg)
+			}
+		})
+	}
+}
+
+// TestRender_JSON_FractionalAndScientific_PassThrough pins that floats
+// and scientific notation still pass through walkAndCheckInts (the new
+// isIntegerLiteral check correctly distinguishes them).
+func TestRender_JSON_FractionalAndScientific_PassThrough(t *testing.T) {
+	cases := []string{
+		`{"url":"https://e.com","ratio":1.5}`,
+		`{"url":"https://e.com","ratio":2.0}`,
+		`{"url":"https://e.com","big":1e10}`,
+		`{"url":"https://e.com","big":-1.5e-3}`,
+	}
+	for _, payload := range cases {
+		t.Run(payload, func(t *testing.T) {
+			t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+			fc := &fakeClient{}
+			cmd.SetClientForTest(fc)
+			t.Cleanup(cmd.ResetClientForTest)
+			var stdout, stderr bytes.Buffer
+			exit := cmd.Execute([]string{"render", "--api-secret", "sec_xxx", "--json", payload, "--dry-run", "--output-format", "json"}, &stdout, &stderr)
+			if exit != 0 {
+				t.Errorf("fractional/scientific values should pass through; exit=%d stderr=%s", exit, stderr.String())
+			}
+		})
+	}
+}

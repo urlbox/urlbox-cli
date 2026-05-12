@@ -479,6 +479,13 @@ const jsonSafeIntMax = 9007199254740991
 // "no integer anywhere should silently round when marshaled to JSON",
 // independent of which key it sits under.
 func parseJSONWithIntRangeCheck(jsonBytes []byte) (map[string]any, *output.CLIError) {
+	// Round 8 LL: detect duplicate keys before main parse. Standard
+	// json.Unmarshal silently last-wins on dup keys, which Adv-2 found
+	// in `--json '{"url":"a","url":"b"}'` (signed b, no warning). Fail
+	// fast so hand-edited JSON typos surface as errors.
+	if cliErr := checkDuplicateJSONKeys(jsonBytes); cliErr != nil {
+		return nil, cliErr
+	}
 	raw := map[string]any{}
 	dec := json.NewDecoder(bytes.NewReader(jsonBytes))
 	dec.UseNumber()
@@ -494,6 +501,113 @@ func parseJSONWithIntRangeCheck(jsonBytes []byte) (map[string]any, *output.CLIEr
 	}
 	convertNumbersToFloat64(raw)
 	return raw, nil
+}
+
+// checkDuplicateJSONKeys walks the JSON tree using json.Decoder.Token
+// and reports any duplicate keys within the same object. Arrays don't
+// have keys, so the dup-check is only relevant inside object scopes.
+// Returns nil if no duplicates, *CLIError on the first one found.
+//
+// On parse error here we return nil — the main parser below will
+// produce a more helpful error message, so don't double-surface.
+func checkDuplicateJSONKeys(jsonBytes []byte) *output.CLIError {
+	dec := json.NewDecoder(bytes.NewReader(jsonBytes))
+	// Stack of per-object key sets. Nil entry = current scope is an
+	// array (no key dups possible). Path string is dotted-key path
+	// for error messages.
+	type frame struct {
+		isObject bool
+		keys     map[string]bool
+		path     string
+	}
+	var stack []frame
+	// "Expecting key" is true when the next string token in an object
+	// scope is a key (vs a value). Reset after each key→value pair.
+	expectingKey := false
+	for {
+		tok, err := dec.Token()
+		if err != nil {
+			return nil
+		}
+		switch v := tok.(type) {
+		case json.Delim:
+			switch v {
+			case '{':
+				path := ""
+				if len(stack) > 0 {
+					path = stack[len(stack)-1].path
+				}
+				stack = append(stack, frame{isObject: true, keys: map[string]bool{}, path: path})
+				expectingKey = true
+			case '}':
+				stack = stack[:len(stack)-1]
+				// After closing an object, the parent scope continues.
+				// If parent is an object, we're between key:value pairs
+				// → next token is a key. If parent is an array, next is
+				// another array element (value, not key).
+				expectingKey = len(stack) > 0 && stack[len(stack)-1].isObject
+			case '[':
+				path := ""
+				if len(stack) > 0 {
+					path = stack[len(stack)-1].path
+				}
+				stack = append(stack, frame{isObject: false, path: path})
+				expectingKey = false
+			case ']':
+				stack = stack[:len(stack)-1]
+				expectingKey = len(stack) > 0 && stack[len(stack)-1].isObject
+			}
+		case string:
+			if expectingKey && len(stack) > 0 && stack[len(stack)-1].isObject {
+				key := v
+				top := stack[len(stack)-1]
+				if top.keys[key] {
+					location := "--json"
+					if top.path != "" {
+						location = "--json at " + top.path
+					}
+					return output.NewCLIError(
+						output.ErrValidation,
+						fmt.Sprintf("%s contains duplicate key %q", location, key),
+						"JSON objects must have unique keys. The standard parser would silently take the last value, which is almost certainly not what the writer intended — fix the payload.",
+					)
+				}
+				top.keys[key] = true
+				// Update path so nested objects can report e.g. "viewport.width"
+				if top.path == "" {
+					top.path = key
+				} else {
+					top.path += "." + key
+				}
+				stack[len(stack)-1] = top
+				expectingKey = false // next token is the value
+			} else if len(stack) > 0 && stack[len(stack)-1].isObject {
+				// Just consumed a string VALUE inside an object — next is
+				// either another key or '}'.
+				expectingKey = true
+				trimLastPathSegment(&stack[len(stack)-1].path)
+			}
+		default:
+			// Number / bool / null — value token. In an object, the
+			// next token is either another key or '}'.
+			if len(stack) > 0 && stack[len(stack)-1].isObject {
+				expectingKey = true
+				trimLastPathSegment(&stack[len(stack)-1].path)
+			}
+		}
+	}
+}
+
+// trimLastPathSegment strips the trailing ".key" component we appended
+// when we saw the key. Called after each value so the next key in the
+// same object doesn't carry the previous key's name in its path.
+func trimLastPathSegment(p *string) {
+	idx := strings.LastIndex(*p, ".")
+	if idx >= 0 {
+		*p = (*p)[:idx]
+	} else {
+		*p = ""
+	}
 }
 
 // walkAndCheckInts recursively visits every json.Number in the parsed
@@ -532,26 +646,71 @@ func walkAndCheckInts(v any, path string) *output.CLIError {
 			}
 		}
 	case json.Number:
-		// Only integer-valued numbers can silently round. Floats parsed
-		// via json.Number that have a fractional part return an error
-		// from Int64(), and they pass through unchanged.
-		i, err := v.Int64()
-		if err != nil {
-			return nil
-		}
-		if i > jsonSafeIntMax || i < -jsonSafeIntMax {
-			location := "--json"
-			if path != "" {
-				location = "--json key \"" + path + "\""
+		// Need to distinguish "literal integer (with optional minus,
+		// digits only, no decimal point or exponent)" from "fractional
+		// or scientific". Only literal integers can silently round when
+		// they exceed the safe range — fractional/sci floats already
+		// have float64 precision and the API validates value semantics.
+		//
+		// Round 8 LL: the previous version called v.Int64() and treated
+		// any error as "pass through". But Int64() errors on TWO cases:
+		// fractional numbers AND integers > 2^63. The latter were silent-
+		// rounding to floats downstream (Adv-2 demo: width=99999999999999999999
+		// → query 1e+20). Now we inspect the literal string and reject
+		// out-of-int64 integers explicitly.
+		s := string(v)
+		if isIntegerLiteral(s) {
+			i, err := v.Int64()
+			if err != nil {
+				// Literal integer that doesn't fit in int64 — definitely
+				// >2^63 or <-2^63. Way past our 2^53 limit.
+				location := "--json"
+				if path != "" {
+					location = "--json key \"" + path + "\""
+				}
+				return output.NewCLIError(
+					output.ErrValidation,
+					fmt.Sprintf("%s value %s is too large to represent as a JSON-safe integer", location, s),
+					"Pass an integer between -9007199254740991 and 9007199254740991. Larger values silently round when marshaled to JSON.",
+				)
 			}
-			return output.NewCLIError(
-				output.ErrValidation,
-				fmt.Sprintf("%s value %d is outside the JSON safe-integer range (±%d)", location, i, int64(jsonSafeIntMax)),
-				"Pass an integer between -9007199254740991 and 9007199254740991. Larger values silently round when marshaled to JSON.",
-			)
+			if i > jsonSafeIntMax || i < -jsonSafeIntMax {
+				location := "--json"
+				if path != "" {
+					location = "--json key \"" + path + "\""
+				}
+				return output.NewCLIError(
+					output.ErrValidation,
+					fmt.Sprintf("%s value %d is outside the JSON safe-integer range (±%d)", location, i, int64(jsonSafeIntMax)),
+					"Pass an integer between -9007199254740991 and 9007199254740991. Larger values silently round when marshaled to JSON.",
+				)
+			}
 		}
 	}
 	return nil
+}
+
+// isIntegerLiteral returns true if s is an integer literal (optional
+// leading minus, then one or more digits, nothing else). Fractional
+// values ("1.5") or scientific notation ("1e10") return false — those
+// are floats by design and don't need the safe-integer check.
+func isIntegerLiteral(s string) bool {
+	if s == "" {
+		return false
+	}
+	i := 0
+	if s[0] == '-' {
+		i = 1
+		if len(s) == 1 {
+			return false
+		}
+	}
+	for ; i < len(s); i++ {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 // convertNumbersToFloat64 walks a parsed JSON map (json.Decoder with
