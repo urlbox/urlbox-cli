@@ -31,7 +31,11 @@ func TestAuth_WritesConfigFile(t *testing.T) {
 		t.Fatalf("exit=%d stdout=%s stderr=%s", exit, stdout.String(), stderr.String())
 	}
 
-	if got := config.ResolveAPISecret(); got != "sec_xxxxxxxxxxxx" {
+	c, err := config.Load()
+	if err != nil {
+		t.Fatalf("config.Load: %v", err)
+	}
+	if got := c.Profiles[c.DefaultProfile].APISecret; got != "sec_xxxxxxxxxxxx" {
 		t.Fatalf("secret not persisted; got %q", got)
 	}
 }

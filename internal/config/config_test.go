@@ -83,66 +83,6 @@ func TestLoad_ReadsSavedConfig(t *testing.T) {
 	}
 }
 
-func TestResolveAPISecret_PrefersEnv(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	t.Setenv("URLBOX_API_SECRET", "env_secret")
-	_ = config.Save(&config.Config{
-		DefaultProfile: "default",
-		Profiles:       map[string]config.Profile{"default": {APISecret: "file_secret"}},
-	})
-	if got := config.ResolveAPISecret(); got != "env_secret" {
-		t.Fatalf("got %q", got)
-	}
-}
-
-func TestResolveAPISecret_FallsBackToFile(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	t.Setenv("URLBOX_API_SECRET", "")
-	_ = config.Save(&config.Config{
-		DefaultProfile: "default",
-		Profiles:       map[string]config.Profile{"default": {APISecret: "file_secret"}},
-	})
-	if got := config.ResolveAPISecret(); got != "file_secret" {
-		t.Fatalf("got %q", got)
-	}
-}
-
-func TestResolveAPISecret_EmptyWhenNoneSet(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	t.Setenv("URLBOX_API_SECRET", "")
-	if got := config.ResolveAPISecret(); got != "" {
-		t.Fatalf("got %q", got)
-	}
-}
-
-func TestAPISecretSource_Env(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	t.Setenv("URLBOX_API_SECRET", "env_secret")
-	if src := config.APISecretSource(); src != "env" {
-		t.Fatalf("got %q", src)
-	}
-}
-
-func TestAPISecretSource_File(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	t.Setenv("URLBOX_API_SECRET", "")
-	_ = config.Save(&config.Config{
-		DefaultProfile: "default",
-		Profiles:       map[string]config.Profile{"default": {APISecret: "file_secret"}},
-	})
-	if src := config.APISecretSource(); src != "file" {
-		t.Fatalf("got %q", src)
-	}
-}
-
-func TestAPISecretSource_None(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	t.Setenv("URLBOX_API_SECRET", "")
-	if src := config.APISecretSource(); src != "none" {
-		t.Fatalf("got %q", src)
-	}
-}
-
 func TestConfig_LoadNewShape_MultiProfile(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)
@@ -297,27 +237,6 @@ func TestLoad_MalformedJSON_ReturnsError(t *testing.T) {
 
 	if _, err := config.Load(); err == nil {
 		t.Fatal("expected Load to fail on malformed JSON")
-	}
-}
-
-func TestAPISecretSource_LegacyOnly_ReturnsFile(t *testing.T) {
-	// Covers the `if c.LegacyAPIKey != ""` branch in APISecretSource. We write
-	// a hand-crafted file where the legacy api_key field is set AND profiles
-	// is non-empty (so Load won't auto-migrate) but no default_profile is
-	// declared — so APISecretSource skips the profile-lookup branch and falls
-	// through to the LegacyAPIKey check.
-	dir := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", dir)
-	t.Setenv("URLBOX_API_SECRET", "")
-	must(t, os.MkdirAll(filepath.Join(dir, "urlbox"), 0o700))
-	must(t, os.WriteFile(
-		filepath.Join(dir, "urlbox", "config.json"),
-		[]byte(`{"api_key":"sec_legacy","profiles":{"other":{"api_secret":"sec_other"}}}`),
-		0o600,
-	))
-
-	if src := config.APISecretSource(); src != "file" {
-		t.Fatalf("got %q, want file", src)
 	}
 }
 
