@@ -4,6 +4,108 @@ All notable changes to the `urlbox` CLI are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
+## v1.0.3 — Unreleased
+
+Patch release driven by 8 rounds of adversarial probing of v1.0.2.
+Every commit closes a CLASS of error, not a single instance: each
+fix's tests cover sibling inputs that follow the same pattern, so
+v1.0.3 retires the underlying defect rather than patching one
+symptom at a time. Surface unchanged except for one addition:
+`urlbox version` (subcommand).
+
+### Security
+
+- `URLBOX_API_SECRET` env var now goes through the same
+  `ValidateSecretValue` gate as `--api-secret` / `--api-secret-stdin`
+  / `--api-secret-file`. Pre-1.0.3 the env path bypassed validation
+  entirely — control chars, BOM, zero-width spaces in the env value
+  flowed through to HMAC signing.
+- `ValidateSecretValue` extended to reject **invalid UTF-8** (lone
+  surrogates, overlong NUL, bare 0xFE/0xFF) and **Unicode `Mn`
+  Mark, Nonspacing chars** (combining grave U+0300, variation
+  selectors U+FE00–FE0F). The classic "à composed as a + U+0300"
+  paste artefact from macOS smart-diacritic processing no longer
+  silently corrupts a secret.
+- New `ValidateAPIHost` for every `api_host` write path
+  (`config set`, `profile create --api-host`, env, flag). Rejects
+  hostile schemes (`javascript:`, `file://`, `ftp://`, `data:`),
+  embedded credentials (`https://u:p@host`), CRLF injection, and
+  empty/whitespace-only values.
+
+### Fixed
+
+- **Concurrent config writes no longer lose profiles.** A new
+  file-lock primitive (`config.Update`) serializes the read-
+  modify-write window. 20 parallel `config profile create` calls
+  used to lose ~6 profiles silently; now all 20 persist.
+- **Stale lockfiles self-heal.** If a previous writer was SIGKILL'd,
+  the next caller detects the dead PID (or empty zero-byte lockfile
+  with backdated mtime) and reclaims the lock — no more 5-second
+  hang waiting on a crashed process's leftover.
+- **Repo overlay (`.urlbox/config.json`) actually works now.**
+  The loader existed since v0.x and the resolver had a `"repo"`
+  precedence slot, but no command was calling the loader.
+  `render`/`link`/`status`/`doctor` now consult the overlay on
+  every invocation, walking from CWD up to `$HOME` per the
+  documented behaviour. Malformed overlay JSON surfaces a clean
+  `code: usage` envelope naming the file.
+- **`config get/set --profile <unknown>` now returns `not_found`
+  (exit 5)** instead of `usage` (exit 1) with an empty `command`
+  field. Aligns with `profile delete`/`profile default` and with
+  every render-side command via the unified `config.Resolve`.
+- **Error envelopes from `config get`, `config profile delete`,
+  etc. now carry the full command path** (`"config get"`, not
+  `""`). Previous error path's `calledCommand` walked only one
+  level deep; now derives the leaf via `cobra.Command.Find()`.
+- **Root-level errors (`urlbox bogus`, `urlbox --bogus-flag`)
+  now carry a non-empty `command` field** so agents can grep it.
+- **`doctor --output-format quiet` emits a single scalar** (`"ok"`
+  or `"fail"`) instead of dumping the full JSON checks tree.
+- **`doctor` exit code matches failure category** —
+  auth-credential failures exit 3, network/DNS exit 11,
+  upstream-server stays 10. Was always 10 regardless of cause.
+- **Local config-read errors classify correctly.** Permission /
+  I-O issues → `forbidden` (exit 4); malformed JSON → `usage`
+  (exit 2). Was always `server` (exit 10) at 6 call sites.
+- **`--jq` now applies to error envelopes too.** Previously
+  `urlbox … --jq '.code'` returned a clean string on success but
+  dumped the full envelope on failure.
+- **`urlbox commands --output-format json` now lists
+  sub-subcommands** (`config get`, `config profile delete`, etc.)
+  — was only emitting top-level parents.
+- **`config profile list` JSON `is_default` field is now `bool`**
+  instead of the string `"true"`/`"false"`.
+- **`urlbox dashboard --output-format json` no longer opens a
+  browser tab as a side effect** — agents reading the envelope
+  don't want GUI popups.
+- **`--profile ""` (explicit empty) now rejects loudly.** Was
+  silently behaving like "no flag", masking bugs in agent
+  scripts that read from variables.
+- **`--json` payloads with integers > 2^63 now reject explicitly**
+  instead of silently coercing to scientific-notation floats and
+  signing the lossy value.
+- **`--json` payloads with duplicate keys now reject explicitly.**
+  Standard `json.Unmarshal` silently last-wins on duplicate keys —
+  fail fast on hand-edited typos instead.
+
+### Added
+
+- `urlbox version` subcommand emits the standard envelope (honors
+  `--output-format json`/`text`/`quiet`). `--version` flag still
+  emits plain text only — that's the universal CLI convention.
+
+### Notes
+
+- Surface frozen except for the new `version` subcommand and its
+  inherited persistent flags. `SURFACE.txt` regenerated.
+- 47 new tests across the changes; coverage stays ~88%.
+- Dead public API removed: `config.ResolveAPISecret` and
+  `config.APISecretSource` had zero production callers since the
+  v1.0 `config.Resolve` consolidation. Both deleted; no other
+  package change.
+- All v1.0.3 fixes auto-deliver via `brew upgrade urlbox/tap/urlbox`,
+  `npm i -g @urlbox/cli@latest`, etc.
+
 ## v1.0.2 — 2026-05-08
 
 Patch release fixing five issues found by Round 2 stress-testing of v1.0.1.
