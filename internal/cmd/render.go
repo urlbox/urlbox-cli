@@ -712,6 +712,16 @@ func summariseRenderResp(resp *api.Response) string {
 
 // writeRenderEnvelope picks the right formatter (json/text/quiet) and
 // optionally pipes through --jq before printing.
+//
+// Quiet mode is bespoke: instead of dumping .data JSON (the generic
+// QuietFormatter default), render emits a SINGLE useful scalar so the
+// output is pipeline-ready. The chosen field depends on context:
+//
+//   - sync + --output saved a file → the absolute saved path (savedTo)
+//   - sync + no --output → the hosted renderUrl
+//   - async → the renderId for follow-up `urlbox status` calls
+//
+// Round 5 First-3 / Power-1.
 func writeRenderEnvelope(cmd *cobra.Command, env *output.Envelope) error {
 	formatFlag, _ := cmd.Root().PersistentFlags().GetString("output-format")
 	jqExpr, _ := cmd.Root().PersistentFlags().GetString("jq")
@@ -720,8 +730,37 @@ func writeRenderEnvelope(cmd *cobra.Command, env *output.Envelope) error {
 	if jqExpr != "" {
 		return output.WriteEnvelopeWithJQ(stdout, env, jqExpr, format == output.FormatQuiet)
 	}
+	if format == output.FormatQuiet {
+		if primary := quietPrimaryValue(env); primary != "" {
+			_, werr := fmt.Fprintln(stdout, primary)
+			return werr
+		}
+		// No obvious primary value (e.g. --dry-run / --curl flows) →
+		// fall through to the generic quiet formatter which emits .data.
+	}
 	styles := output.NewStylesForWriter(stdout)
 	return output.NewFormatter(format, styles).WriteSuccess(stdout, env)
+}
+
+// quietPrimaryValue picks the single pipeline-ready scalar from a
+// render envelope. Returns "" when no obvious primary exists (caller
+// falls back to the generic data dump).
+//
+// Precedence reflects "what did the user most likely want next?":
+//   - savedTo (they passed --output; the local file path is the deliverable)
+//   - renderUrl (sync render; the hosted asset URL is the deliverable)
+//   - renderId (async render; needed for `urlbox status`)
+func quietPrimaryValue(env *output.Envelope) string {
+	data, ok := env.Data.(map[string]any)
+	if !ok {
+		return ""
+	}
+	for _, key := range []string{"savedTo", "renderUrl", "renderId"} {
+		if s, ok := data[key].(string); ok && s != "" {
+			return s
+		}
+	}
+	return ""
 }
 
 // enumFlagCheck pairs a typed-flag's user-facing name with the schema field

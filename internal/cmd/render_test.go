@@ -1153,3 +1153,80 @@ func TestRender_JSONPath_NestedSlice_NoStrayJSONNumber(t *testing.T) {
 		}
 	}
 }
+
+// TestRender_QuietMode_EmitsSingleUsefulValue pins Round 5 First-3 /
+// Power-1: render --output-format quiet used to dump the full data
+// JSON. Other quiet-mode commands (link, config get, config path)
+// emit a single bare value suitable for piping. Render should follow
+// suit, contextually:
+//
+//   - sync + --output -> savedTo (the local file path the user just got)
+//   - sync + no --output -> renderUrl (the hosted artifact URL)
+//   - async -> renderId (for later urlbox status calls)
+func TestRender_QuietMode_EmitsSingleUsefulValue(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("URLBOX_API_SECRET", "sec_test")
+
+	t.Run("sync no output -> bare renderUrl", func(t *testing.T) {
+		m := apitest.New(apitest.SuccessJSON(`{"renderUrl":"https://renders.urlbox.com/quiet_sync.png","size":100}`))
+		t.Cleanup(m.Close)
+		t.Setenv(api.EnvAPIHost, m.URL())
+
+		var stdout, stderr bytes.Buffer
+		exit := cmd.Execute([]string{"render", "https://example.com", "--output-format", "quiet"}, &stdout, &stderr)
+		if exit != 0 {
+			t.Fatalf("exit=%d stderr=%s", exit, stderr.String())
+		}
+		out := strings.TrimSpace(stdout.String())
+		if out != "https://renders.urlbox.com/quiet_sync.png" {
+			t.Errorf("got %q, want bare renderUrl", out)
+		}
+		// Hard no on JSON braces in quiet mode.
+		if strings.Contains(out, "{") {
+			t.Errorf("quiet output must not contain JSON object; got %q", out)
+		}
+	})
+
+	t.Run("async -> bare renderId", func(t *testing.T) {
+		m := apitest.New(apitest.SuccessJSON(`{"renderId":"ren_async_quiet_abc","statusUrl":"https://api.urlbox.com/v1/status/ren_async_quiet_abc","status":"created"}`))
+		t.Cleanup(m.Close)
+		t.Setenv(api.EnvAPIHost, m.URL())
+
+		var stdout, stderr bytes.Buffer
+		exit := cmd.Execute([]string{"render", "https://example.com", "--async", "--output-format", "quiet"}, &stdout, &stderr)
+		if exit != 0 {
+			t.Fatalf("exit=%d stderr=%s", exit, stderr.String())
+		}
+		out := strings.TrimSpace(stdout.String())
+		if out != "ren_async_quiet_abc" {
+			t.Errorf("got %q, want bare renderId", out)
+		}
+	})
+}
+
+// TestRender_TextMode_SummaryOnly pins Round 5 Power-2: --output-format
+// text used to print the green ✓ summary AND a raw JSON dump of .data.
+// "text" should be the human-readable format — summary only. Users who
+// want JSON should pass --output-format json.
+func TestRender_TextMode_SummaryOnly(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("URLBOX_API_SECRET", "sec_test")
+
+	m := apitest.New(apitest.SuccessJSON(`{"renderUrl":"https://renders.urlbox.com/text.png","size":100}`))
+	t.Cleanup(m.Close)
+	t.Setenv(api.EnvAPIHost, m.URL())
+
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{"render", "https://example.com", "--output-format", "text"}, &stdout, &stderr)
+	if exit != 0 {
+		t.Fatalf("exit=%d stderr=%s", exit, stderr.String())
+	}
+	out := stdout.String()
+	if strings.Contains(out, "{") || strings.Contains(out, "\"renderUrl\"") {
+		t.Errorf("text mode must not emit JSON; got:\n%s", out)
+	}
+	// The summary line is what we want.
+	if !strings.Contains(out, "Render") && !strings.Contains(out, "✓") {
+		t.Errorf("text mode should emit a human summary line; got:\n%s", out)
+	}
+}

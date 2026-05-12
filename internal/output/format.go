@@ -49,13 +49,15 @@ type TextFormatter struct {
 	styles Styles
 }
 
-// WriteSuccess writes a human-readable success message with optional data.
+// WriteSuccess writes a human-readable success message. The data block
+// is INTENTIONALLY omitted — Round 5 Power-2 flagged the previous
+// behavior (✓ <summary> followed by a JSON dump of .data) as noisy:
+// the summary line carries the load-bearing facts, and structured
+// consumers should reach for --output-format json. Text mode is for
+// humans reading their terminal.
 func (f *TextFormatter) WriteSuccess(w io.Writer, env *Envelope) error {
 	if env.Summary != "" {
 		_, _ = fmt.Fprintln(w, f.styles.Success.Render("✓ "+env.Summary))
-	}
-	if env.Data != nil {
-		return writeJSON(w, env.Data)
 	}
 	return nil
 }
