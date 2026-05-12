@@ -12,10 +12,11 @@ import (
 
 // CommandInfo describes a command for the catalog.
 type CommandInfo struct {
-	Name        string     `json:"name"`
-	Description string     `json:"description"`
-	Aliases     []string   `json:"aliases,omitempty"`
-	Flags       []FlagInfo `json:"flags,omitempty"`
+	Name        string        `json:"name"`
+	Description string        `json:"description"`
+	Aliases     []string      `json:"aliases,omitempty"`
+	Flags       []FlagInfo    `json:"flags,omitempty"`
+	Subcommands []CommandInfo `json:"subcommands,omitempty"`
 }
 
 // FlagInfo describes a flag for the catalog.
@@ -101,6 +102,19 @@ func buildCommandInfo(cmd *cobra.Command) CommandInfo {
 		}
 		info.Flags = append(info.Flags, buildFlagInfo(f))
 	})
+
+	// Round 8 MM: recurse into sub-subcommands so agents reading
+	// `urlbox commands --output-format json` see `config get`,
+	// `config profile create`, etc. — not just the top-level
+	// parent names. Adv-3 M1 flagged the drift between `commands`
+	// and `surface`: surface listed all 263 invocations; commands
+	// listed 14 top-level only.
+	for _, c := range cmd.Commands() {
+		if c.Hidden || c.Name() == "help" {
+			continue
+		}
+		info.Subcommands = append(info.Subcommands, buildCommandInfo(c))
+	}
 
 	return info
 }

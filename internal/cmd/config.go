@@ -178,14 +178,18 @@ func newProfileListCmd() *cobra.Command {
 			}
 			sort.Strings(names)
 
-			rows := make([]map[string]string, 0, len(names))
+			rows := make([]map[string]any, 0, len(names))
 			for _, n := range names {
 				p := cfg.Profiles[n]
-				rows = append(rows, map[string]string{
+				rows = append(rows, map[string]any{
 					"name":          n,
 					"api_host":      p.APIHost,
 					"masked_secret": maskSecret(p.APISecret),
-					"is_default":    fmt.Sprintf("%v", n == cfg.DefaultProfile),
+					// Round 8 MM: was string("true"/"false") because the
+					// row was typed map[string]string. Now bool so JSON
+					// consumers (agents) can use it directly without
+					// string-comparison.
+					"is_default": n == cfg.DefaultProfile,
 				})
 			}
 			env := output.NewEnvelope(

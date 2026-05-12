@@ -86,6 +86,18 @@ Exit codes:
 func runDashboard(c *cobra.Command) error {
 	data := map[string]any{"url": dashboardURL}
 
+	// Round 8 MM: when the user asks for structured output (json/quiet),
+	// they're scripting around the URL — don't fire a browser side-effect
+	// in addition to printing the envelope. Adv-4 M4: agents calling
+	// `dashboard --output-format json` got an unexpected browser tab.
+	formatFlag, _ := c.Root().PersistentFlags().GetString("output-format")
+	resolvedFormat := output.ResolveFormat(formatFlag, c.OutOrStdout())
+	if resolvedFormat == output.FormatJSON || resolvedFormat == output.FormatQuiet {
+		return writeDashboardEnvelope(c, data,
+			"Dashboard URL emitted (no browser launched in machine-readable mode)",
+			[]output.Breadcrumb{{Action: "copy", Cmd: dashboardURL}})
+	}
+
 	if isHeadless() {
 		// Stderr is for humans; stdout still carries the envelope.
 		_, _ = fmt.Fprintln(c.ErrOrStderr(),

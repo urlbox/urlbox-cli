@@ -1038,3 +1038,35 @@ func TestConfigProfileCreate_RejectsBadSecretValues(t *testing.T) {
 		})
 	}
 }
+
+// TestConfigProfileList_IsDefault_IsBool pins Round 8 MM: is_default
+// used to be string "true"/"false" because the row was typed
+// map[string]string. JSON consumers had to string-compare instead of
+// branching on a bool. Now bool.
+func TestConfigProfileList_IsDefault_IsBool(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	seedConfig(t, dir, map[string]config.Profile{
+		"default": {APISecret: "sec_default_xx"},
+		"work":    {APISecret: "sec_work_xxxx"},
+	})
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{"config", "profile", "list", "--output-format", "json"}, &stdout, &stderr)
+	if exit != 0 {
+		t.Fatalf("exit=%d stderr=%s", exit, stderr.String())
+	}
+	var env map[string]any
+	_ = json.Unmarshal(stdout.Bytes(), &env)
+	data, _ := env["data"].(map[string]any)
+	profiles, _ := data["profiles"].([]any)
+	for _, p := range profiles {
+		row, _ := p.(map[string]any)
+		isDefault, ok := row["is_default"]
+		if !ok {
+			t.Fatalf("is_default field missing: %v", row)
+		}
+		if _, isBool := isDefault.(bool); !isBool {
+			t.Errorf("is_default=%v (%T), want bool", isDefault, isDefault)
+		}
+	}
+}
