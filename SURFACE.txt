@@ -230,6 +230,11 @@ urlbox upgrade --agent
 urlbox upgrade --jq
 urlbox upgrade --output-format
 urlbox upgrade --profile
+urlbox version
+urlbox version --agent
+urlbox version --jq
+urlbox version --output-format
+urlbox version --profile
 urlbox video [url]
 urlbox video [url] --agent
 urlbox video [url] --api-secret

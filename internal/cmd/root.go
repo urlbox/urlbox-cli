@@ -80,15 +80,21 @@ func Execute(args []string, stdout, stderr io.Writer) int {
 // through the command tree. Cobra's CalledAs() reliably indicates the
 // LEAF that was reached, but ancestor CalledAs values are not always
 // retained on every code path, so deriving the path from args via
-// Find() is the dependable source. Returns "" if no subcommand was
-// matched (bare `urlbox`).
+// Find() is the dependable source.
+//
+// Round 8 II: when no subcommand matched (bare `urlbox`, unknown
+// command, unknown flag at root), returns the root name rather than
+// "". The contract is that every error envelope carries a command —
+// "urlbox" is more useful for agents than "".
 func calledCommandFromArgs(root *cobra.Command, args []string) string {
 	if rootCalled := root.CalledAs(); rootCalled != "" && rootCalled != root.Name() {
 		return rootCalled
 	}
 	leaf, _, err := root.Find(args)
 	if err != nil || leaf == nil || leaf == root {
-		return ""
+		// Root command (or unresolved) — return root name so the
+		// envelope always carries something.
+		return root.Name()
 	}
 	// Walk up from the leaf to root, collecting names. CommandPath() returns
 	// the binary-prefixed path like "urlbox config get"; strip the root name.
@@ -179,6 +185,7 @@ func newRootCmd(stdout, stderr io.Writer) *cobra.Command {
 	cmd.AddCommand(newScreenshotCmd())
 	cmd.AddCommand(newSkillCmd())
 	cmd.AddCommand(newStatusCmd())
+	cmd.AddCommand(newVersionCmd())
 	cmd.AddCommand(newVideoCmd())
 
 	return cmd
