@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -51,7 +52,35 @@ Exits non-zero if any check fails.`,
 			ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 			defer cancel()
 
-			checks := runDoctorChecks(ctx)
+			// Round 6 Z class-fix: doctor previously called
+			// config.ResolveAPISecret() directly, which always looks at
+			// the default profile and ignores --profile / URLBOX_PROFILE.
+			// Now it goes through config.Resolve — the same path
+			// render/status/link use — so unknown profile names error
+			// instead of falling back to default, and `--profile work`
+			// actually checks the work profile's credentials.
+			profileFlag, _ := cmd.Root().PersistentFlags().GetString("profile")
+			cfg, _ := config.Load() // missing config is reported by checkConfigFile
+			resolved, rerr := config.Resolve(config.ResolveOptions{
+				FlagProfile:  profileFlag,
+				EnvAPISecret: os.Getenv(config.EnvAPISecret),
+				EnvProfile:   os.Getenv(config.EnvProfile),
+				EnvAPIHost:   os.Getenv(config.EnvAPIHost),
+				Config:       cfg,
+			})
+			if rerr != nil {
+				var cli *output.CLIError
+				if errors.As(rerr, &cli) {
+					return cli
+				}
+				return output.NewCLIError(
+					output.ErrUsage,
+					"failed to resolve profile",
+					rerr.Error(),
+				)
+			}
+
+			checks := runDoctorChecks(ctx, resolved)
 			anyFail := false
 			for _, c := range checks {
 				if c.Status == "fail" {
@@ -107,16 +136,19 @@ Exits non-zero if any check fails.`,
 	}
 }
 
-func runDoctorChecks(ctx context.Context) []Check {
+func runDoctorChecks(ctx context.Context, resolved *config.Resolved) []Check {
 	host := api.ResolveAPIHost()
+	if resolved != nil && resolved.APIHost != "" {
+		host = resolved.APIHost
+	}
 	return []Check{
 		checkVersion(),
 		checkInstallMethod(),
 		checkConfigFile(),
-		checkAPISecret(),
+		checkAPISecret(resolved),
 		checkDNS(ctx, host),
 		checkAPIReachable(ctx, host),
-		checkAuth(ctx, host),
+		checkAuth(ctx, host, resolved),
 	}
 }
 
@@ -154,15 +186,19 @@ func checkConfigFile() Check {
 	}
 }
 
-func checkAPISecret() Check {
-	src := config.APISecretSource()
-	if src == "none" {
+func checkAPISecret(resolved *config.Resolved) Check {
+	if resolved == nil || resolved.APISecret == "" {
 		return Check{
 			Name:    "api_secret",
 			Status:  "fail",
 			Message: "no API secret found",
-			Hint:    "Set URLBOX_API_SECRET or run `urlbox auth --api-secret <secret>`",
+			Hint:    "Set URLBOX_API_SECRET or run `urlbox auth --api-secret-stdin` (`--api-secret <secret>` is the legacy form and leaks via ps/shell history).",
 		}
+	}
+	// resolved.Source.APISecret is one of: flag / env / repo / profile.
+	src := resolved.Source.APISecret
+	if src == "profile" {
+		src = "file" // friendlier label (matches legacy behavior)
 	}
 	return Check{Name: "api_secret", Status: "ok", Message: "configured (" + src + ")"}
 }
@@ -201,8 +237,11 @@ func checkAPIReachable(ctx context.Context, host string) Check {
 	}
 }
 
-func checkAuth(ctx context.Context, host string) Check {
-	key := config.ResolveAPISecret()
+func checkAuth(ctx context.Context, host string, resolved *config.Resolved) Check {
+	key := ""
+	if resolved != nil {
+		key = resolved.APISecret
+	}
 	if key == "" {
 		return Check{Name: "auth", Status: "warn", Message: "skipped (no API secret)"}
 	}

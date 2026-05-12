@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/urlbox/urlbox-cli/internal/cmd"
+	"github.com/urlbox/urlbox-cli/internal/config"
 )
 
 func runDoctor(t *testing.T, args ...string) (env map[string]any, exit int, stdoutStr, stderrStr string) {
@@ -188,5 +189,84 @@ func TestDoctor_HasBreadcrumbs(t *testing.T) {
 	env, _, _, _ := runDoctor(t)
 	if bcs, _ := env["breadcrumbs"].([]any); len(bcs) == 0 {
 		t.Fatalf("expected breadcrumbs, got %v", env["breadcrumbs"])
+	}
+}
+
+// TestDoctor_HonorsProfileFlag pins Round 6 class-fix: doctor used to
+// silently ignore --profile / URLBOX_PROFILE and always look at the
+// default profile's secret. Now: profile resolution is uniform with
+// every other command — unknown name errors, valid name targets that
+// profile's credentials.
+func TestDoctor_HonorsProfileFlag_UnknownErrors(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	t.Setenv("URLBOX_API_SECRET", "") // force file lookup
+	seedConfig(t, dir, map[string]config.Profile{
+		"default": {APISecret: "sec_default_xx"},
+	})
+
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{"--profile", "ghost", "doctor", "--output-format", "json"}, &stdout, &stderr)
+	if exit == 0 {
+		t.Fatalf("doctor with --profile ghost should error; got exit 0 stdout=%s", stdout.String())
+	}
+	var env map[string]any
+	_ = json.Unmarshal(stdout.Bytes(), &env)
+	if env["code"] != "usage" && env["code"] != "not_found" {
+		t.Errorf("code=%v, want usage or not_found", env["code"])
+	}
+	errStr, _ := env["error"].(string)
+	if !strings.Contains(errStr, "ghost") {
+		t.Errorf("error should name the rejected profile; got %q", errStr)
+	}
+}
+
+func TestDoctor_HonorsEnvProfile_UnknownErrors(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	t.Setenv("URLBOX_API_SECRET", "")
+	t.Setenv("URLBOX_PROFILE", "ghost")
+	seedConfig(t, dir, map[string]config.Profile{
+		"default": {APISecret: "sec_default_xx"},
+	})
+
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{"doctor", "--output-format", "json"}, &stdout, &stderr)
+	if exit == 0 {
+		t.Fatalf("doctor with URLBOX_PROFILE=ghost should error; got exit 0 stdout=%s", stdout.String())
+	}
+}
+
+// TestDoctor_HonorsProfileFlag_ValidTargetsThatProfile pins the positive
+// case for the Round 6 Z class-fix: --profile work makes doctor check
+// the work profile's secret, not default's.
+func TestDoctor_HonorsProfileFlag_ValidTargetsThatProfile(t *testing.T) {
+	// Use a httptest server so the auth check is hermetic. The handler
+	// records the Authorization header so we can prove the right
+	// profile's secret was used.
+	var seenAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/user/me" {
+			seenAuth = r.Header.Get("Authorization")
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	t.Setenv("URLBOX_API_SECRET", "") // force file lookup
+	t.Setenv("URLBOX_API_HOST", srv.URL)
+	seedConfig(t, dir, map[string]config.Profile{
+		"default": {APISecret: "sec_default_xx"},
+		"work":    {APISecret: "sec_work_yy"},
+	})
+
+	env, exit, _, _ := runDoctor(t, "--profile", "work")
+	if exit != 0 {
+		t.Fatalf("exit=%d env=%v", exit, env)
+	}
+	if seenAuth != "Bearer sec_work_yy" {
+		t.Errorf("auth check used wrong profile's secret; saw %q, want Bearer sec_work_yy", seenAuth)
 	}
 }
