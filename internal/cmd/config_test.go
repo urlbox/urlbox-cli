@@ -625,3 +625,65 @@ func TestConfigSet_APIKey_NotMasked(t *testing.T) {
 		t.Errorf("api_key should be raw (publishable); got %v", data["value"])
 	}
 }
+
+// TestConfigGet_UnknownEnvProfile_Errors pins Round 5 Adv-2: a typo in
+// URLBOX_PROFILE silently fell back to the default profile, leaking the
+// default's secret. --profile bogus correctly errors; URLBOX_PROFILE
+// should too — same failure class as the auth profile-bypass guard.
+func TestConfigGet_UnknownEnvProfile_Errors(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	// Single profile is the exact code path the adversarial repro hit:
+	// resolveTargetProfile auto-selects the lone profile and ignores
+	// URLBOX_PROFILE entirely, so an env-var typo silently leaks the
+	// wrong (default) profile's data.
+	seedConfig(t, dir, map[string]config.Profile{
+		"default": {APISecret: "sec_default_xxxxxx"},
+	})
+	t.Setenv("URLBOX_PROFILE", "ghost")
+
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{"config", "get", "api_secret", "--output-format", "json"}, &stdout, &stderr)
+	if exit == 0 {
+		t.Fatalf("URLBOX_PROFILE=ghost should error; got exit 0 stdout=%s", stdout.String())
+	}
+	var env map[string]any
+	_ = json.Unmarshal(stdout.Bytes(), &env)
+	if env["code"] != "usage" {
+		t.Errorf("code=%v, want usage", env["code"])
+	}
+	if !strings.Contains(env["error"].(string), "ghost") {
+		t.Errorf("error should name the rejected profile; got %q", env["error"])
+	}
+	// Verify no secret leaked through the silent-fallback path.
+	if strings.Contains(stdout.String(), "sec_default_xxxxxx") || strings.Contains(stdout.String(), "sec_work_yyyyyy") {
+		t.Errorf("envelope leaked a profile secret on unknown URLBOX_PROFILE: %s", stdout.String())
+	}
+}
+
+// TestConfigGet_ValidEnvProfile_TargetsThatProfile pins the positive case:
+// URLBOX_PROFILE=work selects the work profile (now that we don't silently
+// fall back).
+func TestConfigGet_ValidEnvProfile_TargetsThatProfile(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	// Two profiles with default set; URLBOX_PROFILE should override
+	// the default and target work.
+	seedConfig(t, dir, map[string]config.Profile{
+		"default": {APISecret: "sec_default_xxxxxx"},
+		"work":    {APISecret: "sec_work_yyyyyy"},
+	})
+	t.Setenv("URLBOX_PROFILE", "work")
+
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{"config", "get", "api_secret", "--reveal", "--output-format", "json"}, &stdout, &stderr)
+	if exit != 0 {
+		t.Fatalf("exit=%d stdout=%s stderr=%s", exit, stdout.String(), stderr.String())
+	}
+	var env map[string]any
+	_ = json.Unmarshal(stdout.Bytes(), &env)
+	data, _ := env["data"].(map[string]any)
+	if data["value"] != "sec_work_yyyyyy" {
+		t.Errorf("value=%v, want sec_work_yyyyyy (env-selected profile)", data["value"])
+	}
+}

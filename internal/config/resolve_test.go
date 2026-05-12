@@ -2,6 +2,7 @@ package config_test
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/urlbox/urlbox-cli/internal/config"
@@ -138,6 +139,54 @@ func TestResolve_EnvProfile_PicksProfile(t *testing.T) {
 	}
 	if r.APIKey != "p_work" {
 		t.Errorf("APIKey=%q", r.APIKey)
+	}
+}
+
+// TestResolve_UnknownEnvProfile_Errors pins Round 5 Adv-2: when
+// URLBOX_PROFILE names a profile that doesn't exist, Resolve must
+// return ErrNotFound rather than silently fall through to env/flag
+// credentials on the (empty) Profile struct — that fallthrough
+// leaked the wrong profile's behavior. Mirrors the existing
+// FlagProfile rejection above.
+func TestResolve_UnknownEnvProfile_Errors(t *testing.T) {
+	cfg := &config.Config{
+		Profiles: map[string]config.Profile{
+			"real": {APIKey: "p_real"},
+		},
+	}
+	_, err := config.Resolve(config.ResolveOptions{EnvProfile: "ghost", Config: cfg})
+	if err == nil {
+		t.Fatal("expected error for unknown URLBOX_PROFILE")
+	}
+	var cli *output.CLIError
+	if !errors.As(err, &cli) {
+		t.Fatalf("expected *CLIError, got %T", err)
+	}
+	if cli.Code != output.ErrNotFound {
+		t.Errorf("code=%v, want not_found", cli.Code)
+	}
+	if !strings.Contains(cli.Message, "ghost") || !strings.Contains(cli.Message, "URLBOX_PROFILE") {
+		t.Errorf("message should name 'ghost' and 'URLBOX_PROFILE'; got %q", cli.Message)
+	}
+}
+
+// TestResolve_UnknownEnvProfile_FlagBeats pins precedence: if both
+// FlagProfile and EnvProfile are set and FlagProfile is valid, the
+// env-profile mismatch is not a problem (the flag wins).
+func TestResolve_UnknownEnvProfile_FlagBeats(t *testing.T) {
+	cfg := &config.Config{
+		Profiles: map[string]config.Profile{
+			"real": {APIKey: "p_real"},
+		},
+	}
+	r, err := config.Resolve(config.ResolveOptions{
+		FlagProfile: "real",
+		EnvProfile:  "ghost",
+		Config:      cfg,
+	})
+	must(t, err)
+	if r.Profile != "real" || r.Source.Profile != "flag" {
+		t.Errorf("Profile=%q Source=%q (flag should win)", r.Profile, r.Source.Profile)
 	}
 }
 

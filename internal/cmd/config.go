@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -379,10 +380,13 @@ profile count.`,
 // resolveTargetProfile picks which profile a per-profile config key acts on,
 // per resolved Open Question 4 (smart write).
 //
+// Precedence (highest first):
 //   - 0 profiles → ErrUsage "No profiles configured"
 //   - --profile given → must exist, else ErrUsage "Unknown profile: <name>"
-//   - 1 profile, no --profile → that profile (implicit)
-//   - 2+ profiles, no --profile → ErrUsage "--profile is required" with sorted name list
+//   - URLBOX_PROFILE set → must exist, else ErrUsage (Round 5 Adv-2: env-var
+//     typos previously fell through silently and leaked the wrong profile)
+//   - 1 profile, no flag/env → that profile (implicit)
+//   - 2+ profiles, no flag/env → ErrUsage "--profile is required" + sorted list
 func resolveTargetProfile(cmd *cobra.Command, c *config.Config) (string, error) {
 	if len(c.Profiles) == 0 {
 		return "", output.NewCLIError(
@@ -401,6 +405,16 @@ func resolveTargetProfile(cmd *cobra.Command, c *config.Config) (string, error) 
 			)
 		}
 		return flagProfile, nil
+	}
+	if envProfile := os.Getenv(config.EnvProfile); envProfile != "" {
+		if _, ok := c.Profiles[envProfile]; !ok {
+			return "", output.NewCLIError(
+				output.ErrUsage,
+				"Unknown profile (URLBOX_PROFILE): "+envProfile,
+				"Configured profiles: "+quotedSortedProfileNames(c.Profiles)+". Unset URLBOX_PROFILE or create the profile first.",
+			)
+		}
+		return envProfile, nil
 	}
 	if len(c.Profiles) == 1 {
 		for name := range c.Profiles {

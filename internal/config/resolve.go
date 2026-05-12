@@ -63,11 +63,22 @@ func Resolve(opts ResolveOptions) (*Resolved, error) {
 	var profile Profile
 	if opts.Config != nil {
 		p, ok := opts.Config.Profiles[r.Profile]
+		// Round 5 Adv-2: error symmetrically when EnvProfile names a
+		// non-existent profile. Before the fix, only --profile rejected
+		// unknown names; URLBOX_PROFILE silently fell through to env /
+		// flag credentials, leaking the wrong profile's behaviour.
 		if !ok && opts.FlagProfile != "" {
 			return nil, output.NewCLIError(
 				output.ErrNotFound,
 				`Profile "`+opts.FlagProfile+`" does not exist`,
 				"Run 'urlbox config profile list' to see available profiles.",
+			)
+		}
+		if !ok && opts.EnvProfile != "" && opts.FlagProfile == "" {
+			return nil, output.NewCLIError(
+				output.ErrNotFound,
+				`Profile "`+opts.EnvProfile+`" does not exist (URLBOX_PROFILE)`,
+				"Run 'urlbox config profile list' to see available profiles, or unset URLBOX_PROFILE.",
 			)
 		}
 		profile = p
