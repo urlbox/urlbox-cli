@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -35,13 +36,15 @@ func LoadRepoOverlay(start, boundary string) (*RepoOverlay, error) {
 		if err == nil {
 			var o RepoOverlay
 			if err := json.Unmarshal(b, &o); err != nil {
-				return nil, err
+				// Round 8 HH: wrap the path in so callers can produce
+				// actionable error messages ("fix the JSON at <path>").
+				return nil, fmt.Errorf("%s: %w", candidate, err)
 			}
 			o.Path = candidate
 			return &o, nil
 		}
 		if !errors.Is(err, fs.ErrNotExist) {
-			return nil, err
+			return nil, fmt.Errorf("%s: %w", candidate, err)
 		}
 		if dir == stop {
 			return nil, nil

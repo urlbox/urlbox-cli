@@ -61,11 +61,16 @@ Exits non-zero if any check fails.`,
 			// actually checks the work profile's credentials.
 			profileFlag, _ := cmd.Root().PersistentFlags().GetString("profile")
 			cfg, _ := config.Load() // missing config is reported by checkConfigFile
+			overlay, ovErr := loadRepoOverlay()
+			if ovErr != nil {
+				return ovErr
+			}
 			resolved, rerr := config.Resolve(config.ResolveOptions{
 				FlagProfile:  profileFlag,
 				EnvAPISecret: os.Getenv(config.EnvAPISecret),
 				EnvProfile:   os.Getenv(config.EnvProfile),
 				EnvAPIHost:   os.Getenv(config.EnvAPIHost),
+				RepoOverlay:  overlay,
 				Config:       cfg,
 			})
 			if rerr != nil {

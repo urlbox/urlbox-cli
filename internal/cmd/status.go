@@ -378,12 +378,17 @@ func buildStatusClient(cmd *cobra.Command, f *statusFlags) (api.Client, *output.
 		return nil, output.NewCLIError(output.ErrServer, "failed to read config", err.Error())
 	}
 	profile, _ := cmd.Root().PersistentFlags().GetString("profile")
+	overlay, ovErr := loadRepoOverlay()
+	if ovErr != nil {
+		return nil, ovErr
+	}
 	resolved, rerr := config.Resolve(config.ResolveOptions{
 		FlagAPISecret: f.apiSecret,
 		FlagProfile:   profile,
 		EnvAPISecret:  os.Getenv(config.EnvAPISecret),
 		EnvAPIHost:    os.Getenv(config.EnvAPIHost),
 		EnvProfile:    os.Getenv(config.EnvProfile),
+		RepoOverlay:   overlay,
 		Config:        cfg,
 	})
 	if rerr != nil {

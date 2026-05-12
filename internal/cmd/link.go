@@ -145,6 +145,10 @@ func runLink(cmd *cobra.Command, args []string, f *linkFlags) error {
 		return output.NewCLIError(output.ErrServer, "failed to read config", err.Error())
 	}
 	profile, _ := cmd.Root().PersistentFlags().GetString("profile")
+	overlay, ovErr := loadRepoOverlay()
+	if ovErr != nil {
+		return ovErr
+	}
 	resolved, rerr := config.Resolve(config.ResolveOptions{
 		FlagAPIKey:    f.apiKey,
 		FlagAPISecret: f.apiSecret,
@@ -152,6 +156,7 @@ func runLink(cmd *cobra.Command, args []string, f *linkFlags) error {
 		EnvAPISecret:  os.Getenv(config.EnvAPISecret),
 		EnvProfile:    os.Getenv(config.EnvProfile),
 		EnvAPIHost:    os.Getenv(config.EnvAPIHost),
+		RepoOverlay:   overlay,
 		Config:        cfg,
 	})
 	if rerr != nil {
