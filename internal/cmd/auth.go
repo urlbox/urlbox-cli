@@ -170,19 +170,23 @@ The env var URLBOX_API_SECRET takes precedence at runtime over the saved value.`
 					switch {
 					case flagProfile != "":
 						if _, ok := cfg.Profiles[flagProfile]; !ok {
+							// Round 7 EE: every "user named a profile that
+							// doesn't exist" site reports ErrNotFound now,
+							// matching profile delete/default and the
+							// unified config.Resolve (render/status/link/doctor).
 							return output.NewCLIError(
-								output.ErrUsage,
-								"Unknown profile: "+flagProfile,
-								"Configured profiles: "+quotedSortedProfileNames(cfg.Profiles)+". Use `urlbox config profile create "+flagProfile+"` first, or drop --profile to target the default.",
+								output.ErrNotFound,
+								`Profile "`+flagProfile+`" does not exist`,
+								"Run 'urlbox config profile list' to see available profiles, or `urlbox config profile create "+flagProfile+"` first.",
 							)
 						}
 						profileName = flagProfile
 					case envProfile != "":
 						if _, ok := cfg.Profiles[envProfile]; !ok {
 							return output.NewCLIError(
-								output.ErrUsage,
-								"Unknown profile (URLBOX_PROFILE): "+envProfile,
-								"Configured profiles: "+quotedSortedProfileNames(cfg.Profiles)+". Unset URLBOX_PROFILE or create the profile first.",
+								output.ErrNotFound,
+								`Profile "`+envProfile+`" does not exist (URLBOX_PROFILE)`,
+								"Run 'urlbox config profile list' to see available profiles, or unset URLBOX_PROFILE.",
 							)
 						}
 						profileName = envProfile

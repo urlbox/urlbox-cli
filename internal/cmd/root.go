@@ -69,10 +69,35 @@ func Execute(args []string, stdout, stderr io.Writer) int {
 	}
 
 	if !cliErr.Silent {
-		env := output.NewErrorEnvelope(calledCommand(rootCmd), cliErr)
+		env := output.NewErrorEnvelope(calledCommandFromArgs(rootCmd, args), cliErr)
 		_ = formatter.WriteError(stdout, env)
 	}
 	return cliErr.ExitCode()
+}
+
+// calledCommandFromArgs returns the full invoked subcommand path
+// (e.g. "config get", "config profile delete") by re-walking the args
+// through the command tree. Cobra's CalledAs() reliably indicates the
+// LEAF that was reached, but ancestor CalledAs values are not always
+// retained on every code path, so deriving the path from args via
+// Find() is the dependable source. Returns "" if no subcommand was
+// matched (bare `urlbox`).
+func calledCommandFromArgs(root *cobra.Command, args []string) string {
+	if rootCalled := root.CalledAs(); rootCalled != "" && rootCalled != root.Name() {
+		return rootCalled
+	}
+	leaf, _, err := root.Find(args)
+	if err != nil || leaf == nil || leaf == root {
+		return ""
+	}
+	// Walk up from the leaf to root, collecting names. CommandPath() returns
+	// the binary-prefixed path like "urlbox config get"; strip the root name.
+	path := leaf.CommandPath()
+	prefix := root.Name() + " "
+	if strings.HasPrefix(path, prefix) {
+		return strings.TrimPrefix(path, prefix)
+	}
+	return path
 }
 
 func newRootCmd(stdout, stderr io.Writer) *cobra.Command {
@@ -292,17 +317,4 @@ func collectActiveFlagNames(active *cobra.Command, typed string) []string {
 		out = append(out, name)
 	}
 	return out
-}
-
-// calledCommand returns the name of the subcommand that was invoked, or empty string.
-func calledCommand(cmd *cobra.Command) string {
-	if cmd.CalledAs() != "" && cmd.CalledAs() != cmd.Name() {
-		return cmd.CalledAs()
-	}
-	for _, c := range cmd.Commands() {
-		if c.CalledAs() != "" {
-			return c.CalledAs()
-		}
-	}
-	return ""
 }

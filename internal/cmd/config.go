@@ -391,9 +391,9 @@ profile count.`,
 					}
 					if _, ok := c.Profiles[val]; !ok {
 						return output.NewCLIError(
-							output.ErrUsage,
-							"Unknown profile: "+val,
-							"Configured profiles: "+quotedSortedProfileNames(c.Profiles)+".",
+							output.ErrNotFound,
+							`Profile "`+val+`" does not exist`,
+							"Run 'urlbox config profile list' to see available profiles.",
 						)
 					}
 					c.DefaultProfile = val
@@ -472,14 +472,16 @@ profile count.`,
 // per resolved Open Question 4 (smart write).
 //
 // Precedence (highest first):
-//   - 0 profiles → ErrUsage "No profiles configured"
-//   - --profile given → must exist, else ErrUsage "Unknown profile: <name>"
-//   - URLBOX_PROFILE set → must exist, else ErrUsage (Round 5 Adv-2: env-var
-//     typos previously fell through silently and leaked the wrong profile)
+//   - 0 profiles → ErrUsage "No profiles configured" (setup issue)
+//   - --profile given → must exist, else ErrNotFound (Round 7 EE: every
+//     "user named a profile that doesn't exist" site now reports the same
+//     envelope as profile delete/default and the unified config.Resolve)
+//   - URLBOX_PROFILE set → must exist, else ErrNotFound (same class)
 //   - 1 profile, no flag/env → that profile (implicit)
 //   - 2+ profiles, default_profile set and exists → default_profile (Round 5
 //     CI-2: matches how render/status/link resolve)
 //   - 2+ profiles, no default_profile → ErrUsage "--profile is required"
+//     (ambiguity — user didn't specify which, not a name lookup miss)
 func resolveTargetProfile(cmd *cobra.Command, c *config.Config) (string, error) {
 	if len(c.Profiles) == 0 {
 		return "", output.NewCLIError(
@@ -492,9 +494,9 @@ func resolveTargetProfile(cmd *cobra.Command, c *config.Config) (string, error) 
 	if flagProfile != "" {
 		if _, ok := c.Profiles[flagProfile]; !ok {
 			return "", output.NewCLIError(
-				output.ErrUsage,
-				"Unknown profile: "+flagProfile,
-				"Configured profiles: "+quotedSortedProfileNames(c.Profiles)+".",
+				output.ErrNotFound,
+				`Profile "`+flagProfile+`" does not exist`,
+				"Run 'urlbox config profile list' to see available profiles.",
 			)
 		}
 		return flagProfile, nil
@@ -502,9 +504,9 @@ func resolveTargetProfile(cmd *cobra.Command, c *config.Config) (string, error) 
 	if envProfile := os.Getenv(config.EnvProfile); envProfile != "" {
 		if _, ok := c.Profiles[envProfile]; !ok {
 			return "", output.NewCLIError(
-				output.ErrUsage,
-				"Unknown profile (URLBOX_PROFILE): "+envProfile,
-				"Configured profiles: "+quotedSortedProfileNames(c.Profiles)+". Unset URLBOX_PROFILE or create the profile first.",
+				output.ErrNotFound,
+				`Profile "`+envProfile+`" does not exist (URLBOX_PROFILE)`,
+				"Run 'urlbox config profile list' to see available profiles, or unset URLBOX_PROFILE.",
 			)
 		}
 		return envProfile, nil

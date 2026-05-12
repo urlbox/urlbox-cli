@@ -607,10 +607,13 @@ func TestAuth_ProfileFlag_TargetsNamedProfile(t *testing.T) {
 	}
 }
 
-// TestAuth_ProfileFlag_UnknownProfile_Errors pins that an unknown profile
-// name causes ErrUsage rather than silently writing to default. This is
-// the documented behavior of `render`, `status`, `link`, and `config set`
-// — auth should be consistent.
+// TestAuth_ProfileFlag_UnknownProfile_Errors pins Round 4 C1 + Round 7 EE:
+// an unknown --profile name must error rather than silently write to
+// default. Round 4 closed the silent-clobber (errored with ErrUsage);
+// Round 7 EE aligns the envelope shape to ErrNotFound exit 5 with
+// command="auth" — same as profile delete/default and config.Resolve.
+// Every "user named a profile that doesn't exist" site in the CLI now
+// returns the same envelope.
 func TestAuth_ProfileFlag_UnknownProfile_Errors(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("URLBOX_API_SECRET", "")
@@ -630,16 +633,19 @@ func TestAuth_ProfileFlag_UnknownProfile_Errors(t *testing.T) {
 	// Even with --force, an unknown profile name must error rather than
 	// silently overwrite default. This closes the Round 4 adversarial repro.
 	exit := cmd.Execute([]string{"--profile", "NONEXISTENT", "auth", "--api-secret", "sec_attacker_yy", "--force", "--output-format", "json"}, &stdout, &stderr)
-	if exit == 0 {
-		t.Fatalf("--profile NONEXISTENT should error; exit=0 stdout=%s", stdout.String())
+	if exit != 5 {
+		t.Fatalf("--profile NONEXISTENT should exit 5 (not_found); got exit=%d stdout=%s", exit, stdout.String())
 	}
 	var env map[string]any
 	_ = json.Unmarshal(stdout.Bytes(), &env)
-	if env["code"] != "usage" {
-		t.Errorf("code=%v, want usage", env["code"])
+	if env["code"] != "not_found" {
+		t.Errorf("code=%v, want not_found", env["code"])
 	}
 	if !strings.Contains(env["error"].(string), "NONEXISTENT") {
 		t.Errorf("error should name the rejected profile; got %q", env["error"])
+	}
+	if env["command"] != "auth" {
+		t.Errorf("command=%v, want auth", env["command"])
 	}
 
 	// Verify default profile was NOT clobbered — this is the load-bearing assertion.

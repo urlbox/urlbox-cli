@@ -177,6 +177,12 @@ func TestConfigSet_DefaultProfileKey_AlwaysWrites(t *testing.T) {
 	}
 }
 
+// TestConfigSet_DefaultProfile_UnknownName_Errors pins Round 7 EE class-fix:
+// naming a non-existent profile (here `ghost`) returns ErrNotFound exit 5,
+// not the legacy ErrUsage exit 1. This aligns with `profile default`/
+// `profile delete` and with the unified config.Resolve for render/status/
+// link/doctor — every "user named a profile that doesn't exist" site
+// across the CLI now reports the same envelope shape.
 func TestConfigSet_DefaultProfile_UnknownName_Errors(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)
@@ -187,22 +193,21 @@ func TestConfigSet_DefaultProfile_UnknownName_Errors(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	exit := cmd.Execute([]string{"config", "set", "default_profile", "ghost"}, &stdout, &stderr)
-	if exit != 1 {
-		t.Fatalf("expected exit 1 (usage), got %d", exit)
+	if exit != 5 {
+		t.Fatalf("expected exit 5 (not_found), got %d", exit)
 	}
 	var env map[string]any
 	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
 		t.Fatalf("not JSON: %v", err)
 	}
-	if env["code"] != "usage" {
-		t.Errorf("code=%v", env["code"])
+	if env["code"] != "not_found" {
+		t.Errorf("code=%v, want not_found", env["code"])
 	}
-	if env["error"] != "Unknown profile: ghost" {
+	if env["error"] != `Profile "ghost" does not exist` {
 		t.Errorf("error=%v", env["error"])
 	}
-	want := `Configured profiles: "default", "work".`
-	if env["hint"] != want {
-		t.Errorf("hint=%v want=%v", env["hint"], want)
+	if env["command"] != "config set" {
+		t.Errorf("command=%v, want config set", env["command"])
 	}
 
 	// Verify default_profile was NOT changed on disk.
@@ -605,10 +610,82 @@ func TestConfigSet_APIKey_NotMasked(t *testing.T) {
 	}
 }
 
-// TestConfigGet_UnknownEnvProfile_Errors pins Round 5 Adv-2: a typo in
-// URLBOX_PROFILE silently fell back to the default profile, leaking the
-// default's secret. --profile bogus correctly errors; URLBOX_PROFILE
-// should too — same failure class as the auth profile-bypass guard.
+// TestConfigGet_UnknownFlagProfile_Errors pins Round 7 EE class-fix:
+// `config get --profile X` where X doesn't exist returns ErrNotFound
+// exit 5 with command="config get", matching profile delete/default +
+// config.Resolve (used by render/status/link/doctor). Pre-fix this
+// returned ErrUsage exit 1 with command="" — the original Round 7
+// finding ("envelope shape misalignment").
+func TestConfigGet_UnknownFlagProfile_Errors(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	seedConfig(t, dir, map[string]config.Profile{
+		"default": {APISecret: "sec_default_xxxxxx"},
+		"work":    {APISecret: "sec_work_yyyyyyy"},
+	})
+
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{"--profile", "ghost", "config", "get", "api_secret", "--output-format", "json"}, &stdout, &stderr)
+	if exit != 5 {
+		t.Fatalf("--profile ghost should exit 5 (not_found); got exit %d stdout=%s", exit, stdout.String())
+	}
+	var env map[string]any
+	_ = json.Unmarshal(stdout.Bytes(), &env)
+	if env["code"] != "not_found" {
+		t.Errorf("code=%v, want not_found", env["code"])
+	}
+	if !strings.Contains(env["error"].(string), "ghost") {
+		t.Errorf("error should name the rejected profile; got %q", env["error"])
+	}
+	if env["command"] != "config get" {
+		t.Errorf("command=%v, want config get", env["command"])
+	}
+	// Verify no secret leaked.
+	if strings.Contains(stdout.String(), "sec_default_xxxxxx") || strings.Contains(stdout.String(), "sec_work_yyyyyyy") {
+		t.Errorf("envelope leaked a profile secret on unknown --profile: %s", stdout.String())
+	}
+}
+
+// TestConfigSet_UnknownFlagProfile_Errors mirrors the get-side test —
+// `config set --profile X api_key Y` for an unknown X is the same
+// class and returns the same envelope shape.
+func TestConfigSet_UnknownFlagProfile_Errors(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	seedConfig(t, dir, map[string]config.Profile{
+		"default": {APISecret: "sec_default_xxxxxx"},
+		"work":    {APISecret: "sec_work_yyyyyyy"},
+	})
+
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{"--profile", "ghost", "config", "set", "api_key", "pub_xxx", "--output-format", "json"}, &stdout, &stderr)
+	if exit != 5 {
+		t.Fatalf("--profile ghost should exit 5 (not_found); got exit %d stdout=%s", exit, stdout.String())
+	}
+	var env map[string]any
+	_ = json.Unmarshal(stdout.Bytes(), &env)
+	if env["code"] != "not_found" {
+		t.Errorf("code=%v, want not_found", env["code"])
+	}
+	if env["command"] != "config set" {
+		t.Errorf("command=%v, want config set", env["command"])
+	}
+	// Verify on-disk state was not mutated.
+	c, _ := config.Load()
+	if c.Profiles["default"].APIKey != "" || c.Profiles["work"].APIKey != "" {
+		t.Errorf("config was mutated despite rejected --profile: %+v", c.Profiles)
+	}
+}
+
+// TestConfigGet_UnknownEnvProfile_Errors pins Round 5 Adv-2 +
+// Round 7 EE: a typo in URLBOX_PROFILE silently fell back to the
+// default profile, leaking the default's secret. Round 5 closed the
+// silent-fallback (correctly errored with ErrUsage). Round 7 EE
+// aligns the envelope to ErrNotFound exit 5 with command="config get"
+// — same shape as profile delete/default and the unified
+// config.Resolve. The class is "user named a profile that doesn't
+// exist", which is a not_found regardless of which source (flag/env)
+// supplied the name.
 func TestConfigGet_UnknownEnvProfile_Errors(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)
@@ -623,16 +700,19 @@ func TestConfigGet_UnknownEnvProfile_Errors(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	exit := cmd.Execute([]string{"config", "get", "api_secret", "--output-format", "json"}, &stdout, &stderr)
-	if exit == 0 {
-		t.Fatalf("URLBOX_PROFILE=ghost should error; got exit 0 stdout=%s", stdout.String())
+	if exit != 5 {
+		t.Fatalf("URLBOX_PROFILE=ghost should exit 5 (not_found); got exit %d stdout=%s", exit, stdout.String())
 	}
 	var env map[string]any
 	_ = json.Unmarshal(stdout.Bytes(), &env)
-	if env["code"] != "usage" {
-		t.Errorf("code=%v, want usage", env["code"])
+	if env["code"] != "not_found" {
+		t.Errorf("code=%v, want not_found", env["code"])
 	}
 	if !strings.Contains(env["error"].(string), "ghost") {
 		t.Errorf("error should name the rejected profile; got %q", env["error"])
+	}
+	if env["command"] != "config get" {
+		t.Errorf("command=%v, want config get", env["command"])
 	}
 	// Verify no secret leaked through the silent-fallback path.
 	if strings.Contains(stdout.String(), "sec_default_xxxxxx") || strings.Contains(stdout.String(), "sec_work_yyyyyy") {
