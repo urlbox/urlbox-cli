@@ -1038,3 +1038,118 @@ func TestRender_NumericFlag_AtBoundary_Allowed(t *testing.T) {
 		t.Fatalf("boundary value should succeed; got exit %d, stdout=%s", exit, stdout.String())
 	}
 }
+
+// TestRender_JSONPath_BeyondJSONSafeInt_Errors pins Round 5 Adv-1 (High):
+// the M2 flag-parser fix doesn't apply to values passed through --json,
+// even though the flag-parser's own error message warns about exactly
+// this rounding. The dry-run output silently substituted
+// 9007199254740993 → 9007199254740992 (float64 rounding).
+//
+// Fix: re-run the int-range check after JSON parse + merge, on the
+// merged numeric option keys (width, height, delay, quality).
+func TestRender_JSONPath_BeyondJSONSafeInt_Errors(t *testing.T) {
+	cases := []struct {
+		name string
+		json string
+	}{
+		{"width over 2^53", `{"url":"https://example.com","width":9007199254740993}`},
+		{"width negative over 2^53", `{"url":"https://example.com","width":-9007199254740993}`},
+		{"height over 2^53", `{"url":"https://example.com","height":9007199254740993}`},
+		{"delay over 2^53", `{"url":"https://example.com","delay":9007199254740993}`},
+		{"quality over 2^53", `{"url":"https://example.com","quality":9007199254740993}`},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+			t.Setenv("URLBOX_API_SECRET", "sec_test")
+
+			var stdout, stderr bytes.Buffer
+			exit := cmd.Execute([]string{
+				"render", "--json", c.json,
+				"--dry-run",
+				"--output-format", "json",
+			}, &stdout, &stderr)
+			if exit != 2 {
+				t.Fatalf("%s should exit 2 (validation); got %d. stdout=%s", c.name, exit, stdout.String())
+			}
+			var env map[string]any
+			_ = json.Unmarshal(stdout.Bytes(), &env)
+			if env["code"] != "validation" {
+				t.Errorf("code=%v, want validation", env["code"])
+			}
+		})
+	}
+}
+
+// TestRender_JSONPath_AtBoundary_Allowed pins that exactly 2^53-1 on
+// the --json path is accepted (boundary is the documented schema max,
+// not one-past).
+func TestRender_JSONPath_AtBoundary_Allowed(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("URLBOX_API_SECRET", "sec_test")
+
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{
+		"render", "--json", `{"url":"https://example.com","width":9007199254740991}`,
+		"--dry-run", "--output-format", "json",
+	}, &stdout, &stderr)
+	if exit != 0 {
+		t.Fatalf("boundary on JSON path should succeed; got exit %d, stdout=%s", exit, stdout.String())
+	}
+}
+
+// TestRender_JSONPath_FloatValue_PassesThrough pins that a non-integer
+// numeric in --json (e.g. {"width": 1.5}) is NOT trapped by the int-range
+// check — the API will reject it as it sees fit. Schema-as-docs applies
+// to type validation; we only intervene on silent rounding.
+func TestRender_JSONPath_FloatValue_PassesThrough(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("URLBOX_API_SECRET", "sec_test")
+
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{
+		"render", "--json", `{"url":"https://example.com","width":1.5}`,
+		"--dry-run", "--output-format", "json",
+	}, &stdout, &stderr)
+	if exit != 0 {
+		t.Fatalf("float width should pass --dry-run; got exit %d, stdout=%s", exit, stdout.String())
+	}
+	var env map[string]any
+	_ = json.Unmarshal(stdout.Bytes(), &env)
+	data, _ := env["data"].(map[string]any)
+	if w, _ := data["width"].(float64); w != 1.5 {
+		t.Errorf("width should be 1.5 in envelope; got %v", data["width"])
+	}
+}
+
+// TestRender_JSONPath_NestedSlice_NoStrayJSONNumber pins that the
+// json.Number -> float64 conversion recurses into arrays. Previously,
+// {"tags":[1,2,3]} would leave the inner values as json.Number; the
+// envelope still rendered them correctly thanks to json.Number's
+// MarshalJSON, but the in-memory map had inconsistent value types.
+func TestRender_JSONPath_NestedSlice_NoStrayJSONNumber(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("URLBOX_API_SECRET", "sec_test")
+
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{
+		"render", "--json", `{"url":"https://example.com","tags":[1,2,3]}`,
+		"--dry-run", "--output-format", "json",
+	}, &stdout, &stderr)
+	if exit != 0 {
+		t.Fatalf("nested-slice payload should pass; got %d stdout=%s", exit, stdout.String())
+	}
+	var env map[string]any
+	_ = json.Unmarshal(stdout.Bytes(), &env)
+	data, _ := env["data"].(map[string]any)
+	tags, _ := data["tags"].([]any)
+	if len(tags) != 3 {
+		t.Fatalf("tags should round-trip as a 3-element array; got %v", data["tags"])
+	}
+	// Each element should be a float64 (per the converter), not a string.
+	for i, v := range tags {
+		if _, ok := v.(float64); !ok {
+			t.Errorf("tags[%d] = %v (%T), want float64", i, v, v)
+		}
+	}
+}

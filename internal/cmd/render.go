@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -218,13 +219,9 @@ func runRender(cmd *cobra.Command, args []string, f *renderFlags) error {
 
 	// 2b. Apply --json contents (overrides preset).
 	if len(jsonBytes) > 0 {
-		fromJSON := map[string]any{}
-		if err := json.Unmarshal(jsonBytes, &fromJSON); err != nil {
-			return output.NewCLIError(
-				output.ErrValidation,
-				"failed to parse --json payload",
-				"--json accepts a literal JSON string, '-' (stdin), or '@path' (file). Got: "+err.Error(),
-			)
+		fromJSON, cliErr := parseJSONWithIntRangeCheck(jsonBytes)
+		if cliErr != nil {
+			return cliErr
 		}
 		for k, v := range fromJSON {
 			merged[k] = v
@@ -429,6 +426,88 @@ func breadcrumbsForResp(resp *api.Response, f *renderFlags) []output.Breadcrumb 
 // to a nearby even number when marshaled. Schema documents this as the
 // width/height/etc. maximum.
 const jsonSafeIntMax = 9007199254740991
+
+// parseJSONWithIntRangeCheck unmarshals the --json payload with json.Number
+// (string-typed numbers) so we can reject silently-rounding ints BEFORE
+// they become float64. Then it converts the surviving numbers back to
+// float64 to preserve the existing map[string]any contract downstream.
+//
+// Round 5 Adv-1 fix: the typed-flag guard (validateIntFlagRanges) only
+// caught --width / --height on argv. The same payload via --json bypassed
+// it because regular json.Unmarshal rounds at parse time. Now both paths
+// reject identically.
+func parseJSONWithIntRangeCheck(jsonBytes []byte) (map[string]any, *output.CLIError) {
+	raw := map[string]any{}
+	dec := json.NewDecoder(bytes.NewReader(jsonBytes))
+	dec.UseNumber()
+	if err := dec.Decode(&raw); err != nil {
+		return nil, output.NewCLIError(
+			output.ErrValidation,
+			"failed to parse --json payload",
+			"--json accepts a literal JSON string, '-' (stdin), or '@path' (file). Got: "+err.Error(),
+		)
+	}
+	intBoundKeys := []string{"width", "height", "delay", "quality"}
+	for _, k := range intBoundKeys {
+		v, ok := raw[k]
+		if !ok {
+			continue
+		}
+		n, ok := v.(json.Number)
+		if !ok {
+			continue
+		}
+		// Int64 parse — succeeds only for integer literals. Floats parse
+		// to float64 via the helper without range trouble (their precision
+		// is already <= 2^53 anyway).
+		i, err := n.Int64()
+		if err != nil {
+			continue
+		}
+		if i > jsonSafeIntMax || i < -jsonSafeIntMax {
+			return nil, output.NewCLIError(
+				output.ErrValidation,
+				fmt.Sprintf("--json key %q value %d is outside the JSON safe-integer range (±%d)", k, i, int64(jsonSafeIntMax)),
+				"Pass an integer between -9007199254740991 and 9007199254740991. Larger values silently round when marshaled to JSON.",
+			)
+		}
+	}
+	convertNumbersToFloat64(raw)
+	return raw, nil
+}
+
+// convertNumbersToFloat64 walks a parsed JSON map (json.Decoder with
+// UseNumber leaves numbers as json.Number) and converts each to float64
+// so the rest of the pipeline sees the same shape it always has.
+// Recurses into nested maps AND slices so nested option objects /
+// arrays don't leave stray json.Number values that would render
+// inconsistently if printed via the envelope. Non-finite floats
+// (NaN/Inf — not valid JSON anyway) fall back to their string form.
+func convertNumbersToFloat64(m map[string]any) {
+	for k, v := range m {
+		m[k] = convertNumberValue(v)
+	}
+}
+
+func convertNumberValue(v any) any {
+	switch v := v.(type) {
+	case json.Number:
+		if f, err := v.Float64(); err == nil {
+			return f
+		}
+		return v.String()
+	case map[string]any:
+		convertNumbersToFloat64(v)
+		return v
+	case []any:
+		for i, elem := range v {
+			v[i] = convertNumberValue(elem)
+		}
+		return v
+	default:
+		return v
+	}
+}
 
 // validateIntFlagRanges rejects --width / --height / --delay / --quality
 // / --max-retries values outside ±2^53-1. The Go int64 flag accepts much
