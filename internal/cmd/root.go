@@ -129,7 +129,7 @@ func newRootCmd(stdout, stderr io.Writer) *cobra.Command {
 			format, _ := c.Root().PersistentFlags().GetString("output-format")
 			switch format {
 			case "", "json", "text", "quiet":
-				return nil
+				// OK
 			case "ndjson":
 				return output.NewCLIError(
 					output.ErrUsage,
@@ -143,6 +143,29 @@ func newRootCmd(stdout, stderr io.Writer) *cobra.Command {
 					"Use one of: json, text, quiet.",
 				)
 			}
+			// Round 8 NN: --profile flag value validation. The Adv-4
+			// `validateProfileName` rule applied to creation but not to
+			// flag-resolution-time. So `--profile ""`, `--profile " "`,
+			// `--profile $'\t'` silently behaved like "no flag" (the
+			// resolver's `if flagProfile != ""` branch skipped them) —
+			// confusing for agents that programmatically set the flag
+			// from a variable that's sometimes empty. Now an explicit
+			// blank rejects loudly.
+			//
+			// Uses Changed() rather than GetString() != "" so that
+			// `--profile ""` (explicitly empty) is distinguished from
+			// "flag not passed" (the latter is legitimately empty).
+			if c.Root().PersistentFlags().Changed("profile") {
+				profile, _ := c.Root().PersistentFlags().GetString("profile")
+				if strings.TrimSpace(profile) == "" {
+					return output.NewCLIError(
+						output.ErrUsage,
+						"--profile cannot be empty or whitespace-only",
+						"Either omit --profile (uses the default profile / URLBOX_PROFILE / single profile), or pass an actual name.",
+					)
+				}
+			}
+			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if isStderrTTY(cmd.ErrOrStderr()) {

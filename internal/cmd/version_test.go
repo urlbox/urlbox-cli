@@ -83,3 +83,27 @@ func TestRootError_CommandFieldNotEmpty_UnknownFlag(t *testing.T) {
 		t.Errorf("command=%v, want non-empty", env["command"])
 	}
 }
+
+// TestProfileFlag_EmptyOrWhitespace_Rejected pins Round 8 NN: an
+// empty or whitespace-only --profile value used to silently behave
+// like "no flag" because the resolver's `if flagProfile != ""` check
+// skipped them. Confusing for agents that programmatically set the
+// flag from a variable that's sometimes empty. Now rejects loudly.
+func TestProfileFlag_EmptyOrWhitespace_Rejected(t *testing.T) {
+	cases := []string{"", " ", "   ", "\t", "\n"}
+	for _, p := range cases {
+		t.Run("profile="+p, func(t *testing.T) {
+			t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+			var stdout, stderr bytes.Buffer
+			exit := cmd.Execute([]string{"--profile", p, "config", "profile", "list", "--output-format", "json"}, &stdout, &stderr)
+			if exit == 0 {
+				t.Fatalf("empty/whitespace --profile should error; got exit 0")
+			}
+			var env map[string]any
+			_ = json.Unmarshal(stdout.Bytes(), &env)
+			if env["code"] != "usage" {
+				t.Errorf("code=%v, want usage", env["code"])
+			}
+		})
+	}
+}
