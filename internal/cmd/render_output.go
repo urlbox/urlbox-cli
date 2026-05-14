@@ -8,15 +8,10 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
+	"github.com/urlbox/urlbox-cli/internal/api"
 	"github.com/urlbox/urlbox-cli/internal/output"
 )
-
-// downloadMaxDuration caps how long a single render-bytes download can
-// run. Server-side render time + retries are budgeted by the API call's
-// context; this is just the streaming-read leg.
-const downloadMaxDuration = 5 * time.Minute
 
 // resolveOutputPath canonicalizes the user-supplied --output path and
 // asserts it stays under baseDir (typically the CWD). Returns the
@@ -161,9 +156,11 @@ func canonicalizeExistingPrefix(path string) string {
 // created (mode 0o750) if missing. Errors are wrapped as ErrNetwork
 // (transport failures) or ErrServer (non-2xx response).
 //
-// The download is bounded by downloadMaxDuration even if the caller's
+// The download is bounded by api.DownloadTimeout even if the caller's
 // context has no deadline — a stalled CDN connection mustn't hang the
-// CLI indefinitely.
+// CLI indefinitely. Body size is capped at api.DownloadMaxBytes (v1.0.4
+// Class 2.1 — pre-1.0.4 the body was unbounded, letting a misconfigured
+// or malicious renderUrl fill the disk).
 // checkOutputWritable verifies the user's --output path can be written to
 // BEFORE the API call, so a bad path doesn't burn a render credit. Mkdirs
 // the parent and probe-creates a sibling file in it (CreateTemp guarantees
@@ -194,8 +191,15 @@ func checkOutputWritable(abs string) *output.CLIError {
 	return nil
 }
 
+// downloadHTTPClient is the *http.Client used by downloadTo. It defaults to
+// api.NewDownloadClient() (hardened: TLS 1.2 min, no HTTPS->HTTP downgrades,
+// no >10 hops). Exposed via a package var so tests can inject a transport
+// that talks to a httptest.Server without going through the production
+// redirect/TLS policy.
+var downloadHTTPClient = api.NewDownloadClient()
+
 func downloadTo(ctx context.Context, url, dst string) *output.CLIError {
-	dlCtx, cancel := context.WithTimeout(ctx, downloadMaxDuration)
+	dlCtx, cancel := context.WithTimeout(ctx, api.DownloadTimeout)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(dlCtx, http.MethodGet, url, http.NoBody)
@@ -206,7 +210,7 @@ func downloadTo(ctx context.Context, url, dst string) *output.CLIError {
 			"This is a CLI bug — please report at https://github.com/urlbox/urlbox-cli/issues. The render URL is in the envelope; you can curl it manually as a workaround.",
 		)
 	}
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := downloadHTTPClient.Do(req)
 	if err != nil {
 		return output.NewCLIError(
 			output.ErrNetwork,
@@ -260,11 +264,26 @@ func downloadTo(ctx context.Context, url, dst string) *output.CLIError {
 	}
 	defer func() { _ = f.Close() }()
 
-	if _, err := io.Copy(f, resp.Body); err != nil {
+	// Body cap: read at most DownloadMaxBytes + 1 byte. If the read reaches
+	// the +1, the source exceeded the cap and we reject — the partial file
+	// is removed below. The +1 trick lets us distinguish "body exactly fits"
+	// from "body too big" without a second probe.
+	limited := io.LimitReader(resp.Body, api.DownloadMaxBytes+1)
+	n, err := io.Copy(f, limited)
+	if err != nil {
 		return output.NewCLIError(
 			output.ErrNetwork,
 			"failed to write render to disk: "+err.Error(),
 			"Free disk space ran out mid-write, or the source connection dropped. The render URL is still in the envelope; you can re-download with curl.",
+		)
+	}
+	if n > api.DownloadMaxBytes {
+		_ = f.Close()
+		_ = os.Remove(dst)
+		return output.NewCLIError(
+			output.ErrServer,
+			fmt.Sprintf("render output exceeded the download size cap (%d MiB)", api.DownloadMaxBytes/(1024*1024)),
+			"The render URL returned more than the safety cap. This usually means a misconfigured server or a corrupted response. Re-run urlbox render; if it persists, the render URL is in the envelope and you can curl it manually.",
 		)
 	}
 	return nil
