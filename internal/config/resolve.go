@@ -42,29 +42,44 @@ type Source struct {
 
 // Resolve flattens opts into a single Resolved.
 //
+// Resolve is the SINGLE chokepoint where credential and host values
+// from EVERY source are validated — flag, env, repo overlay, and
+// profile-loaded-from-disk. Callers can hand any input verbatim;
+// Resolve guarantees that any non-empty value reaching the caller has
+// passed through ValidateSecretValue / ValidateAPIHost.
+//
 // Errors:
 //   - FlagProfile or EnvProfile names a profile that doesn't exist in
 //     opts.Config (Round 5 Adv-2 + Round 7 EE).
-//   - EnvAPISecret fails ValidateSecretValue (Round 8 FF — env path used
-//     to bypass the rule the flag/stdin/file paths enforce, letting
-//     malformed bytes flow through to HMAC signing).
+//   - Any credential/host value (flag/env/overlay/profile) fails its
+//     validator. v1.0.4 Class 1 closed three gaps in Round 8's FF+GG:
+//     RepoOverlay.APIHost/APISecret were consumed verbatim, FlagAPISecret
+//     relied on upstream auth-command validation only, and profile values
+//     loaded from disk bypassed every write-time gate.
 //
 //nolint:gocritic // ResolveOptions is intentionally passed by value: this is a pure resolver and the input is immutable. A pointer would invite callers to mutate.
 func Resolve(opts ResolveOptions) (*Resolved, error) {
+	// ─── Validate inputs at the boundary ──────────────────────────
+	// Every non-empty external input passes through its validator. Errors
+	// are re-framed so the user sees which source supplied the bad value
+	// (helpful when a teammate-committed .urlbox/config.json carries a
+	// hostile value the user didn't write).
 	if opts.EnvAPISecret != "" {
 		cleaned, vErr := ValidateSecretValue(opts.EnvAPISecret)
 		if vErr != nil {
-			// Re-frame the error so the user knows the bad value came from
-			// the env var, not a --api-secret flag.
 			vErr.Message = "URLBOX_API_SECRET: " + vErr.Message
 			return nil, vErr
 		}
 		opts.EnvAPISecret = cleaned
 	}
-	// Round 8 GG: api_host got no validation at all before this — accepted
-	// javascript:, file://, embedded credentials, CRLF. Validate every
-	// non-empty external source (env + flag) so the rule is enforced
-	// regardless of who set the value.
+	if opts.FlagAPISecret != "" {
+		cleaned, vErr := ValidateSecretValue(opts.FlagAPISecret)
+		if vErr != nil {
+			vErr.Message = "--api-secret: " + vErr.Message
+			return nil, vErr
+		}
+		opts.FlagAPISecret = cleaned
+	}
 	if opts.EnvAPIHost != "" {
 		cleaned, vErr := ValidateAPIHost(opts.EnvAPIHost)
 		if vErr != nil {
@@ -80,6 +95,24 @@ func Resolve(opts ResolveOptions) (*Resolved, error) {
 			return nil, vErr
 		}
 		opts.FlagAPIHost = cleaned
+	}
+	if opts.RepoOverlay != nil {
+		if opts.RepoOverlay.APIHost != "" {
+			cleaned, vErr := ValidateAPIHost(opts.RepoOverlay.APIHost)
+			if vErr != nil {
+				vErr.Message = ".urlbox/config.json api_host: " + vErr.Message
+				return nil, vErr
+			}
+			opts.RepoOverlay.APIHost = cleaned
+		}
+		if opts.RepoOverlay.APISecret != "" {
+			cleaned, vErr := ValidateSecretValue(opts.RepoOverlay.APISecret)
+			if vErr != nil {
+				vErr.Message = ".urlbox/config.json api_secret: " + vErr.Message
+				return nil, vErr
+			}
+			opts.RepoOverlay.APISecret = cleaned
+		}
 	}
 	r := &Resolved{}
 
@@ -118,6 +151,28 @@ func Resolve(opts ResolveOptions) (*Resolved, error) {
 			)
 		}
 		profile = p
+
+		// v1.0.4 Class 1 — defense-in-depth: profile values were validated
+		// at write time (config set, profile create), but a manually-edited
+		// ~/.config/urlbox/config.json bypasses every write-time gate.
+		// Validate on read so the read path is the same single chokepoint
+		// the rest of Resolve already is.
+		if profile.APIHost != "" {
+			cleaned, vErr := ValidateAPIHost(profile.APIHost)
+			if vErr != nil {
+				vErr.Message = `profile "` + r.Profile + `" api_host: ` + vErr.Message
+				return nil, vErr
+			}
+			profile.APIHost = cleaned
+		}
+		if profile.APISecret != "" {
+			cleaned, vErr := ValidateSecretValue(profile.APISecret)
+			if vErr != nil {
+				vErr.Message = `profile "` + r.Profile + `" api_secret: ` + vErr.Message
+				return nil, vErr
+			}
+			profile.APISecret = cleaned
+		}
 	}
 
 	switch {

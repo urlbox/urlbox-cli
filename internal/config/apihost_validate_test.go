@@ -110,3 +110,57 @@ func TestValidateAPIHost_AcceptsValid(t *testing.T) {
 		})
 	}
 }
+
+// ─── Class 1.2 (v1.0.4) — http:// only for loopback ─────────────────
+//
+// Invariant: plain http:// is rejected unless the host is loopback
+// (127.0.0.1, ::1, localhost). Closes a downgrade path where a
+// careless URLBOX_API_HOST or a hostile overlay turned the Authorization
+// header cleartext. Loopback remains permitted so httptest-based
+// integration tests (which always use 127.0.0.1) keep working without
+// requiring TLS termination.
+
+func TestValidateAPIHost_RejectsPlainHTTPRemoteHost(t *testing.T) {
+	cases := []string{
+		"http://attacker.example",
+		"http://api.urlbox.com", // even our own host: HTTPS only on the wire
+		"http://10.0.0.1",
+		"http://192.168.1.1",
+		"http://example.com:8080",
+		"http://8.8.8.8",
+		"http://my-dev-box.local",
+	}
+	for _, c := range cases {
+		t.Run(c, func(t *testing.T) {
+			_, err := config.ValidateAPIHost(c)
+			if err == nil {
+				t.Fatalf("ValidateAPIHost(%q) should error — plain http to non-loopback", c)
+			}
+			if err.Code != "usage" {
+				t.Errorf("code=%q, want usage", err.Code)
+			}
+		})
+	}
+}
+
+func TestValidateAPIHost_AllowsHTTPLoopback(t *testing.T) {
+	cases := []string{
+		"http://127.0.0.1",
+		"http://127.0.0.1:8080",
+		"http://127.0.0.1:65535",
+		"http://[::1]",
+		"http://[::1]:9000",
+		"http://localhost",
+		"http://localhost:3000",
+		"http://LocalHost", // case-insensitive
+		"http://LOCALHOST:8000",
+	}
+	for _, c := range cases {
+		t.Run(c, func(t *testing.T) {
+			_, err := config.ValidateAPIHost(c)
+			if err != nil {
+				t.Errorf("ValidateAPIHost(%q) should pass — loopback dev host; got %v", c, err)
+			}
+		})
+	}
+}

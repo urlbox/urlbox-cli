@@ -318,7 +318,7 @@ func TestResolve_EnvAPISecret_ZWJ_Rejected(t *testing.T) {
 // TestResolve_EnvAPISecret_CombiningMark_Rejected — Mn-category char in env path.
 func TestResolve_EnvAPISecret_CombiningMark_Rejected(t *testing.T) {
 	_, err := config.Resolve(config.ResolveOptions{
-		EnvAPISecret: "sec_aaàbbb", // combining grave
+		EnvAPISecret: "sec_aaa\u0300bbb", // combining grave
 	})
 	if err == nil {
 		t.Fatal("env secret with combining mark should error")
@@ -339,5 +339,178 @@ func TestResolve_EnvAPISecret_Trimmed(t *testing.T) {
 	}
 	if r.Source.APISecret != "env" {
 		t.Errorf("Source.APISecret=%q, want env", r.Source.APISecret)
+	}
+}
+
+// ─── Class 1 (v1.0.4) ─────────────────────────────────────────────
+// Invariant: every credential/host value reaching the API client has
+// been through ValidateSecretValue / ValidateAPIHost, regardless of
+// source. Round 8 FF+GG closed env + flag paths but the overlay,
+// FlagAPISecret, and profile-from-disk paths were unvalidated.
+//
+// These tests deliberately use cases that fail under the EXISTING
+// validators — the v1.0.4 change is purely "make Resolve call those
+// validators on more inputs." The "plain http to remote host" case
+// is in apihost_validate_test.go because that's a tightening of the
+// validator itself.
+
+// TestResolve_HostileRepoOverlay_APIHost_Rejected pins the overlay
+// path through ValidateAPIHost. Each case is already rejected by
+// ValidateAPIHost when called via env/flag — the v1.0.4 fix is that
+// overlay-supplied values now flow through the same gate.
+func TestResolve_HostileRepoOverlay_APIHost_Rejected(t *testing.T) {
+	cases := []struct {
+		name, host string
+	}{
+		{"javascript scheme", "javascript:alert(1)"},
+		{"file scheme", "file:///etc/passwd"},
+		{"ftp scheme", "ftp://evil.example"},
+		{"embedded credentials", "https://u:p@evil.example"},
+		{"CRLF injection", "https://api.urlbox.com\r\nX-Evil: 1"},
+		{"control char in path", "https://api.urlbox.com\x00x"},
+		{"empty after trim", "   "},
+		{"query string", "https://api.urlbox.com/?evil=1"},
+		{"fragment", "https://api.urlbox.com/#evil"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := config.Resolve(config.ResolveOptions{
+				RepoOverlay: &config.RepoOverlay{APIHost: tc.host},
+			})
+			if err == nil {
+				t.Fatalf("expected overlay api_host %q to be rejected", tc.host)
+			}
+			var cli *output.CLIError
+			if !errors.As(err, &cli) {
+				t.Fatalf("expected *output.CLIError, got %T", err)
+			}
+			if cli.Code != output.ErrUsage {
+				t.Errorf("expected ErrUsage, got %v", cli.Code)
+			}
+			// Error must identify the overlay file as the source so the
+			// user knows where the bad value came from.
+			if !strings.Contains(cli.Message, ".urlbox/config.json") {
+				t.Errorf("expected error to name overlay source; got %q", cli.Message)
+			}
+		})
+	}
+}
+
+// TestResolve_HostileRepoOverlay_APISecret_Rejected pins the overlay
+// path through ValidateSecretValue. Cases mirror the existing
+// EnvAPISecret rejection suite.
+func TestResolve_HostileRepoOverlay_APISecret_Rejected(t *testing.T) {
+	cases := []struct {
+		name, secret string
+	}{
+		{"control char", "ubx_sk_abc\x07def"},
+		{"zero-width joiner", "ubx_sk_abc\u200ddef"},
+		{"combining mark", "ubx_sk_abc\u0300def"},
+		{"empty after trim", "   "},
+		{"invalid utf-8", "ubx_sk_\xff\xfe"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := config.Resolve(config.ResolveOptions{
+				RepoOverlay: &config.RepoOverlay{APISecret: tc.secret},
+			})
+			if err == nil {
+				t.Fatalf("expected overlay api_secret to be rejected")
+			}
+			var cli *output.CLIError
+			if !errors.As(err, &cli) || cli.Code != output.ErrUsage {
+				t.Errorf("expected ErrUsage, got %v", err)
+			}
+			if !strings.Contains(cli.Message, ".urlbox/config.json") {
+				t.Errorf("expected error to name overlay source; got %q", cli.Message)
+			}
+		})
+	}
+}
+
+// TestResolve_FlagAPISecret_Validated pins the --api-secret path
+// through ValidateSecretValue. Upstream auth.go validates on write,
+// but the read path (Resolve consuming FlagAPISecret) was a leak —
+// the chokepoint discipline says Resolve is the single gate.
+func TestResolve_FlagAPISecret_Validated(t *testing.T) {
+	_, err := config.Resolve(config.ResolveOptions{
+		FlagAPISecret: "ubx_sk_evil\x07char",
+	})
+	if err == nil {
+		t.Fatal("expected --api-secret with control char to be rejected")
+	}
+	var cli *output.CLIError
+	if !errors.As(err, &cli) || cli.Code != output.ErrUsage {
+		t.Errorf("expected ErrUsage, got %v", err)
+	}
+	if !strings.Contains(cli.Message, "--api-secret") {
+		t.Errorf("expected error to name --api-secret as source; got %q", cli.Message)
+	}
+}
+
+// TestResolve_HostileProfileFromDisk_APIHost_Rejected pins defense-
+// in-depth: a manually-edited ~/.config/urlbox/config.json with a
+// hostile api_host on a profile must not silently work. The
+// write-side validators are bypassed by direct edits; Resolve adds
+// the read-side check.
+func TestResolve_HostileProfileFromDisk_APIHost_Rejected(t *testing.T) {
+	cfg := &config.Config{
+		DefaultProfile: "default",
+		Profiles: map[string]config.Profile{
+			"default": {APIHost: "javascript:alert(1)", APIKey: "x"},
+		},
+	}
+	_, err := config.Resolve(config.ResolveOptions{Config: cfg})
+	if err == nil {
+		t.Fatal("expected hostile profile api_host loaded from disk to be rejected")
+	}
+	var cli *output.CLIError
+	if !errors.As(err, &cli) || cli.Code != output.ErrUsage {
+		t.Errorf("expected ErrUsage, got %v", err)
+	}
+	if !strings.Contains(cli.Message, `profile "default"`) {
+		t.Errorf("expected error to name profile source; got %q", cli.Message)
+	}
+}
+
+// TestResolve_HostileProfileFromDisk_APISecret_Rejected — same
+// defense-in-depth for the secret field on disk-loaded profiles.
+func TestResolve_HostileProfileFromDisk_APISecret_Rejected(t *testing.T) {
+	cfg := &config.Config{
+		DefaultProfile: "default",
+		Profiles: map[string]config.Profile{
+			"default": {APISecret: "ubx_sk_evil\x07char"},
+		},
+	}
+	_, err := config.Resolve(config.ResolveOptions{Config: cfg})
+	if err == nil {
+		t.Fatal("expected hostile profile api_secret loaded from disk to be rejected")
+	}
+	var cli *output.CLIError
+	if !errors.As(err, &cli) || cli.Code != output.ErrUsage {
+		t.Errorf("expected ErrUsage, got %v", err)
+	}
+}
+
+// TestResolve_CleanProfileFromDisk_Accepted pins the negative: clean
+// profile values still resolve successfully (the validate-on-read
+// pass must not reject legitimate values).
+func TestResolve_CleanProfileFromDisk_Accepted(t *testing.T) {
+	cfg := &config.Config{
+		DefaultProfile: "default",
+		Profiles: map[string]config.Profile{
+			"default": {
+				APIKey:    "ubx_pk_real",
+				APISecret: "ubx_sk_real",
+				APIHost:   "https://api.urlbox.com",
+			},
+		},
+	}
+	r, err := config.Resolve(config.ResolveOptions{Config: cfg})
+	if err != nil {
+		t.Fatalf("clean profile should resolve cleanly: %v", err)
+	}
+	if r.APIHost != "https://api.urlbox.com" || r.APISecret != "ubx_sk_real" {
+		t.Errorf("unexpected resolve result: %+v", r)
 	}
 }

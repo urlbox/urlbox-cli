@@ -21,6 +21,7 @@
 package config
 
 import (
+	"net"
 	"net/url"
 	"strings"
 
@@ -31,7 +32,12 @@ import (
 //
 //   - Must trim to non-empty.
 //   - Must parse as a URL (net/url.Parse).
-//   - Scheme must be http or https. Other schemes are rejected.
+//   - Scheme must be https. Plain http:// is permitted ONLY for loopback
+//     hosts (127.0.0.1, ::1, localhost) so httptest-based integration
+//     tests and local dev servers work without TLS termination. v1.0.4
+//     tightened this — pre-1.0.4 any http:// was accepted, making a
+//     careless URLBOX_API_HOST or hostile overlay a cleartext-downgrade
+//     primitive on the Authorization header.
 //   - No userinfo (no embedded credentials).
 //   - Host (after url.Parse normalises) must be non-empty.
 //   - No control characters anywhere in the raw value (rejects CRLF
@@ -76,6 +82,19 @@ func ValidateAPIHost(raw string) (string, *output.CLIError) {
 			"The Urlbox API only speaks HTTP(S). Schemes like javascript:, file://, ftp:// are rejected as either paste corruption or a phishing attempt.",
 		)
 	}
+	// v1.0.4 Class 1.2: plain http:// is only allowed for loopback hosts.
+	// The Urlbox API endpoint is HTTPS; permitting http:// for arbitrary
+	// hosts turned a careless URLBOX_API_HOST or a hostile overlay into a
+	// cleartext-downgrade primitive on the Authorization header. Loopback
+	// stays permitted because httptest-based integration tests bind to
+	// 127.0.0.1 and dev servers commonly run without TLS.
+	if u.Scheme == "http" && !isLoopbackHost(u.Hostname()) {
+		return "", output.NewCLIError(
+			output.ErrUsage,
+			"api_host scheme must be https (plain http is only allowed for loopback dev hosts)",
+			"The Urlbox API endpoint is HTTPS-only. http:// is permitted for 127.0.0.1, ::1, or localhost so local development and httptest-based integration tests work; for any remote host use https://.",
+		)
+	}
 	if u.User != nil {
 		return "", output.NewCLIError(
 			output.ErrUsage,
@@ -98,4 +117,23 @@ func ValidateAPIHost(raw string) (string, *output.CLIError) {
 		)
 	}
 	return trimmed, nil
+}
+
+// isLoopbackHost returns true if host is 127.0.0.1, ::1, or localhost
+// (case-insensitive). Used by ValidateAPIHost to permit plain http://
+// for local development without permitting it for any remote host.
+//
+// Falls through to net.ParseIP for completeness — a future "10.0.0.1"
+// rule could go here, but today the policy is exact-match loopback only
+// (matches what httptest.NewServer binds to and what dev servers
+// document).
+func isLoopbackHost(host string) bool {
+	h := strings.ToLower(host)
+	if h == "localhost" || h == "127.0.0.1" || h == "::1" {
+		return true
+	}
+	if ip := net.ParseIP(h); ip != nil && ip.IsLoopback() {
+		return true
+	}
+	return false
 }
