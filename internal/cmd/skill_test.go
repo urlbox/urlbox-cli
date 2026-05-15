@@ -130,6 +130,13 @@ func TestSkill_DocumentsRenderSurface(t *testing.T) {
 		"renderId",         // status command's positional arg term
 		"HMAC",             // load-bearing crypto term for link
 		"headless",         // dashboard fallback behaviour
+		// v1.0.4 Class 5.2 — the --output sandbox failure mode is the most
+		// common bounce-off point for agents; SKILL.md must teach it up
+		// front, not just bury it in `render --help`. Pin the section
+		// header + the two escape hatches.
+		"`--output` paths (sandbox)", // dedicated section header
+		"sandboxed to the **current", // explains the rule
+		`cd /tmp && urlbox render`,   // the workaround for absolute paths
 	}
 	for _, s := range required {
 		if !strings.Contains(body, s) {

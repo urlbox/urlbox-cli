@@ -217,6 +217,33 @@ urlbox render https://example.com --open
 urlbox render https://example.com --async --webhook-url https://hooks.example/cb
 ```
 
+### `--output` paths (sandbox)
+
+`--output` is sandboxed to the **current working directory**. Absolute
+paths outside CWD, `..`-escapes, and existing symlinks at the target
+are rejected. This protects against renders overwriting unrelated
+files when an agent hands the CLI an unexpected path.
+
+```sh
+# Recommended: relative path under your project.
+urlbox render https://example.com --output out/screenshot.png
+
+# Absolute path INSIDE cwd works too.
+urlbox render https://example.com --output "$(pwd)/out/screenshot.png"
+```
+
+If you genuinely need `/tmp`, change directory first:
+
+```sh
+cd /tmp && urlbox render https://example.com --output foo.png
+```
+
+Note: agents working in long-lived sessions where shell state doesn't
+persist across calls (cwd resets between invocations) should construct
+relative output paths under the repo, not absolute `/tmp/...` paths.
+The rejection envelope has `code: "validation"` and a hint pointing at
+this workaround.
+
 ### Self-discovery
 
 - `urlbox schema render` — full JSON Schema for valid render options.

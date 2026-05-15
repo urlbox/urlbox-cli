@@ -939,6 +939,16 @@ func buildRenderClient(cmd *cobra.Command, f *renderFlags) (api.Client, *output.
 		)
 	}
 
+	// v1.0.4 Class 5.1 — detect missing secret client-side with the
+	// CLI's own vocabulary. Pre-1.0.4 we let the API return its
+	// confusing "Api Key does not exist" message, costing a network
+	// round-trip and a vocabulary mismatch (CLI says "API secret"
+	// everywhere). --dry-run and --curl bypass this because they
+	// don't build the client at all.
+	if cli := requireSecret(resolved); cli != nil {
+		return nil, cli
+	}
+
 	host := resolved.APIHost
 	if host == "" {
 		host = api.ResolveAPIHost()

@@ -1579,3 +1579,78 @@ func TestRender_JSON_FractionalAndScientific_PassThrough(t *testing.T) {
 		})
 	}
 }
+
+// ─── v1.0.4 Class 5.1 — auth pre-flight ─────────────────────────────
+//
+// Invariant: missing-secret renders fail fast on the CLI side with the
+// CLI's own vocabulary, not a wasted round-trip to the API's confusing
+// "Api Key does not exist" message.
+
+func TestRender_NoSecretConfigured_FailsLocallyWithCLIVocabulary(t *testing.T) {
+	// Clean env: no secret, empty XDG config dir, no per-test client
+	// override (so we'd genuinely hit the API if pre-flight missed).
+	tmp := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmp)
+	t.Setenv("URLBOX_API_SECRET", "")
+
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{
+		"render", "https://example.com",
+		"--output-format", "json",
+	}, &stdout, &stderr)
+	if exit == 0 {
+		t.Fatalf("missing-secret render must fail; stdout=%s", stdout.String())
+	}
+	var env map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("error envelope not JSON: %v\nstdout=%s", err, stdout.String())
+	}
+	if env["code"] != "auth" {
+		t.Errorf("code = %v, want auth", env["code"])
+	}
+	msg, _ := env["error"].(string)
+	if strings.Contains(msg, "Api Key") {
+		t.Errorf("CLI must use its own vocabulary, not relay the API's wording; got %q", msg)
+	}
+	if !strings.Contains(msg, "API secret") && !strings.Contains(msg, "api_secret") {
+		t.Errorf("expected CLI vocabulary 'API secret'; got %q", msg)
+	}
+	hint, _ := env["hint"].(string)
+	if !strings.Contains(hint, "urlbox auth") {
+		t.Errorf("hint should mention `urlbox auth`; got %q", hint)
+	}
+}
+
+// Dry-run and --curl must still work without a secret — they don't
+// call the API, so the auth pre-flight should not block them.
+func TestRender_DryRun_NoSecret_StillWorks(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmp)
+	t.Setenv("URLBOX_API_SECRET", "")
+
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{
+		"render", "https://example.com",
+		"--dry-run",
+		"--output-format", "json",
+	}, &stdout, &stderr)
+	if exit != 0 {
+		t.Fatalf("--dry-run without secret should succeed (no API call); exit=%d stdout=%s stderr=%s", exit, stdout.String(), stderr.String())
+	}
+}
+
+func TestRender_Curl_NoSecret_StillWorks(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmp)
+	t.Setenv("URLBOX_API_SECRET", "")
+
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{
+		"render", "https://example.com",
+		"--curl",
+		"--output-format", "json",
+	}, &stdout, &stderr)
+	if exit != 0 {
+		t.Fatalf("--curl without secret should succeed (no API call); exit=%d stdout=%s stderr=%s", exit, stdout.String(), stderr.String())
+	}
+}

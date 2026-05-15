@@ -108,7 +108,7 @@ func resolveOutputPath(userPath, baseDir string) (string, *output.CLIError) {
 		return "", output.NewCLIError(
 			output.ErrValidation,
 			fmt.Sprintf("--output path %q is outside the working directory", userPath),
-			"Pass a path under the current directory (e.g. --output screenshot.png), or cd to the target directory first: `cd /tmp && urlbox render --output foo.png`.",
+			"Pass a path under the current directory (e.g. --output out/screenshot.png). Absolute paths under cwd also work — e.g. \"$(pwd)/out/screenshot.png\". For /tmp specifically: `cd /tmp && urlbox render --output foo.png`. See `urlbox skill show` for the full sandbox doc.",
 		)
 	}
 	return cleaned, nil

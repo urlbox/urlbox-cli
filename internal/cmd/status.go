@@ -403,6 +403,12 @@ func buildStatusClient(cmd *cobra.Command, f *statusFlags) (api.Client, *output.
 		)
 	}
 
+	// v1.0.4 Class 5.1 — detect missing secret client-side. See the
+	// matching comment in render.go.buildRenderClient.
+	if cli := requireSecret(resolved); cli != nil {
+		return nil, cli
+	}
+
 	host := resolved.APIHost
 	if host == "" {
 		host = api.ResolveAPIHost()
