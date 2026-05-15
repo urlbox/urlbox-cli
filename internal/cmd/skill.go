@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/urlbox/urlbox-cli/internal/config"
 	"github.com/urlbox/urlbox-cli/internal/output"
 	"github.com/urlbox/urlbox-cli/skills"
 )
@@ -98,7 +99,7 @@ func newSkillShowCmd() *cobra.Command {
 
 func newSkillInstallCmd() *cobra.Command {
 	var target, scope string
-	var yes bool
+	var yes, force bool
 	c := &cobra.Command{
 		Use:   "install",
 		Short: "Install the embedded SKILL.md so your agent auto-discovers it",
@@ -114,6 +115,12 @@ Currently supported targets:
 Scopes:
   user           Install once for all your projects (under $HOME).
   project        Install in the current repo (commits to git so teammates inherit).
+
+Overwrite policy (v1.0.4):
+  By default, install refuses to overwrite an existing skill file at the
+  destination. Pass --force to replace it. Symlinks at the destination
+  are refused regardless of --force (a planted symlink can otherwise
+  redirect the write to /etc/anything).
 
 Non-interactive (agents / CI):
   urlbox skill install --target claude-code --scope user --yes
@@ -148,13 +155,31 @@ Interactive (humans, on a TTY):
 				return output.NewCLIError(output.ErrServer, "could not resolve install path", err.Error())
 			}
 
-			// 0o700/0o600 — skill files live under the user's home / repo;
-			// no need for world-read. gosec G301/G306 happy at these perms.
-			if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-				return output.NewCLIError(output.ErrServer, "could not create skill directory", err.Error())
-			}
-			if err := os.WriteFile(path, []byte(skills.Content), 0o600); err != nil {
-				return output.NewCLIError(output.ErrServer, "could not write skill file", err.Error())
+			// v1.0.4 Class 4 — every CLI-initiated write to a user-owned
+			// path goes through SafeWriteUserFile: Lstat refuses symlinks,
+			// atomic rename, no clobber without Force. Pre-1.0.4 this used
+			// bare os.WriteFile, silently destroying user-edited skill
+			// files on re-run and following any planted symlink.
+			werr := config.SafeWriteUserFile(path, []byte(skills.Content), config.SafeWriteOptions{
+				Force: force,
+			})
+			if werr != nil {
+				switch {
+				case errors.Is(werr, config.ErrSafeWriteSymlink):
+					return output.NewCLIError(
+						output.ErrUsage,
+						"could not write skill file: "+werr.Error(),
+						"A symlink at "+path+" was refused as a safety measure. Remove it manually if you intended this destination, then re-run install.",
+					)
+				case errors.Is(werr, config.ErrSafeWriteExists):
+					return output.NewCLIError(
+						output.ErrConflict,
+						"could not write skill file: "+werr.Error(),
+						"Pass --force to overwrite the existing file at "+path+", or back it up first if you've made edits you want to keep.",
+					)
+				default:
+					return output.NewCLIError(output.ErrServer, "could not write skill file", werr.Error())
+				}
 			}
 
 			env := output.NewEnvelope(
@@ -185,6 +210,7 @@ Interactive (humans, on a TTY):
 	c.Flags().StringVar(&target, "target", "", "Agent tooling target (e.g. claude-code)")
 	c.Flags().StringVar(&scope, "scope", "", "Install scope: user (global) or project (this repo)")
 	c.Flags().BoolVar(&yes, "yes", false, "Skip interactive prompts (required when stdin/stderr aren't a TTY)")
+	c.Flags().BoolVar(&force, "force", false, "Overwrite an existing skill file at the destination (symlinks still refused)")
 	return c
 }
 

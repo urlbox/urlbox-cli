@@ -201,6 +201,7 @@ urlbox skill --output-format
 urlbox skill --profile
 urlbox skill install
 urlbox skill install --agent
+urlbox skill install --force
 urlbox skill install --jq
 urlbox skill install --output-format
 urlbox skill install --profile

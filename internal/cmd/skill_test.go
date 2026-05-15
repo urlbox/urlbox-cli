@@ -507,3 +507,143 @@ func TestSkillInstall_Opencode_Project_WritesUnderCWD(t *testing.T) {
 		t.Fatalf("project-scope file not written at %s: %v", wantPath, err)
 	}
 }
+
+// ─── v1.0.4 Class 4.2 — skill install uses SafeWriteUserFile ────────
+//
+// Invariant (via config.SafeWriteUserFile): every CLI-initiated write
+// to a user-owned path Lstats first (refuses symlinks), atomic-renames
+// into place, and refuses to clobber existing content without --force.
+// Pre-1.0.4 `skill install` used bare os.WriteFile, silently destroying
+// user-edited skill files on re-run and following any planted symlink.
+
+func TestSkillInstall_RefusesClobberWithoutForce(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("HOME", tmp)
+
+	// Pre-existing user-edited skill file at the target path.
+	target := filepath.Join(tmp, ".claude", "skills", "urlbox", "SKILL.md")
+	if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	original := []byte("# my edits — do not overwrite\n")
+	if err := os.WriteFile(target, original, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{
+		"skill", "install",
+		"--target", "claude-code",
+		"--scope", "user",
+		"--yes",
+		"--output-format", "json",
+	}, &stdout, &stderr)
+	if exit == 0 {
+		t.Fatalf("expected non-zero exit (refused clobber); stdout=%s stderr=%s", stdout.String(), stderr.String())
+	}
+
+	// Original content survives byte-identical.
+	got, _ := os.ReadFile(target)
+	if !bytes.Equal(got, original) {
+		t.Errorf("user-edited skill was overwritten without --force; got %q", got)
+	}
+
+	// Error envelope is on stdout (JSON mode) with conflict code + force hint.
+	var env map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("error envelope not JSON: %v\nstdout=%s", err, stdout.String())
+	}
+	if env["code"] != "conflict" {
+		t.Errorf("code = %v, want conflict", env["code"])
+	}
+	hint, _ := env["hint"].(string)
+	if !strings.Contains(hint, "--force") {
+		t.Errorf("hint should mention --force; got %q", hint)
+	}
+}
+
+func TestSkillInstall_ForceOverwrites(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("HOME", tmp)
+
+	target := filepath.Join(tmp, ".claude", "skills", "urlbox", "SKILL.md")
+	if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(target, []byte("# old\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{
+		"skill", "install",
+		"--target", "claude-code",
+		"--scope", "user",
+		"--force",
+		"--yes",
+		"--output-format", "json",
+	}, &stdout, &stderr)
+	if exit != 0 {
+		t.Fatalf("--force should succeed; exit=%d stderr=%s", exit, stderr.String())
+	}
+
+	got, _ := os.ReadFile(target)
+	if !strings.Contains(string(got), "Urlbox CLI Skill") {
+		t.Errorf("file not replaced with skill content; got first 80 bytes: %q", string(got[:min(80, len(got))]))
+	}
+}
+
+func TestSkillInstall_RefusesSymlink(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("HOME", tmp)
+
+	// Set up a real-file target and symlink the would-be install path
+	// at it. If the install followed the symlink, the real file would
+	// be overwritten — exactly the write-anywhere primitive we refuse.
+	parent := filepath.Join(tmp, ".claude", "skills", "urlbox")
+	if err := os.MkdirAll(parent, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	realFile := filepath.Join(tmp, "real-target.md")
+	if err := os.WriteFile(realFile, []byte("must-not-clobber"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	linkPath := filepath.Join(parent, "SKILL.md")
+	if err := os.Symlink(realFile, linkPath); err != nil {
+		t.Skipf("symlink not supported on this filesystem: %v", err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{
+		"skill", "install",
+		"--target", "claude-code",
+		"--scope", "user",
+		"--force", // force shouldn't override symlink refusal
+		"--yes",
+		"--output-format", "json",
+	}, &stdout, &stderr)
+	if exit == 0 {
+		t.Fatalf("expected non-zero exit (refused symlink); stdout=%s stderr=%s", stdout.String(), stderr.String())
+	}
+
+	// Real file untouched.
+	got, _ := os.ReadFile(realFile)
+	if string(got) != "must-not-clobber" {
+		t.Errorf("symlink was followed; real file overwritten with %q", got)
+	}
+
+	var env map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("error envelope not JSON: %v\nstdout=%s", err, stdout.String())
+	}
+	// Symlink refusal is a usage/validation error — the user owns the
+	// path, and the CLI refuses to follow as a safety measure.
+	codeStr, _ := env["code"].(string)
+	if codeStr != "usage" && codeStr != "validation" {
+		t.Errorf("code = %v, want usage or validation", env["code"])
+	}
+	errMsg, _ := env["error"].(string)
+	if !strings.Contains(errMsg, "symlink") {
+		t.Errorf("error should mention symlink; got %q", errMsg)
+	}
+}
