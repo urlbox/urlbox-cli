@@ -4,7 +4,107 @@ All notable changes to the `urlbox` CLI are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
-## v1.0.3 — Unreleased
+## v1.0.4 — 2026-05-15
+
+Patch release driven by a four-dimensional audit (security,
+code-quality, human-docs, agent-UX) of v1.0.3. Seven class-fix
+commits, each retiring a category of latent issue rather than
+patching one instance. New surface: `urlbox skill install --force`.
+
+### Security
+
+- **Credential exfiltration via `.urlbox/config.json` overlay closed.**
+  A teammate-committed `.urlbox/config.json` with
+  `api_host: "http://attacker"` could redirect every render's
+  `Authorization: Bearer <secret>` to the attacker. The same gate that
+  validates env + flag inputs now validates overlay + profile-from-disk
+  values too — `config.Resolve` is the single chokepoint for every
+  credential and host source, regardless of where the value came from.
+- **Plain `http://` rejected for non-loopback hosts.** `api_host` now
+  requires `https://` unless the host is loopback (`127.0.0.1`, `::1`,
+  `localhost`) — closes a downgrade path where a careless env var or
+  hostile overlay made the Authorization header cleartext. Loopback
+  stays permitted so `httptest`-based integration tests and local dev
+  servers keep working without TLS termination.
+- **Render download follows redirects safely.** The binary-fetch path
+  (previously `http.DefaultClient` — no TLS min, no redirect policy,
+  no body cap) now uses a hardened transport: TLS 1.2 minimum, refuses
+  `https://→http://` redirect downgrades, refuses non-http(s) schemes
+  in the chain, 200 MiB body cap to stop a misconfigured renderUrl
+  filling the disk.
+- **`--open` browser launch scheme-checked.** Pre-1.0.4 the OS URL
+  handler (`open` / `xdg-open` / `cmd /c start`) received any string
+  the API returned. The Windows `start` path would happily launch
+  `file://` schemes and UNC paths if an attacker-controlled renderUrl
+  reached it. `--open` now refuses any scheme that isn't http or https.
+- **`urlbox skill install` no longer clobbers or follows symlinks.**
+  `Lstat` refuses a planted symlink at the destination (closes a
+  write-anywhere primitive); existing regular files require explicit
+  `--force` to overwrite (no more silent destruction of user-edited
+  skill files on re-bootstrap).
+
+### Fixed
+
+- **Errors in text/quiet mode now write to stderr, not stdout.** Matches
+  the documented "stdout for data, stderr for human messages" contract.
+  Pipelines that read stdout for asset bytes no longer get the error
+  string mixed in.
+- **`urlbox <cmd> --output-format json --help` returns agent JSON
+  help.** Pre-1.0.4 only the undiscoverable `--agent --help` did;
+  agents probing the obvious combo silently hit plain text.
+- **Fuzzy-typo warnings live in `envelope.warnings[]`** when
+  `--output-format` is `json` or `quiet`, instead of leaking as plain
+  text on stderr alongside the JSON envelope on stdout. Text mode keeps
+  the inline `warning:` stderr emit where humans expect them.
+- **Missing-secret renders fail fast with CLI vocabulary.**
+  `urlbox render <url>` with no secret configured now returns
+  `code: auth, "no API secret configured"` plus a `urlbox auth` hint,
+  instead of relaying the API's confusing "Api Key does not exist".
+  Saves a network round-trip; `--dry-run` and `--curl` still work
+  without a secret because they don't call the API.
+
+### Added
+
+- `urlbox skill install --force` overwrites an existing skill file at
+  the destination. Symlinks stay refused regardless.
+- `Envelope.warnings` / `ErrorEnvelope.warnings` — structured warnings
+  list, JSON-mode safe. `omitempty` keeps the field absent when there
+  are no warnings.
+- `config.SafeWriteUserFile` (internal) — atomic write + Lstat +
+  clobber-guard helper. Reusable by future writers (`config set`,
+  profile create, future skill subcommands) so the discipline lives in
+  one place.
+- `internal/api.NewDownloadClient` (internal) + constants
+  `DownloadMaxBytes` (200 MiB) and `DownloadTimeout` (5 min) — the
+  hardened transport for render-bytes fetches.
+- `internal/cmd.requireSecret` (internal) — pre-flight helper used by
+  render/screenshot/pdf/video and status to short-circuit missing-secret
+  failures client-side.
+
+### Changed
+
+- `SURFACE.txt` now opens with a 12-line `#`-prefixed header documenting
+  the exclusion rule (cobra builtins like `--help`/`--version`/`help`;
+  hidden commands like `surface` itself; hidden flags). The stability
+  promise covers everything below the header; the rest is documented
+  out of scope. `urlbox surface` emits the header too so `make
+  surface-check` stays byte-for-byte synced.
+- `skills/SKILL.md` gains a dedicated `### "--output" paths (sandbox)`
+  section right after the render Quickstart, explaining the CWD
+  sandbox upfront for agents. Includes the two accepted patterns
+  (relative paths under cwd; absolute paths inside cwd via
+  `$(pwd)/...`) and the `cd /tmp && urlbox render --output foo.png`
+  escape hatch. Agent-specific note about cwd resets between
+  long-lived session calls.
+- `--output` sandbox rejection hint now lists three escape hatches
+  inline and points at `urlbox skill show` for the full doc.
+- `README.md`: new "Getting your API secret" section between Install
+  and Quick Start with the dashboard URL. Scoop install command now
+  carries a one-paragraph note explaining that the bucket is
+  co-located in the `homebrew-tap` repo (the goreleaser pipeline
+  writes Scoop manifests into a `bucket/` subdirectory).
+
+## v1.0.3 — 2026-05-13
 
 Patch release driven by 8 rounds of adversarial probing of v1.0.2.
 Every commit closes a CLASS of error, not a single instance: each

@@ -10,8 +10,10 @@ npm install -g @urlbox/cli
 
 ## Usage
 
+Grab your API secret from [urlbox.com/dashboard/projects](https://urlbox.com/dashboard/projects) (open the project → "API Secret"). Secrets look like `ubx_sk_…`.
+
 ```sh
-urlbox auth --api-secret sec_xxxxxx                       # one-time
+urlbox auth --api-secret ubx_sk_xxxxxxxxxxxx              # one-time
 urlbox render https://example.com --output home.png       # capture & save
 urlbox screenshot https://example.com --output home.png   # alias: --format png
 urlbox pdf https://example.com --output home.pdf          # alias: --format pdf --full-page

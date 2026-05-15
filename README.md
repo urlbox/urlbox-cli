@@ -17,6 +17,11 @@ scoop bucket add urlbox https://github.com/urlbox/homebrew-tap
 scoop install urlbox
 ```
 
+> **Note:** the Scoop bucket is co-located inside the `homebrew-tap` repo
+> (the goreleaser pipeline writes the Scoop manifest into a `bucket/`
+> subdirectory of that repo). The URL above is correct even though it
+> reads `homebrew-tap` — Scoop finds the manifest under `bucket/urlbox.json`.
+
 ### npm (cross-platform)
 
 ```
@@ -39,11 +44,20 @@ Download the appropriate package from the [latest release](https://github.com/ur
 go install github.com/urlbox/urlbox-cli/cmd/urlbox@latest
 ```
 
+## Getting your API secret
+
+Grab your API secret from your Urlbox project at
+[urlbox.com/dashboard/projects](https://urlbox.com/dashboard/projects)
+(open the project, then "API Secret"). Secrets look like `ubx_sk_…`.
+
+The secret authenticates render API calls. The **API key** (publishable,
+`ubx_pk_…`) is separate — it's only needed for `urlbox link` URL signing.
+
 ## Quick Start
 
 ```sh
-# One-time: store your API secret
-urlbox auth --api-secret sec_xxxxxxxxxxxx
+# One-time: store your API secret (get it from urlbox.com/dashboard/projects)
+urlbox auth --api-secret ubx_sk_xxxxxxxxxxxx
 
 # Render a URL — saves screenshot.png to the current directory
 urlbox render https://example.com --output screenshot.png
