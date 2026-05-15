@@ -1,3 +1,15 @@
+# Urlbox CLI surface contract.
+# Every line below is part of the v1 stability promise: a removal
+# or rename fails `make surface-check` in CI. New entries are fine.
+#
+# Excluded by design:
+#   - cobra builtins: `help` subcommand, `--help`/`-h`, `--version`
+#     (framework-level surfaces we don't own; stable by definition).
+#   - hidden commands (currently only `urlbox surface` itself — a
+#     developer tool exposed for snapshot regeneration via
+#     `make surface-snapshot`).
+#   - hidden flags (none today; the mechanism exists for future
+#     pre-release flags that don't carry stability guarantees).
 urlbox
 urlbox --agent
 urlbox --jq

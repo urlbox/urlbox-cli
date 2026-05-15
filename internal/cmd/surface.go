@@ -30,6 +30,14 @@ func newSurfaceCmd(root *cobra.Command) *cobra.Command {
 				return writeEnvelope(cmd, env)
 			}
 			w := cmd.OutOrStdout()
+			// v1.0.4 Class 6: emit the exclusion-rule header so SURFACE.txt
+			// is self-documenting. Header lines are '#'-prefixed comments
+			// readers can filter when scripting.
+			for _, h := range surface.Header() {
+				if _, err := w.Write([]byte(h + "\n")); err != nil {
+					return err
+				}
+			}
 			for _, l := range lines {
 				if _, err := w.Write([]byte(l + "\n")); err != nil {
 					return err

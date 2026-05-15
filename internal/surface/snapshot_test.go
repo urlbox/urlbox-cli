@@ -2,6 +2,7 @@ package surface_test
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -59,6 +60,43 @@ func TestSnapshot_Sorted(t *testing.T) {
 	for i := 1; i < len(got); i++ {
 		if got[i-1] > got[i] {
 			t.Fatalf("not sorted: %q before %q", got[i-1], got[i])
+		}
+	}
+}
+
+// ─── v1.0.4 Class 6 — explicit exclusion-rule header ────────────────
+//
+// Invariant: the surface contract documents what it covers AND what it
+// deliberately excludes, so a reader of SURFACE.txt knows the bounds
+// of the stability promise. Pre-1.0.4 the snapshot quietly skipped
+// hidden commands and the cobra `help` builtin, leaving readers
+// unsure whether "missing from SURFACE.txt" meant "broken" or
+// "intentional".
+
+func TestHeader_DocumentsExclusionRule(t *testing.T) {
+	header := surface.Header()
+	if len(header) == 0 {
+		t.Fatal("Header must not be empty")
+	}
+	// Every header line must start with '#' so it's a clear comment in
+	// SURFACE.txt and easy to filter when scripting.
+	for i, line := range header {
+		if !strings.HasPrefix(line, "#") {
+			t.Errorf("header[%d] = %q, want '#' prefix", i, line)
+		}
+	}
+	joined := strings.Join(header, "\n")
+	required := []string{
+		"cobra builtins",
+		"--help",
+		"--version",
+		"hidden commands",
+		"surface",
+		"make surface-check",
+	}
+	for _, s := range required {
+		if !strings.Contains(joined, s) {
+			t.Errorf("header missing %q (header must document the exclusion rule clearly)", s)
 		}
 	}
 }
