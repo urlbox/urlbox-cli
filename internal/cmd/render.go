@@ -293,8 +293,20 @@ func runRender(cmd *cobra.Command, args []string, f *renderFlags) error {
 	if vErr != nil {
 		return vErr
 	}
-	for _, w := range warnings {
-		_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "warning:", w)
+	// v1.0.4 Class 3.4 — warning routing per format:
+	//   - text mode: print "warning: ..." inline on stderr (humans
+	//     expect them near the success line; the text formatter does
+	//     not render envelope.warnings).
+	//   - json/quiet mode: attach to envelope.warnings so agents read
+	//     them programmatically. Pre-1.0.4 these leaked as plain text
+	//     on stderr alongside the JSON envelope on stdout, breaking
+	//     agents that consumed either stream alone.
+	renderFormatFlag, _ := cmd.Root().PersistentFlags().GetString("output-format")
+	renderFormat := output.ResolveFormat(renderFormatFlag, cmd.OutOrStdout())
+	if renderFormat == output.FormatText {
+		for _, w := range warnings {
+			_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "warning:", w)
+		}
 	}
 
 	// 5.5. Validate --profile (and other resolver inputs) BEFORE the
@@ -348,6 +360,7 @@ func runRender(cmd *cobra.Command, args []string, f *renderFlags) error {
 			"Dry run: payload validated, no API call made",
 			breadcrumbs,
 		)
+		env.Warnings = warnings
 		return writeRenderEnvelope(cmd, env)
 	}
 
@@ -367,6 +380,7 @@ func runRender(cmd *cobra.Command, args []string, f *renderFlags) error {
 				{Action: "run", Cmd: "urlbox render <url>"},
 			},
 		)
+		env.Warnings = warnings
 		return writeRenderEnvelope(cmd, env)
 	}
 
@@ -434,6 +448,7 @@ func runRender(cmd *cobra.Command, args []string, f *renderFlags) error {
 		summariseRenderResp(resp),
 		breadcrumbsForResp(resp, f),
 	)
+	env.Warnings = warnings
 	return writeRenderEnvelope(cmd, env)
 }
 

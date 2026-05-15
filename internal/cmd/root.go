@@ -75,10 +75,24 @@ func Execute(args []string, stdout, stderr io.Writer) int {
 		// path always dumped the full envelope, breaking agents that
 		// scripted around a single jq expression across both paths.
 		jqExpr, _ := rootCmd.PersistentFlags().GetString("jq")
+		// v1.0.4 Class 3.2 — route errors per the CLAUDE.md
+		// "stdout for data, stderr for human messages" contract:
+		//   - JSON envelope is structured data (agents pipe it) → stdout.
+		//   - Text-mode "Error:" line is a human message → stderr.
+		//   - Quiet-mode error scalar is a human message → stderr.
+		//   - Unknown formats (e.g. user typed --output-format yaml)
+		//     fall through to JSON via NewFormatter's default arm; the
+		//     envelope is still structured data so it stays on stdout.
+		// --jq always goes to stdout: when the user explicitly asks to
+		// transform the envelope, they're treating it as data.
+		errWriter := stdout
+		if format == output.FormatText || format == output.FormatQuiet {
+			errWriter = stderr
+		}
 		if jqExpr != "" {
 			_ = output.WriteErrorEnvelopeWithJQ(stdout, env, jqExpr, format == output.FormatQuiet)
 		} else {
-			_ = formatter.WriteError(stdout, env)
+			_ = formatter.WriteError(errWriter, env)
 		}
 	}
 	return cliErr.ExitCode()
@@ -193,7 +207,12 @@ func newRootCmd(stdout, stderr io.Writer) *cobra.Command {
 	defaultHelp := cmd.HelpFunc()
 	cmd.SetHelpFunc(func(c *cobra.Command, args []string) {
 		agent, _ := c.Flags().GetBool("agent")
-		if !agent {
+		// v1.0.4 Class 3.3 — --output-format json on --help is the
+		// agent-discoverable equivalent of --agent. Pre-1.0.4 only
+		// --agent --help returned JSON; agents probing the obvious
+		// combo (the existing format flag) silently got plain text.
+		formatFlag, _ := c.Root().PersistentFlags().GetString("output-format")
+		if !agent && formatFlag != string(output.FormatJSON) {
 			defaultHelp(c, args)
 			return
 		}

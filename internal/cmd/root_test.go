@@ -421,3 +421,64 @@ func TestRoot_EnvelopeOkMatchesExit_Contract(t *testing.T) {
 		})
 	}
 }
+
+// ─── v1.0.4 Class 3.2 — error stream routing per format ────────────
+//
+// Invariant: the output stream a byte goes to depends on what kind of
+// byte it is, not on where the code happens to be.
+//   - JSON envelope = data (agent contract: parseable structure) → stdout.
+//   - Text-mode "Error:" line = human message → stderr.
+//   - Quiet-mode error scalar = human message → stderr.
+//
+// Pre-v1.0.4 root.go Execute() always wrote errors to stdout,
+// violating CLAUDE.md "Stdout for data, stderr for human messages.
+// Never mix." for text + quiet formats.
+
+func TestExecute_TextError_GoesToStderr(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{"--output-format", "text", "nonexistent"}, &stdout, &stderr)
+	if exit == 0 {
+		t.Fatal("expected non-zero exit for unknown command")
+	}
+	if stdout.Len() > 0 {
+		t.Errorf("text-mode error must NOT write to stdout; got %q", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "Error:") {
+		t.Errorf("text-mode error must write 'Error:' to stderr; stderr=%q", stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "nonexistent") {
+		t.Errorf("text-mode error must mention the bad token; stderr=%q", stderr.String())
+	}
+}
+
+func TestExecute_QuietError_GoesToStderr(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{"--output-format", "quiet", "nonexistent"}, &stdout, &stderr)
+	if exit == 0 {
+		t.Fatal("expected non-zero exit")
+	}
+	if stdout.Len() > 0 {
+		t.Errorf("quiet-mode error must NOT write to stdout (pipelines read stdout for data); got %q", stdout.String())
+	}
+	if stderr.Len() == 0 {
+		t.Errorf("quiet-mode error must write error message to stderr")
+	}
+}
+
+func TestExecute_JSONError_StaysOnStdout(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{"--output-format", "json", "nonexistent"}, &stdout, &stderr)
+	if exit == 0 {
+		t.Fatal("expected non-zero exit")
+	}
+	if stdout.Len() == 0 {
+		t.Errorf("json-mode error envelope must be on stdout (agent contract); stderr=%q", stderr.String())
+	}
+	var env map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("json-mode error envelope must be valid JSON on stdout; got %q (err=%v)", stdout.String(), err)
+	}
+	if env["code"] != "usage" {
+		t.Errorf("expected code=usage, got %v", env["code"])
+	}
+}

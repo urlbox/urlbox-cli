@@ -278,10 +278,14 @@ func TestRender_KnownKeyBadType_PassesThroughToAPI(t *testing.T) {
 	}
 }
 
-// v0.9.0 schema-as-docs contract: unknown key with a fuzzy match emits a
-// stderr warning but the request still goes through verbatim — agent reads
-// the warning, decides whether to re-run with the suggested fix.
-func TestRender_FuzzyCorrection_WarnsAndPassesThrough(t *testing.T) {
+// v0.9.0 schema-as-docs contract: unknown key with a fuzzy match emits
+// an agent-consumable warning; the request still goes through verbatim.
+//
+// v1.0.4 Class 3.4: in JSON/quiet mode the warning rides in
+// envelope.warnings, not as plain stderr text alongside the JSON on
+// stdout (the pre-1.0.4 behaviour mixed streams in a way that broke
+// agents who consumed either stream alone).
+func TestRender_FuzzyCorrection_JSONMode_WarningInEnvelope(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	var stdout, stderr bytes.Buffer
 	exit := cmd.Execute([]string{
@@ -293,21 +297,49 @@ func TestRender_FuzzyCorrection_WarnsAndPassesThrough(t *testing.T) {
 	if exit != 0 {
 		t.Fatalf("exit=%d, want 0 (passthrough); stdout=%s stderr=%s", exit, stdout.String(), stderr.String())
 	}
-	// Stderr should carry the warning.
-	if !strings.Contains(stderr.String(), "warning:") {
-		t.Errorf("expected 'warning:' prefix on stderr; got: %s", stderr.String())
+	// v1.0.4 Class 3.4: no plain-text warning on stderr in JSON mode.
+	if strings.Contains(stderr.String(), "warning:") {
+		t.Errorf("JSON mode: warning must NOT leak to stderr; got %q", stderr.String())
 	}
-	if !strings.Contains(stderr.String(), "fromat") || !strings.Contains(stderr.String(), "format") {
-		t.Errorf("expected stderr to mention 'fromat' and suggest 'format'; got: %s", stderr.String())
-	}
-	// Payload passes through verbatim (key NOT auto-corrected).
 	var env map[string]any
 	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
 		t.Fatalf("not JSON: %v", err)
 	}
+	warnings, _ := env["warnings"].([]any)
+	if len(warnings) == 0 {
+		t.Fatalf("expected envelope.warnings to carry the fuzzy hint, got %v", env["warnings"])
+	}
+	first, _ := warnings[0].(string)
+	if !strings.Contains(first, "fromat") || !strings.Contains(first, "format") {
+		t.Errorf("expected warnings[0] to mention 'fromat' and suggest 'format'; got %q", first)
+	}
+	// Payload passes through verbatim (key NOT auto-corrected).
 	data, _ := env["data"].(map[string]any)
 	if data["fromat"] != "png" {
 		t.Errorf("expected data.fromat=png (verbatim, not auto-corrected); got %v", data["fromat"])
+	}
+}
+
+// Text-mode keeps the inline stderr emit — humans expect to see
+// warnings near the success line, and envelope.warnings isn't rendered
+// by the text formatter.
+func TestRender_FuzzyCorrection_TextMode_WarnsOnStderr(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	var stdout, stderr bytes.Buffer
+	exit := cmd.Execute([]string{
+		"render",
+		"--json", `{"url":"https://example.com","fromat":"png"}`,
+		"--dry-run",
+		"--output-format", "text",
+	}, &stdout, &stderr)
+	if exit != 0 {
+		t.Fatalf("exit=%d", exit)
+	}
+	if !strings.Contains(stderr.String(), "warning:") {
+		t.Errorf("text mode: expected 'warning:' on stderr; got %q", stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "fromat") {
+		t.Errorf("text mode: expected stderr to mention 'fromat'; got %q", stderr.String())
 	}
 }
 

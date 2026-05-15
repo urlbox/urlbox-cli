@@ -279,17 +279,22 @@ func TestE2E_UnknownCommand_ErrorEnvelope_JSON(t *testing.T) {
 }
 
 func TestE2E_UnknownCommand_ErrorEnvelope_Text(t *testing.T) {
-	stdout, _, exitCode := runCLI(t, "--output-format", "text", "nonexistent")
+	// v1.0.4 Class 3.2: text-mode errors are human messages → stderr.
+	// Pre-1.0.4 they went to stdout, violating the CLAUDE.md
+	// "stdout for data, stderr for human messages" contract.
+	stdout, stderr, exitCode := runCLI(t, "--output-format", "text", "nonexistent")
 
 	if exitCode != 1 {
 		t.Fatalf("expected exit 1, got %d", exitCode)
 	}
-
-	if !strings.Contains(stdout, "nonexistent") {
-		t.Errorf("expected error to mention 'nonexistent', got %q", stdout)
+	if stdout != "" {
+		t.Errorf("text-mode error must not leak to stdout, got %q", stdout)
 	}
-	if !strings.Contains(stdout, "Error") {
-		t.Errorf("expected 'Error' prefix in text output, got %q", stdout)
+	if !strings.Contains(stderr, "nonexistent") {
+		t.Errorf("expected error to mention 'nonexistent' on stderr, got %q", stderr)
+	}
+	if !strings.Contains(stderr, "Error") {
+		t.Errorf("expected 'Error' prefix in stderr text output, got %q", stderr)
 	}
 }
 

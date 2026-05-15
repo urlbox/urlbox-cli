@@ -113,3 +113,67 @@ func containsKey(jsonStr, key string) bool {
 	_, ok := m[key]
 	return ok
 }
+
+// ─── v1.0.4 Class 3.1 — Warnings on envelopes ──────────────────────
+// Invariant: agent-consumable warnings (fuzzy-typo hints, --json key
+// suggestions) travel inside the envelope as a structured field, not
+// as plain stderr text alongside the JSON envelope on stdout.
+
+func TestEnvelope_WarningsFieldRoundtrips(t *testing.T) {
+	env := output.NewEnvelope("render", map[string]string{"x": "y"}, "ok", nil)
+	env.Warnings = []string{`unknown option "fromat" — did you mean "format"?`}
+	b, err := json.Marshal(env)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	if !containsKey(string(b), "warnings") {
+		t.Errorf("expected warnings field, got %s", b)
+	}
+	var back output.Envelope
+	if err := json.Unmarshal(b, &back); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	if len(back.Warnings) != 1 || back.Warnings[0] != env.Warnings[0] {
+		t.Errorf("warnings round-trip failed: got %#v", back.Warnings)
+	}
+}
+
+func TestEnvelope_WarningsOmittedWhenEmpty(t *testing.T) {
+	env := output.NewEnvelope("render", "ok", "", nil)
+	b, err := json.Marshal(env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if containsKey(string(b), "warnings") {
+		t.Errorf("warnings should be omitempty when empty/nil, got %s", b)
+	}
+}
+
+func TestErrorEnvelope_WarningsFieldRoundtrips(t *testing.T) {
+	cliErr := output.NewCLIError(output.ErrUsage, "bad opt", "fix it")
+	env := output.NewErrorEnvelope("render", cliErr)
+	env.Warnings = []string{"the --json payload also had unknown key xyz"}
+	b, err := json.Marshal(env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !containsKey(string(b), "warnings") {
+		t.Errorf("expected warnings field on ErrorEnvelope, got %s", b)
+	}
+	var back output.ErrorEnvelope
+	if err := json.Unmarshal(b, &back); err != nil {
+		t.Fatal(err)
+	}
+	if len(back.Warnings) != 1 {
+		t.Errorf("warnings round-trip failed: %#v", back.Warnings)
+	}
+}
+
+func TestErrorEnvelope_WarningsOmittedWhenEmpty(t *testing.T) {
+	cliErr := output.NewCLIError(output.ErrUsage, "bad", "")
+	env := output.NewErrorEnvelope("render", cliErr)
+	b, _ := json.Marshal(env)
+	if containsKey(string(b), "warnings") {
+		t.Errorf("warnings should be omitempty on ErrorEnvelope, got %s", b)
+	}
+}
