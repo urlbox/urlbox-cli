@@ -4,6 +4,24 @@ All notable changes to the `urlbox` CLI are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
+## v0.10.0 — 2026-05-19
+
+**Early-access version reset.** The v1.0.0–v1.0.4 line (published
+2026-05-08 to 2026-05-15) was tagged before the CLI was ready to
+carry a v1 stability promise. We're resetting to 0.x to set
+expectations honestly while the surface keeps iterating.
+
+v0.10.0 is functionally identical to v1.0.4 — same commands, same
+flags, same envelope contract, same exit codes. Only the version
+number changes. Migrate with:
+
+- npm: `npm install -g @urlbox/cli@0.10.0`
+- Homebrew: `brew update && brew upgrade urlbox` (will pick 0.10.0)
+- Scoop: `scoop update urlbox`
+
+The v1.x line is deprecated on npm. The v1.x GitHub Releases stay
+in place as a historical record.
+
 ## v1.0.4 — 2026-05-15
 
 Patch release driven by a four-dimensional audit (security,
