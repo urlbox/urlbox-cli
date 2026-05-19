@@ -189,7 +189,7 @@ jobs:
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           cd npm
-          npm publish --access public --provenance 2>&1 || {
+          npm publish --access public --provenance --tag latest 2>&1 || {
             if npm view "@urlbox/cli@$VERSION" version >/dev/null 2>&1; then
               echo "Version $VERSION already published — skipping"
             else
