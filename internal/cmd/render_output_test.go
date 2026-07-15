@@ -292,3 +292,24 @@ func TestDownloadTo_AcceptsExistingRegularFile(t *testing.T) {
 		t.Errorf("file not overwritten: %q", string(body))
 	}
 }
+
+// TestDownloadTo_SendsCLIUserAgent pins that render-output downloads
+// identify themselves like every other CLI request. Pre-fix this was the
+// one CLI request going out as Go's default UA (Go-http-client), making
+// storage/CDN download traffic unattributable in logs.
+func TestDownloadTo_SendsCLIUserAgent(t *testing.T) {
+	var gotUA string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotUA = r.Header.Get("User-Agent")
+		_, _ = w.Write([]byte("bytes"))
+	}))
+	defer srv.Close()
+
+	dst := filepath.Join(t.TempDir(), "out.png")
+	if cliErr := downloadTo(context.Background(), srv.URL, dst); cliErr != nil {
+		t.Fatalf("unexpected error: %v", cliErr)
+	}
+	if !strings.HasPrefix(gotUA, "urlbox-cli/") {
+		t.Errorf("User-Agent = %q, want urlbox-cli/… prefix", gotUA)
+	}
+}

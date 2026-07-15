@@ -11,6 +11,7 @@ import (
 
 	"github.com/urlbox/urlbox-cli/internal/api"
 	"github.com/urlbox/urlbox-cli/internal/output"
+	"github.com/urlbox/urlbox-cli/internal/version"
 )
 
 // resolveOutputPath canonicalizes the user-supplied --output path and
@@ -210,6 +211,7 @@ func downloadTo(ctx context.Context, url, dst string) *output.CLIError {
 			"This is a CLI bug — please report at https://github.com/urlbox/urlbox-cli/issues. The render URL is in the envelope; you can curl it manually as a workaround.",
 		)
 	}
+	req.Header.Set("User-Agent", api.BuildUserAgent(version.Version))
 	resp, err := downloadHTTPClient.Do(req)
 	if err != nil {
 		return output.NewCLIError(

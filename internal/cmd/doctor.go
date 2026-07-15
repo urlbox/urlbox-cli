@@ -276,6 +276,7 @@ func checkAPIReachable(ctx context.Context, host string) Check {
 	if err != nil {
 		return Check{Name: "api_reachable", Status: "fail", Message: err.Error()}
 	}
+	req.Header.Set("User-Agent", api.BuildUserAgent(version.Version))
 	client := &http.Client{Timeout: httpTimeout}
 	resp, err := client.Do(req)
 	if err != nil {
