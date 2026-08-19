@@ -3,6 +3,7 @@ package cmd
 import (
 	"errors"
 	"os"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -40,8 +41,18 @@ func sessionRetryConfig(cmd *cobra.Command) api.RetryConfig {
 	if maxRetries, err := cmd.Flags().GetInt("max-retries"); err == nil {
 		cfg.MaxRetries = maxRetries
 	}
+	if sessionRetrySleep != nil {
+		cfg.Sleep = sessionRetrySleep
+	}
 	return cfg
 }
+
+// sessionRetrySleep replaces the retry backoff sleep for session clients when
+// non-nil. Production leaves it nil, so api.DefaultRetryConfig's time.Sleep
+// stands and real backoff is unchanged. The test binary installs a no-op in
+// TestMain: the session retry tests assert attempt *counts*, never durations,
+// so sleeping the real 1s/2s/4s budget only added wall-clock to CI.
+var sessionRetrySleep func(time.Duration)
 
 // newSessionClient is the one construction site for session clients: it wires
 // the retry policy from cmd's flags into the client. All session commands route
