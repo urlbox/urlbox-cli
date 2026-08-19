@@ -141,6 +141,7 @@ urlbox llm list --max-retries
 urlbox llm list --no-retry
 urlbox llm list --output-format
 urlbox llm list --profile
+urlbox llm list --reveal
 urlbox llm models <name-or-id>
 urlbox llm models <name-or-id> --agent
 urlbox llm models <name-or-id> --jq
@@ -213,6 +214,7 @@ urlbox orgs select [name-or-id] --max-retries
 urlbox orgs select [name-or-id] --no-retry
 urlbox orgs select [name-or-id] --output-format
 urlbox orgs select [name-or-id] --profile
+urlbox orgs select [name-or-id] --project
 urlbox pdf [url]
 urlbox pdf [url] --agent
 urlbox pdf [url] --api-secret
@@ -437,6 +439,7 @@ urlbox proxies list --max-retries
 urlbox proxies list --no-retry
 urlbox proxies list --output-format
 urlbox proxies list --profile
+urlbox proxies list --reveal
 urlbox proxies show <name-or-id>
 urlbox proxies show <name-or-id> --agent
 urlbox proxies show <name-or-id> --jq
@@ -602,6 +605,7 @@ urlbox storage list --max-retries
 urlbox storage list --no-retry
 urlbox storage list --output-format
 urlbox storage list --profile
+urlbox storage list --reveal
 urlbox storage show <name-or-id>
 urlbox storage show <name-or-id> --agent
 urlbox storage show <name-or-id> --jq

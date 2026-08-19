@@ -36,9 +36,18 @@ management of the organisation's storage, proxy, and LLM credentials.
   Deleting the active project re-selects the survivor or offers a picker.
 - `storage`, `proxies`, `llm` groups (list/show/create/update/delete,
   plus `llm test` and `llm models`) and
-  `projects storage|proxy|llm assign|unassign`. Secrets are masked in
-  every human view; `--reveal` unhides. Every `create` takes the name
-  positionally (`--name` works too).
+  `projects storage|proxy|llm assign|unassign`. Secrets are masked by
+  default in **both** text and JSON — storage keys/secrets, SAS tokens,
+  LLM API keys and cloud credentials, the password inside a proxy URL,
+  and a project's webhook key. `--reveal` unhides, on `list` as well as
+  `show`; non-secret fields always pass through untouched. Every
+  `create` takes the name positionally (`--name` works too).
+- `orgs select --project <name-or-id>` switches organisation and lands
+  the new active project in one step. Switching organisations clears the
+  stored render credential (it belongs to a project in the organisation
+  you are leaving); when the new organisation has several projects and
+  nothing to pick with, the envelope now says so — summary names the
+  count and a breadcrumb points at `urlbox projects select`.
 - Lists render as tables and detail views as aligned blocks in text
   mode; JSON output is unchanged.
 - `--no-retry` / `--max-retries` on the session commands, matching

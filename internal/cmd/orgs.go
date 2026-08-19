@@ -32,12 +32,29 @@ func newOrgsCmd() *cobra.Command {
 		Args:  cobra.NoArgs,
 		RunE:  runOrgsList,
 	}
+	var selProject string
 	sel := &cobra.Command{
 		Use:   "select [name-or-id]",
 		Short: "Set the active organisation",
-		Args:  cobra.MaximumNArgs(1),
-		RunE:  runOrgsSelect,
+		Long: `Set the active organisation.
+
+Switching organisations clears the stored render credential: it belongs to a
+project in the organisation you are leaving, so keeping it would let ` + "`render`" + `
+bill the previous organisation. The CLI picks the new organisation's project up
+again automatically when there is exactly one; when there are several, pass
+--project to finish the switch in a single step instead of following up with
+` + "`urlbox projects select`" + `.
+
+Examples:
+  urlbox orgs select acme
+  urlbox orgs select acme --project production
+  urlbox orgs select --output-format json`,
+		Args: cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runOrgsSelect(cmd, args, selProject)
+		},
 	}
+	sel.Flags().StringVar(&selProject, "project", "", "Project to make active after the switch (name or id) — skips the picker")
 	c.AddCommand(list, sel)
 	attachSessionRetryFlags(c)
 	return c
@@ -79,7 +96,7 @@ func runOrgsList(cmd *cobra.Command, _ []string) error {
 	return writeEnvelope(cmd, env)
 }
 
-func runOrgsSelect(cmd *cobra.Command, args []string) error {
+func runOrgsSelect(cmd *cobra.Command, args []string, projectFlag string) error {
 	sess, cliErr := loadSession(cmd)
 	if cliErr != nil {
 		return cliErr
@@ -136,9 +153,13 @@ func runOrgsSelect(cmd *cobra.Command, args []string) error {
 		return asCLIError(err)
 	}
 	publicID := session.Session.ActiveOrganizationPublicID
+	// The render credential is project-scoped and the project belongs to the
+	// organisation being left, so both halves go — a surviving api_key would
+	// still name the previous org.
 	if cliErr := updateProfile(sess.ProfileName, func(p *config.Profile) {
 		p.ActiveOrg = publicID
 		p.ActiveProject = ""
+		p.APIKey = ""
 		p.APISecret = ""
 	}); cliErr != nil {
 		return cliErr
@@ -151,7 +172,12 @@ func runOrgsSelect(cmd *cobra.Command, args []string) error {
 		projectPick = func(_ string, _ []string, _ int) (int, error) { return -1, errNotInteractivePick }
 	}
 
-	project, projErr := resolveActiveProject(ctx, sess.Client, "", projectPick)
+	project, projectCount, projErr := resolveActiveProject(ctx, sess.Client, projectFlag, projectPick)
+	// An explicit --project that cannot be resolved is a real failure, not a
+	// half-finished switch: the caller named something that isn't there.
+	if projErr != nil && projectFlag != "" {
+		return projErr
+	}
 	renderStatus := "none"
 	if projErr == nil && project.ID != "" {
 		if cliErr := updateProfile(sess.ProfileName, func(p *config.Profile) { p.ActiveProject = project.ID }); cliErr == nil {
@@ -169,15 +195,27 @@ func runOrgsSelect(cmd *cobra.Command, args []string) error {
 			}
 		}
 	}
-	if projErr == nil && project.ID == "" {
-		_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "No projects in this organisation yet — run `urlbox projects select` after creating one.")
-	}
-	if projErr != nil {
-		if isNonInteractiveProjectStep(projErr) {
-			_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "Several projects in this organisation — run `urlbox projects select` to pick one.")
-		} else {
-			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "org switched, but no active project set: %v\n", projErr)
-		}
+	// The switch can land without an active project (none exist yet, or several
+	// and nothing to pick with). That state is expected, but it leaves `render`
+	// without a credential, so it has to travel in the envelope — an agent reads
+	// stdout and never sees a stderr line.
+	summary := fmt.Sprintf("Active organisation: %s", chosen.Name)
+	var breadcrumbs []output.Breadcrumb
+	switch {
+	case projErr == nil && project.ID == "":
+		summary += " — no projects yet"
+		_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "No projects in this organisation yet — create one, then run `urlbox projects select`.")
+		breadcrumbs = []output.Breadcrumb{{Action: "create project", Cmd: "urlbox projects create <name>"}}
+	case projErr != nil && isNonInteractiveProjectStep(projErr):
+		summary += fmt.Sprintf(" — %d projects; pick one next", projectCount)
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
+			"%d projects in this organisation — run `urlbox orgs select %s --project <name>` or `urlbox projects select` to finish.\n",
+			projectCount, chosen.Name)
+		breadcrumbs = []output.Breadcrumb{{Action: "pick project", Cmd: "urlbox projects select"}}
+	case projErr != nil:
+		summary += " — no active project"
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "org switched, but no active project set: %v\n", projErr)
+		breadcrumbs = []output.Breadcrumb{{Action: "pick project", Cmd: "urlbox projects select"}}
 	}
 
 	data := map[string]any{
@@ -187,8 +225,7 @@ func runOrgsSelect(cmd *cobra.Command, args []string) error {
 	if project.ID != "" {
 		data["project"] = map[string]any{"id": project.ID, "name": project.Name}
 	}
-	env := output.NewEnvelope("orgs select", data,
-		fmt.Sprintf("Active organisation: %s", chosen.Name), nil)
+	env := output.NewEnvelope("orgs select", data, summary, breadcrumbs)
 	return writeEnvelopeWithQuietData(cmd, env, publicID)
 }
 

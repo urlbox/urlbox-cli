@@ -147,31 +147,35 @@ func TestResolveActiveOrgZeroOrgs(t *testing.T) {
 
 func TestResolveActiveProjectMatrix(t *testing.T) {
 	zero := &fakeSession{gets: map[string]string{"/v2/projects": `{"projects":[]}`}}
-	got, cli := resolveActiveProject(context.Background(), zero, "", neverPick)
-	if cli != nil || got.ID != "" {
-		t.Fatalf("zero projects: got %+v %v", got, cli)
+	got, count, cli := resolveActiveProject(context.Background(), zero, "", neverPick)
+	if cli != nil || got.ID != "" || count != 0 {
+		t.Fatalf("zero projects: got %+v count=%d %v", got, count, cli)
 	}
 
 	one := &fakeSession{gets: map[string]string{"/v2/projects": `{"projects":[{"id":"proj_1","name":"Only"}]}`}}
-	got, cli = resolveActiveProject(context.Background(), one, "", neverPick)
-	if cli != nil || got.ID != "proj_1" {
-		t.Fatalf("one project: got %+v %v", got, cli)
+	got, count, cli = resolveActiveProject(context.Background(), one, "", neverPick)
+	if cli != nil || got.ID != "proj_1" || count != 1 {
+		t.Fatalf("one project: got %+v count=%d %v", got, count, cli)
 	}
 
 	many := &fakeSession{gets: map[string]string{"/v2/projects": `{"projects":[{"id":"proj_1","name":"A"},{"id":"proj_2","name":"B"}]}`}}
-	got, cli = resolveActiveProject(context.Background(), many, "", func(_ string, _ []string, _ int) (int, error) { return 1, nil })
-	if cli != nil || got.ID != "proj_2" {
-		t.Fatalf("picker path: got %+v %v", got, cli)
+	got, count, cli = resolveActiveProject(context.Background(), many, "", func(_ string, _ []string, _ int) (int, error) { return 1, nil })
+	if cli != nil || got.ID != "proj_2" || count != 2 {
+		t.Fatalf("picker path: got %+v count=%d %v", got, count, cli)
 	}
 
-	got, cli = resolveActiveProject(context.Background(), many, "b", neverPick)
-	if cli != nil || got.ID != "proj_2" {
-		t.Fatalf("flag path: got %+v %v", got, cli)
+	got, count, cli = resolveActiveProject(context.Background(), many, "b", neverPick)
+	if cli != nil || got.ID != "proj_2" || count != 2 {
+		t.Fatalf("flag path: got %+v count=%d %v", got, count, cli)
 	}
 
-	_, cli = resolveActiveProject(context.Background(), many, "", notInteractive)
+	// The count travels with the error too — `orgs select` reports "N projects".
+	_, count, cli = resolveActiveProject(context.Background(), many, "", notInteractive)
 	if cli == nil || cli.Code != output.ErrUsage || !strings.Contains(cli.Hint, "--project") {
 		t.Fatalf("want usage error naming --project, got %v", cli)
+	}
+	if count != 2 {
+		t.Fatalf("ambiguous path must still report the count, got %d", count)
 	}
 }
 

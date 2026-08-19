@@ -96,20 +96,21 @@ func resolveActiveOrg(ctx context.Context, client api.SessionAPI, orgFlag string
 	}, nil
 }
 
-func resolveActiveProject(ctx context.Context, client api.SessionAPI, projectFlag string, pick pickFunc) (nameID, *output.CLIError) {
+func resolveActiveProject(ctx context.Context, client api.SessionAPI, projectFlag string, pick pickFunc) (chosen nameID, count int, cliErr *output.CLIError) {
 	projects, err := fetchList(ctx, client, "/v2/projects", "projects")
 	if err != nil {
-		return nameID{}, asCLIError(err)
+		return nameID{}, 0, asCLIError(err)
 	}
 	rows := toNameIDs(projects)
 	if len(rows) == 0 {
-		return nameID{}, nil
+		return nameID{}, 0, nil
 	}
 	if projectFlag != "" {
-		return resolveNameOrID(projectFlag, "proj_", rows, "project")
+		picked, resErr := resolveNameOrID(projectFlag, "proj_", rows, "project")
+		return picked, len(rows), resErr
 	}
 	if len(rows) == 1 {
-		return rows[0], nil
+		return rows[0], 1, nil
 	}
 	names := make([]string, len(rows))
 	for i, r := range rows {
@@ -118,14 +119,14 @@ func resolveActiveProject(ctx context.Context, client api.SessionAPI, projectFla
 	idx, perr := pick("Select the active project (used by render):", names, -1)
 	if perr != nil {
 		if errors.Is(perr, errNotInteractivePick) {
-			return nameID{}, output.NewCLIError(output.ErrUsage,
+			return nameID{}, len(rows), output.NewCLIError(output.ErrUsage,
 				"multiple projects and no interactive terminal",
 				"Pass --project <name-or-id>, or run `urlbox projects select` later.")
 		}
-		return nameID{}, output.NewCLIError(output.ErrUsage, perr.Error(),
+		return nameID{}, len(rows), output.NewCLIError(output.ErrUsage, perr.Error(),
 			"Pass --project <name-or-id>, or run `urlbox projects select` later.")
 	}
-	return rows[idx], nil
+	return rows[idx], len(rows), nil
 }
 
 func activeOrgName(ctx context.Context, client api.SessionAPI) string {

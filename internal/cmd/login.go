@@ -145,7 +145,7 @@ func runLogin(cmd *cobra.Command, f *loginFlags) error {
 		}
 	}
 
-	project, projErr := resolveActiveProject(ctx, authed, f.project, promptPick)
+	project, _, projErr := resolveActiveProject(ctx, authed, f.project, promptPick)
 	if projErr != nil {
 		return projErr
 	}
