@@ -1,7 +1,7 @@
 {
   "name": "@urlbox/cli",
   "version": "0.0.0",
-  "description": "Official CLI for the Urlbox screenshot and web automation API",
+  "description": "Official CLI for the Urlbox website screenshot API",
   "license": "MIT",
   "repository": {
     "type": "git",

@@ -1,587 +1,231 @@
 # Urlbox CLI
 
-The official command-line interface for the [Urlbox](https://urlbox.com) screenshot and web automation API. Render screenshots, PDFs, videos, and extracted content from URLs or HTML.
+The official command-line interface for [Urlbox](https://urlbox.com), the website screenshot API. Render screenshots, PDFs, videos, and extracted content from any URL or raw HTML — straight from your terminal, a CI pipeline, or an AI agent. Bring your own AI to analyse renders, S3 storage to store them securely, and proxies to change a render's point of view.
+
+Read our API's [docs](https://urlbox.com/docs) here. Are you an AI agent? Those docs are available as markdown files [here](https://urlbox.com/llms.txt).
+
+Every command speaks JSON for your AI agents, and points you at the next step. The full CLI docs are live at [urlbox.com/docs/cli](https://urlbox.com/docs/cli).
 
 ## Install
 
-### macOS (Homebrew)
+```sh
+# npm (cross-platform)
+npm install -g @urlbox/cli
 
-```
+# macOS (Homebrew)
 brew install urlbox/tap/urlbox
-```
 
-### Windows (Scoop)
-
-```
+# Windows (Scoop)
 scoop bucket add urlbox https://github.com/urlbox/homebrew-tap
 scoop install urlbox
-```
 
-> **Note:** the Scoop bucket is co-located inside the `homebrew-tap` repo
-> (the goreleaser pipeline writes the Scoop manifest into a `bucket/`
-> subdirectory of that repo). The URL above is correct even though it
-> reads `homebrew-tap` — Scoop finds the manifest under `bucket/urlbox.json`.
-
-### npm (cross-platform)
-
-```
-npm install -g @urlbox/cli
-```
-
-### Shell script (macOS/Linux)
-
-```
-curl -fsSL https://cli.urlbox.com/install.sh | sh
-```
-
-### Linux packages (deb/rpm/apk)
-
-Download the appropriate package from the [latest release](https://github.com/urlbox/urlbox-cli/releases/latest).
-
-### Go
-
-```
+# Go
 go install github.com/urlbox/urlbox-cli/cmd/urlbox@latest
 ```
 
-## Getting your API secret
+Linux `.deb`/`.rpm`/`.apk` packages and a `curl | sh` installer are covered in [the install docs](https://urlbox.com/docs/cli/install).
 
-Grab your API secret from your Urlbox project at
-[urlbox.com/dashboard/projects](https://urlbox.com/dashboard/projects)
-(open the project, then "API Secret"). Secrets look like `ubx_sk_…`.
-
-The secret authenticates render API calls. The **API key** (publishable,
-`ubx_pk_…`) is separate — it's only needed for `urlbox link` URL signing.
-
-## Quick Start
+Confirm it worked:
 
 ```sh
-# One-time: sign in through the browser (CI/headless: set URLBOX_API_SECRET instead)
-urlbox login
-
-# Render a URL — saves screenshot.png to the current directory
-urlbox render https://example.com --output screenshot.png
-
-# Aliases: same pipeline, different default format
-urlbox screenshot https://example.com --output home.png    # PNG
-urlbox pdf https://example.com --output home.pdf           # PDF + full page
-urlbox video https://example.com --output home.mp4         # MP4
-
-# Preview the merged payload without making an API call (no credit burn)
-urlbox render https://example.com --format pdf --dry-run
-
-# Generate a copy-pasteable curl command (secret redacted)
-urlbox render https://example.com --curl
-
-# Verify install, config, and credentials
 urlbox doctor
+```
 
-# Sign in through the browser (CI/headless: set URLBOX_API_SECRET instead)
+## Quick start
+
+```sh
+# Sign in once through your browser
 urlbox login
 
-# Inspect the signed-in account, organisations, and projects
-urlbox whoami
-urlbox orgs list
-urlbox projects list
+# Render a page and save it
+urlbox render https://example.com --output home.png
 
-# Render usage summary for the active organisation
-urlbox usage
-
-# Self-discovery for agents
-urlbox commands --output-format json    # full command catalog
-urlbox render --help --agent            # structured JSON help
-urlbox schema render                    # JSON Schema of every render option
-```
-
-## Commands
-
-### `render`
-
-Capture a URL as a screenshot, PDF, or video.
-
-```sh
-# Simplest — positional URL, format flag, optional output
-urlbox render https://example.com --format png --output home.png
-
-# Full payload via --json (preferred for non-trivial config)
-urlbox render --json '{"url":"https://example.com","format":"pdf","width":1920,"full_page":true}'
-
-# --json from stdin or @file
-echo '{"url":"https://example.com"}' | urlbox render --json -
-urlbox render --json @opts.json
-
-# Built-in presets layer in defaults (preset < json < flags)
-urlbox render https://example.com --preset mobile          # iPhone viewport
-urlbox render https://example.com --preset desktop         # 1920×1080
-urlbox render https://example.com --preset pdf-a4          # PDF + A4 page
-urlbox render https://example.com --preset article         # block ads, retina, mostrequestsfinished (news/article)
-
-# Preview without calling the API
-urlbox render https://example.com --dry-run
-
-# Generate an equivalent curl command (secret redacted as $URLBOX_API_SECRET)
-urlbox render https://example.com --curl
-
-# Open the result in your browser after rendering
-urlbox render https://example.com --open
-
-# Async: queue and return a renderId
-urlbox render https://example.com --async --webhook-url https://hooks.example/cb
-```
-
-**Aliases** (thin wrappers; share the entire render pipeline):
-
-- `urlbox screenshot <url>` (also `urlbox shot`) — pre-sets `--format png`.
-- `urlbox pdf <url>` — pre-sets `--format pdf --full-page`.
-- `urlbox video <url>` — pre-sets `--format mp4`.
-
-User-supplied flags override the alias defaults: `urlbox screenshot foo.com --format webp`.
-
-**Reliability:** the CLI retries automatically on 429 / 5xx / generic
-network errors (3 attempts, 1s/2s/4s backoff with ±20% jitter, respects
-`Retry-After`). Disable with `--no-retry`; cap with `--max-retries N`.
-
-**Timeouts are NOT retried.** A render that exceeds `--timeout duration`
-(default `60s`) produces an error envelope with `code: "timeout"` and a
-hint listing three recovery paths: retry the same command, raise
-`--timeout`, or switch to `--async --webhook-url`. Heavy renders are slow
-on every attempt, so silent auto-retry rarely helps — the agent picks the
-strategy.
-
-**Upstream errors:** when the rendered page itself returned an HTTP error
-(login wall, captcha, rate limit), the success envelope's `data` includes
-`upstreamOk: false` plus `upstreamStatus` (the page's HTTP code). The
-summary line warns. Don't treat the bytes as authoritative — the render
-likely captured a captcha page rather than the target content.
-
-**Output sandbox:** `--output <path>` is canonicalized and asserted to stay
-under the current working directory. Parent escapes (`../`), absolute paths
-outside CWD, and symlinks pointing outside CWD are rejected.
-
-#### Validation contract (v0.9.0+)
-
-The CLI ships an embedded JSON Schema documenting the well-known render
-options. As of v0.9.0, validation splits cleanly:
-
-- **Typed flags** (`--width`, `--format`, `--wait-until`, ...) are validated
-  locally — the CLI catches type errors and invalid enum values before any
-  network call.
-- **`--json`** is a passthrough: the Urlbox API performs all option
-  validation. Any current or future API option works via `--json` without
-  needing a CLI update. If a `--json` key looks like a typo of a documented
-  option, the CLI prints a `warning: ...` line to stderr and still sends
-  the request verbatim — the agent or user reads the warning and decides
-  whether to re-run with the suggested spelling.
-
-Local hard errors that always reject before sending: payloads larger than
-1 MiB, URL-like fields with control characters, malformed JSON. Everything
-else flows to the API.
-
-### `login`
-
-Signs in through your browser using the device flow. Prints a short code, opens
-the approval page, and once you approve stores a session, sets your active
-organisation and project, and fetches the active project's render credential so
-render commands work immediately.
-
-```sh
-# Sign in and pick org + project interactively
-urlbox login
-
-# Skip the pickers
-urlbox login --org acme --project production
-```
-
-CI and headless environments should set `URLBOX_API_SECRET` instead — the device
-flow needs a browser. `URLBOX_API_SECRET` takes precedence at runtime over the
-stored render credential.
-
-### `config`
-
-Inspect and modify the persisted configuration. Supports multiple named
-profiles for working across accounts.
-
-```sh
-# Read / write a value
-urlbox config get api_secret
-urlbox config set api_host https://api.urlbox.com
-
-# Show where the config file lives
-urlbox config path
-
-# Profile management
-urlbox config profile list
-urlbox config profile create work --api-secret sec_work
-urlbox config profile default work
-urlbox config profile delete work
-```
-
-**Profile-target resolution for `config set` / `config get`** (per-profile keys):
-
-- 0 profiles: errors with "No profiles configured" — bootstrap with `urlbox login`.
-- 1 profile: `--profile` is implicit; `config set api_secret sk_xxx` Just Works.
-- 2+ profiles: `--profile` is required; the error lists configured names.
-
-`default_profile` is top-level and exempt from this rule, but the named profile
-must exist (you can't set a dangling default).
-
-### `link`
-
-Generate an HMAC-SHA256 signed render URL **without** calling the API. Pure
-local crypto — useful for embedding URLs in templates, emails, or static
-sites, and for inspecting the canonical query a render request would use.
-
-```sh
-# Minimal
-urlbox link --url https://example.com
-
-# Full payload via --json
-urlbox link --json '{"url":"https://example.com","width":1920,"full_page":true}' --format png
-
-# Raw URL only (one line, no envelope)
+# Sign a render URL locally, no API call https://urlbox.com/docs/api/rest-api-vs-render-links#render-links
 urlbox link --url https://example.com --output-format quiet
 ```
 
-Requires both the publishable API key AND the API secret. If you want the
-rendered asset (not just the URL), use `urlbox render`.
-
-### `status`
-
-Check or poll the status of an async render queued by `urlbox render --async`.
-
-```sh
-# One-shot status check
-urlbox status ps_abc123
-
-# Poll every 5s until terminal (default --timeout 60s)
-urlbox status ps_abc123 --wait
-
-# Custom cadence
-urlbox status ps_abc123 --wait --timeout 5m --poll-interval 10s
-```
-
-Terminal statuses are `succeeded` (exit 0, `data.renderUrl` points at the
-asset) and `failed` / `error` (exit 10). Non-terminal states (`created`,
-`retrying`, `processing`) without `--wait` return `ok: true` with a
-breadcrumb suggesting `urlbox status <id> --wait`.
-
-### `storage`
-
-Manage the active organisation's storage credentials. Storage credentials are
-owned by the organisation and assigned to projects — create one once, then
-assign it to any project's renders. Secrets are masked on display; pass
-`--reveal` for full values (JSON output always includes them in full).
-
-```sh
-# List, show (masked), show with secrets revealed
-urlbox storage list
-urlbox storage show prod-bucket
-urlbox storage show prod-bucket --reveal
-
-# Create (name as a positional or --name; typed flags or a full --json payload; typed flags win)
-urlbox storage create prod --provider aws_s3 --bucket b --region us-east-1 --key k --secret s
-urlbox storage create --json '{"name":"prod","type":"s3","provider":"aws_s3","bucket":"b","key":"k","secret":"s","region":"us-east-1"}'
-
-# Create and assign to a project in one step
-urlbox storage create prod --provider aws_s3 --bucket b --assign-to my-project
-
-# Update only the fields you pass
-urlbox storage update prod --region eu-west-1
-
-# Delete (retype-to-confirm; --yes skips the prompt)
-urlbox storage delete prod --yes
-```
-
-Providers: `aws_s3`, `google_cloud_storage`, `cloudflare_r2`, `backblaze_b2`,
-`digitalocean_spaces`, `wasabi`, `custom`, `azure`. A name or id resolves the
-target; ids carry the `store_` prefix.
-
-### `proxies`
-
-Manage the active organisation's proxy pools (alias: `proxy`). Proxy pools are
-owned by the organisation and assigned to projects. Proxy URLs routinely embed
-credentials, so the password portion is masked on display; pass `--reveal` for
-full values (JSON output always includes them in full).
-
-```sh
-# List, show (password masked), show revealed
-urlbox proxies list
-urlbox proxies show eu
-urlbox proxies show eu --reveal
-
-# Create with one or more proxy URLs (name as a positional or --name; --url is repeatable)
-urlbox proxies create eu --url http://user:pass@host:8080
-
-# Create and assign to a project
-urlbox proxies create eu --url http://user:pass@host:8080 --assign-to my-project
-
-# Update the name and/or the whole URL list (any --url replaces the list)
-urlbox proxies update eu --url http://user:pass@host:8080
-
-# Delete (retype-to-confirm; --yes skips the prompt)
-urlbox proxies delete eu --yes
-```
-
-A name or id resolves the target; ids carry the `pool_` prefix.
-
-### `llm`
-
-Manage the active organisation's LLM credentials. LLM credentials are owned by
-the organisation and assigned to projects. Secrets are masked on display; pass
-`--reveal` for full values (JSON output always includes them in full).
-
-```sh
-# List, show (masked), show revealed
-urlbox llm list
-urlbox llm show openai-prod
-urlbox llm show openai-prod --reveal
-
-# Create (name as a positional or --name; typed flags or a full --json payload; typed flags win)
-urlbox llm create openai --provider openai --api-key sk-…
-urlbox llm create openai --provider openai --api-key sk-… --assign-to my-project
-
-# Update only the fields you pass
-urlbox llm update openai --model gpt-5-mini
-
-# Test the stored credential's connection, list the provider's model ids
-urlbox llm test openai
-urlbox llm models openai
-
-# Delete (retype-to-confirm; --yes skips the prompt)
-urlbox llm delete openai --yes
-```
-
-Providers include `openai`, `anthropic`, `azure`, `amazon-bedrock`, and
-`google-vertex`. `llm test` returns exit 0 with `Connection OK` on success, or
-a non-zero exit with the provider's error on failure. A name or id resolves the
-target; ids carry the `llm_` prefix.
-
-### `projects <kind> assign` / `unassign`
-
-Assign an org-owned credential to a project, or unassign the project's current
-one. A project holds at most one storage credential, one proxy pool, and one
-LLM credential. `<kind>` is `storage`, `proxy`, or `llm`.
-
-```sh
-# Assign a credential (by name or id) to a project (by name or id)
-urlbox projects storage assign my-project prod-bucket
-urlbox projects proxy assign my-project eu
-urlbox projects llm assign my-project openai
-
-# Unassign the project's current credential of that kind
-urlbox projects storage unassign my-project
-urlbox projects proxy unassign my-project
-urlbox projects llm unassign my-project
-```
-
-### `dashboard`
-
-Opens https://urlbox.com/dashboard in your default browser. On headless
-hosts (no `DISPLAY` / `WAYLAND_DISPLAY` on Linux, unsupported OS) the URL
-is printed to stderr and the envelope still arrives on stdout, so agents
-and pipelines get `data.url` regardless of host.
-
-```sh
-urlbox dashboard
-```
-
-### `commands`
-
-Lists all available commands, their descriptions, and flags.
-
-In a terminal, output is a human-readable table. When piped or with `--output-format json`, output is a structured JSON catalog suitable for agent and script consumption.
-
-```
-$ urlbox commands
-Available commands:
-
-  commands    List all available commands
-  config      Inspect and modify CLI configuration
-  dashboard   Open the Urlbox dashboard in your browser
-  doctor      Check installation, configuration, network, and credentials
-  link        Generate an HMAC-signed render URL (no API call)
-  llm         Manage org LLM credentials
-  login       Sign in via your browser (device flow)
-  logout      Sign out and revoke this device's session
-  orgs        Manage the active organisation
-  pdf         Render a URL as PDF (alias for `render --format pdf --full-page`)
-  projects    Manage projects and the active project
-  proxies     Manage org proxy pools
-  render      Render a URL to a screenshot, PDF, video, or other format
-  schema      Print JSON Schemas describing Urlbox API payloads
-  screenshot  Capture a screenshot (alias for `render --format png`)
-  skill       Agent skill content
-  status      Look up the state of an async render
-  storage     Manage org storage credentials
-  upgrade     Update urlbox to the latest version
-  usage       Show the organisation's render usage for the current period
-  version     Print CLI version, commit, and build date
-  video       Render a URL as MP4 video (alias for `render --format mp4`)
-  whoami      Show the signed-in user and active context
-
-Use "urlbox <command> --help" for more information about a command.
-```
-
-### `doctor`
-
-Diagnoses installation, configuration, network, and credential issues. Runs
-nine checks: version, install method, config file, session, active org, active
-project, render credential, DNS, and API reachability.
-Exits non-zero if any check fails.
-
-```sh
-urlbox doctor
-urlbox doctor --output-format json --jq '.data.checks[] | select(.status != "ok")'
-```
-
-### `schema`
-
-Prints the JSON Schema that describes an Urlbox API payload. Use this to
-discover every valid option and its type — handy for agents building requests
-or for humans exploring the available render options.
-
-```sh
-# Full schema in the standard envelope
-urlbox schema render
-
-# Discover render options
-urlbox schema render --jq '.data.properties | keys'
-
-# Raw schema only (no envelope)
-urlbox schema render --output-format quiet
-```
-
-When `--json` is used to send payloads (Phase 4 onward), this same schema is
-applied for client-side validation before any network call. Validation
-failures return error code `validation` (exit code 2). See `urlbox skill show`
-for the full validation contract.
-
-### `skill`
-
-Prints the embedded `SKILL.md` — a one-page agent guide describing the output
-contract, error codes, discovery commands, and authentication flow. Useful as
-context for an LLM agent.
-
-```sh
-urlbox skill show
-```
-
-`urlbox skill install --target <tool>` writes the embedded `SKILL.md` to the
-well-known skill directory of your agent tooling so the agent picks it up
-automatically on next launch. Supported targets:
-
-| Target          | User scope                                 | Project scope                  |
-|-----------------|--------------------------------------------|--------------------------------|
-| `claude-code`   | `~/.claude/skills/urlbox/SKILL.md`         | `.claude/skills/urlbox/SKILL.md` |
-| `cursor`        | `~/.cursor/skills/urlbox/SKILL.md`         | `.cursor/skills/urlbox/SKILL.md` |
-| `codex`         | `~/.agents/skills/urlbox/SKILL.md`         | `.agents/skills/urlbox/SKILL.md` |
-| `opencode`      | `~/.config/opencode/skills/urlbox/SKILL.md` | `.opencode/skills/urlbox/SKILL.md` |
-
-```sh
-urlbox skill install --target cursor --scope user --yes
-```
-
-Use `--scope user` to install once across all projects (under `$HOME`); use
-`--scope project` to commit the skill to the current repo so teammates inherit
-it.
-
-### `upgrade`
-
-Updates urlbox to the latest version. Automatically detects how you installed it (Homebrew, Scoop, npm, or Go) and runs the appropriate update command. If the install method can't be detected, it prints all available upgrade commands so you can pick the right one.
-
-## Output Formats
-
-All commands support three output formats via the `--output-format` flag:
-
-| Format | Flag | Description |
-|--------|------|-------------|
-| `text` | `--output-format text` | Human-readable with colors. Default in a terminal. |
-| `json` | `--output-format json` | Full JSON envelope with `ok`, `command`, `data`, `summary`, and `breadcrumbs` fields. Default when piped. |
-| `quiet` | `--output-format quiet` | Raw data only (no envelope wrapper). |
-
-**Auto-detection:** When no `--output-format` flag is given, the CLI uses `text` if stdout is a TTY (interactive terminal) and `json` if stdout is piped to another program. This means scripts and agents get structured JSON by default without any extra flags.
-
-The `NO_COLOR` environment variable is respected — when set, terminal colors are disabled.
-
-## Filtering output with `--jq`
-
-Every command supports a built-in `--jq <expr>` flag, powered by [gojq](https://github.com/itchyny/gojq). The expression runs over the JSON envelope, or against `.data` when combined with `--output-format quiet`. No external `jq` binary required.
-
-```sh
-# Pull a single field
-urlbox commands --output-format json --jq '.data.commands[].name'
-
-# Filter to failing doctor checks only
-urlbox doctor --output-format json --jq '.data.checks[] | select(.status != "ok")'
-
-# Use --output-format quiet to run jq directly against .data
-urlbox commands --output-format quiet --jq '.commands | length'
-```
-
-## Agent integration
-
-Three discovery layers built specifically for LLM agents:
-
-```sh
-# 1. Full command catalog as JSON
-urlbox commands --output-format json
-
-# 2. Structured help for any command
-urlbox commands --help --agent
-urlbox doctor --help --agent
-
-# 3. The CLI's agent skill (embedded as SKILL.md)
-urlbox skill show
-```
-
-The CLI's exposed surface (every command and flag, at every level) is committed to `SURFACE.txt` and enforced in CI. New commands and flags can be added freely; renaming or removing one fails the surface gate, so downstream agents and scripts never break silently.
+You can check out the full walkthrough at [urlbox.com/docs/cli/quickstart](https://urlbox.com/docs/cli/quickstart).
 
 ## Authentication
 
-Three ways to provide your Urlbox API secret. The CLI picks the highest-priority
-source available (highest first):
-
 ```sh
-# 1. CLI flag — one-shot, doesn't touch the config file
-urlbox --profile <name> render <url>
-
-# 2. Env var — preferred for CI / containers
-export URLBOX_API_SECRET=sec_xxxxxxxxxxxx
-
-# 3. Sign in through the browser — persists a session + render credential
 urlbox login
 ```
 
-The full priority chain:
+Your browser opens, you approve, and the CLI stores your session plus the active project's render credential — renders work immediately.
 
-1. CLI flag (`--profile <name>`)
-2. Env vars (`URLBOX_API_SECRET`, `URLBOX_PROFILE`, `URLBOX_API_HOST`)
-3. The named profile (selected via `--profile`, `URLBOX_PROFILE`, or the
-   stored `default_profile`)
-4. Per-repo overrides at `.urlbox/config.json` (walks from CWD up to `$HOME`)
-5. The global default profile in `~/.config/urlbox/config.json`
+In CI and headless environments, where the browser can't open, set the `URLBOX_API_SECRET` env var instead (the secret looks like `ubx_sk_…`, found under your project in the [dashboard](https://urlbox.com/dashboard/projects)). For a one-shot override on a single command there's also `--api-secret-stdin` / `--api-secret-file` — avoid the bare `--api-secret`, which leaks into `ps` and shell history.
 
-Multiple profiles let you keep credentials per account, environment, or repo.
-See `urlbox config profile --help` for management commands.
+When more than one source is present, the highest-priority wins: **command flag → environment variable → a per-repo `.urlbox/config.json` overlay → your stored config**.
 
-Verify with `urlbox doctor`.
+Verify what the CLI resolved with `urlbox doctor`. More detail at [urlbox.com/docs/cli/authentication](https://urlbox.com/docs/cli/authentication).
+
+## Commands
+
+### Rendering
+
+```sh
+urlbox render https://example.com --format png --output home.png
+urlbox render --json '{"url":"https://example.com","format":"pdf","full_page":true}'
+```
+
+`render` captures a page as a screenshot, PDF, video, or extracted content. Options merge in the order **preset → `--json` → flags**, so a typed flag always wins.
+
+| Command | Does |
+|---------|------|
+| `render <url>` | Capture a page in any format |
+| `screenshot <url>` (alias `shot`) | `render --format png` |
+| `pdf <url>` | `render --format pdf --full-page` |
+| `video <url>` | `render --format mp4` |
+
+Handy render flags:
+
+- `--preset <name>` layers in defaults before anything else. Built-in presets: `mobile` (iPhone viewport), `desktop` (1920×1080), `pdf-a4` (PDF on A4), `article` (block ads, retina, wait for most requests).
+- `--dry-run` validates the merged payload without calling the API.
+- `--curl` prints the equivalent curl command with the secret redacted.
+- `--open` opens the result in your browser after rendering.
+- `--output <path>` saves the file. Paths are sandboxed to the current directory — escapes and symlinks pointing outside it are rejected.
+
+`--json` is a passthrough: any current or future API option works through it, and the Urlbox API validates it. Typed flags are checked locally before any network call. See [urlbox.com/docs/cli/rendering](https://urlbox.com/docs/cli/rendering) and the full option list at [urlbox.com/docs/cli/json-and-schema](https://urlbox.com/docs/cli/json-and-schema).
+
+### Signed links
+
+```sh
+urlbox link --url https://example.com --output-format quiet
+```
+
+`link` builds an HMAC-SHA256 signed render URL with pure local crypto — no API call, no render. Useful for embedding in templates, emails, or static sites. It needs both the publishable API key and the API secret. More at [urlbox.com/docs/cli/signed-links](https://urlbox.com/docs/cli/signed-links).
+
+### Async renders
+
+```sh
+urlbox render https://example.com --async --webhook-url https://hooks.example/cb
+urlbox status ps_abc123 --wait
+```
+
+Pass `--async` to queue a render and get a `renderId` back immediately. `status` checks it, and `status --wait` polls (every 2s by default) until it reaches a terminal state — `succeeded` or `failed`. Webhooks and long-running renders are covered at [urlbox.com/docs/cli/async-and-webhooks](https://urlbox.com/docs/cli/async-and-webhooks).
+
+### Account and context
+
+```sh
+urlbox login                 # sign in
+urlbox whoami                # who am I, and which org/project is active (alias: me)
+urlbox orgs list             # organisations you belong to (alias: org)
+urlbox orgs select acme      # switch the active org
+urlbox projects list         # projects in the active org
+urlbox usage                 # render usage for the current period
+```
+
+| Command | Does |
+|---------|------|
+| `login` / `logout` | Sign in through the browser; sign out and revoke this device's session |
+| `whoami` (alias `me`) | Show the signed-in user and active org/project |
+| `orgs list` / `orgs select` | List or switch your active organisation |
+| `projects list` / `select` / `show` | Browse and switch the active project |
+| `projects create` / `rename` / `enable` / `disable` / `delete` | Manage projects |
+| `projects defaults show` / `set` / `remove` | Manage a project's default render options |
+| `usage` | Render usage summary for the active org |
+
+Deletes and disables prompt for confirmation; pass `--yes` to skip the prompt (agents should). Details at [urlbox.com/docs/cli/configuration](https://urlbox.com/docs/cli/configuration).
+
+### Org resources
+
+Storage credentials, proxy pools, and LLM credentials belong to the organisation. Create one once, then assign it to any project.
+
+```sh
+urlbox storage list
+urlbox storage create prod --provider aws_s3 --bucket b --region us-east-1 --key k --secret s
+urlbox projects storage assign my-project prod
+```
+
+| Group | Verbs |
+|-------|-------|
+| `storage` | `list` `show` `create` `update` `delete` |
+| `proxies` (alias `proxy`) | `list` `show` `create` `update` `delete` |
+| `llm` | `list` `show` `create` `update` `delete` `test` `models` |
+| `projects <kind> assign` / `unassign` | Attach or detach a project's `storage`, `proxy`, or `llm` credential |
+
+Secrets are masked in every human-readable view — pass `--reveal` to unmask (JSON output always shows them in full). Deletes are retype-to-confirm; `--yes` skips the prompt. A target resolves by name or id (`store_…`, `pool_…`, `llm_…`).
+
+### Utilities
+
+| Command | Does |
+|---------|------|
+| `config get` / `set` / `path` | Read and write the stored config |
+| `schema render` | Print the JSON Schema of every render option |
+| `commands` | List every command and flag (human table, or JSON when piped) |
+| `skill show` / `install` | Print or install the agent skill (see below) |
+| `doctor` | Check version, config, session, credentials, and API reachability |
+| `dashboard` | Open the Urlbox dashboard in your browser |
+| `upgrade` | Update to the latest version via the detected install method |
+| `version` | Print the version, commit, and build date |
+
+Troubleshooting guide: [urlbox.com/docs/cli/troubleshooting](https://urlbox.com/docs/cli/troubleshooting). Full reference: [urlbox.com/docs/cli/command-reference](https://urlbox.com/docs/cli/command-reference).
+
+## Output
+
+Every command returns one of three formats via `--output-format`:
+
+| Format | Default when | Shape |
+|--------|--------------|-------|
+| `text` | stdout is a terminal | Human-readable, with colour |
+| `json` | stdout is piped | Full envelope |
+| `quiet` | — | Raw `data` only, no envelope |
+
+Success and error responses use a stable envelope:
+
+```json
+{ "ok": true,  "command": "render", "data": {}, "summary": "...", "breadcrumbs": [] }
+{ "ok": false, "command": "render", "error": "...", "code": "...", "hint": "..." }
+```
+
+Data goes to stdout, messages and warnings go to stderr, so piping stays clean. The `NO_COLOR` environment variable disables colour. Filter any response inline with the built-in `--jq <expr>` flag — no external `jq` binary needed:
+
+```sh
+urlbox doctor --output-format json --jq '.data.checks[] | select(.status != "ok")'
+```
+
+Each error `code` maps to a fixed exit code:
+
+| Code | Exit | | Code | Exit |
+|------|------|---|------|------|
+| `usage` | 1 | | `rate_limit` | 6 |
+| `validation` | 2 | | `conflict` | 7 |
+| `auth` | 3 | | `server` | 10 |
+| `forbidden` | 4 | | `network` | 11 |
+| `not_found` | 5 | | `timeout` | 11 |
+
+Renders retry automatically on 429, 5xx, and network errors — up to 3 retries (4 attempts total), with backoff. Disable with `--no-retry`, cap with `--max-retries`. Timeouts are never retried; raise `--timeout` or switch to `--async`. More at [urlbox.com/docs/cli/output-and-scripting](https://urlbox.com/docs/cli/output-and-scripting).
+
+## For AI agents
+
+The CLI is built to be driven by an agent. Everything is discoverable and non-interactive:
+
+```sh
+# Install the skill so your agent auto-discovers the CLI next session
+urlbox skill install --target claude-code --scope user --yes
+
+# Discover the surface
+urlbox commands --output-format json    # every command and flag
+urlbox render --help --agent            # structured JSON help
+urlbox schema render                    # every render option and its type
+```
+
+Pipe any command and it defaults to JSON. Add `--yes` to skip confirmation prompts, `--org` / `--project` to pin context, and `URLBOX_API_SECRET` to authenticate without a browser. Skill install targets are `claude-code`, `cursor`, `codex`, and `opencode`. Setup guide: [urlbox.com/docs/cli/ai-agents](https://urlbox.com/docs/cli/ai-agents).
+
+## Versioning
+
+Versions `v0.1` through `v0.10` were early access. A `v1.0.0`–`v1.0.4` line was published in May 2026, then reset back to `v0.10.0` because the surface wasn't ready to carry a v1 stability promise. This release is **v1.1.0** — the first official stable release. The `1.0.x` numbers are unavailable on npm because that earlier line used them.
 
 ## Development
 
-| Target | Description |
-|--------|-------------|
-| `make ci` | Run all checks: fmt-check, lint, test, build, surface-check |
-| `make test` | Run tests with race detector |
-| `make e2e` | Run end-to-end tests |
-| `make e2e-verbose` | Run E2E tests with colored output |
-| `make lint` | Run golangci-lint |
-| `make fmt` | Format with gofumpt |
-| `make build` | Build binary to `bin/urlbox` |
-| `make surface-snapshot` | Regenerate `SURFACE.txt` from the built binary |
-| `make surface-check` | Fail if `SURFACE.txt` is stale or has breaking changes |
-| `make clean` | Remove `bin/` and `dist/` |
+```sh
+make build    # build to bin/urlbox
+make test     # run tests with the race detector
+make ci       # fmt-check, lint, test, build, surface-check
+```
 
-`SURFACE.txt` is the canonical contract of every command and flag. Run `make surface-snapshot` after intentionally adding a flag or command, then commit the updated file alongside the code change.
+`SURFACE.txt` is the canonical contract of every command and flag; a CI check fails if it drifts. Run `make surface-snapshot` after intentionally adding a command or flag, and commit the update alongside the code.
 
 ## License
 

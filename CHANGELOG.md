@@ -4,7 +4,7 @@ All notable changes to the `urlbox` CLI are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
-## v0.11.0 — 2026-08-19
+## v1.1.0 — 2026-08-19
 
 **Browser login and account management.** `urlbox login` signs in via
 the browser and stores the session and the active project's render
