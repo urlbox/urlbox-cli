@@ -227,7 +227,7 @@ Pipe any command and it defaults to JSON. Add `--yes` to skip confirmation promp
 
 ## Versioning
 
-**v1.1.0 is the current stable release**, and the CLI follows [SemVer](https://semver.org) from here. `SURFACE.txt` is the contract: nothing listed in it is removed or renamed within the v1 line without a major bump — new commands and flags can arrive in any minor release.
+**v1.2.0 is the current stable release**, and the CLI follows [SemVer](https://semver.org) from here. `SURFACE.txt` is the contract: nothing listed in it is removed or renamed within the v1 line without a major bump — new commands and flags can arrive in any minor release.
 
 Earlier `0.x` and `1.0.x` versions were the pre-stable line and are superseded; `npm install -g @urlbox/cli` always resolves to the current release.
 
