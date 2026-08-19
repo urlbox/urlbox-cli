@@ -167,8 +167,8 @@ func TestHTTPClient_Render_401_MapsToAuth(t *testing.T) {
 	if cli.Code != output.ErrAuth {
 		t.Errorf("Code=%q, want %q", cli.Code, output.ErrAuth)
 	}
-	if !strings.Contains(cli.Hint, "urlbox auth") {
-		t.Errorf("Hint=%q, want a pointer to `urlbox auth`", cli.Hint)
+	if !strings.Contains(cli.Hint, "urlbox login") {
+		t.Errorf("Hint=%q, want a pointer to `urlbox login`", cli.Hint)
 	}
 }
 
@@ -320,8 +320,8 @@ func TestHTTPClient_Render_400_ApiKeyNotFound_MapsToAuth(t *testing.T) {
 	if !strings.Contains(cli.Message, "Api Key does not exist") {
 		t.Errorf("Message=%q should lift the nested error.message", cli.Message)
 	}
-	if !strings.Contains(cli.Hint, "urlbox auth") {
-		t.Errorf("Hint=%q, want pointer to `urlbox auth`", cli.Hint)
+	if !strings.Contains(cli.Hint, "urlbox login") {
+		t.Errorf("Hint=%q, want pointer to `urlbox login`", cli.Hint)
 	}
 }
 

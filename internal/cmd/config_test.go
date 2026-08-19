@@ -121,8 +121,14 @@ func TestConfigSet_NoProfiles_Errors(t *testing.T) {
 	if env["error"] != "No profiles configured" {
 		t.Errorf("error=%v", env["error"])
 	}
-	if got, want := env["hint"], "Run `urlbox auth --api-secret <secret>` to create one."; got != want {
-		t.Errorf("hint=%v want=%v", got, want)
+	// The hint must name BOTH onboarding paths. `login` needs a browser, so a
+	// headless box pointed only at `login` has nowhere to go; `auth` is the
+	// route that works there.
+	hint, _ := env["hint"].(string)
+	for _, want := range []string{"urlbox login", "urlbox auth"} {
+		if !strings.Contains(hint, want) {
+			t.Errorf("hint must mention %q for the headless path; got %q", want, hint)
+		}
 	}
 }
 
@@ -255,7 +261,7 @@ func TestConfigSet_UnknownKey_Errors(t *testing.T) {
 	if env["error"] != "Unknown config key: favorite_color" {
 		t.Errorf("error=%v", env["error"])
 	}
-	if env["hint"] != "Supported: api_key, api_secret, api_host, default_profile" {
+	if env["hint"] != "Supported: api_key, api_secret, api_host, default_profile, session_token, active_org, active_project" {
 		t.Errorf("hint=%v", env["hint"])
 	}
 }
@@ -450,14 +456,11 @@ func must(t *testing.T, err error) {
 func TestConfigGet_APISecret_MaskedByDefault(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)
+	seedConfig(t, dir, map[string]config.Profile{
+		"default": {APISecret: "sec_supersecretvalue12"},
+	})
 
 	var stdout, stderr bytes.Buffer
-	if exit := cmd.Execute([]string{"auth", "--api-secret", "sec_supersecretvalue12"}, &stdout, &stderr); exit != 0 {
-		t.Fatalf("auth seed exit=%d stderr=%s", exit, stderr.String())
-	}
-
-	stdout.Reset()
-	stderr.Reset()
 	exit := cmd.Execute([]string{"config", "get", "api_secret", "--output-format", "json"}, &stdout, &stderr)
 	if exit != 0 {
 		t.Fatalf("exit=%d stderr=%s", exit, stderr.String())
@@ -484,14 +487,11 @@ func TestConfigGet_APISecret_MaskedByDefault(t *testing.T) {
 func TestConfigGet_APISecret_RevealFlag(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)
+	seedConfig(t, dir, map[string]config.Profile{
+		"default": {APISecret: "sec_reveal_target_12"},
+	})
 
 	var stdout, stderr bytes.Buffer
-	if exit := cmd.Execute([]string{"auth", "--api-secret", "sec_reveal_target_12"}, &stdout, &stderr); exit != 0 {
-		t.Fatalf("auth seed exit=%d stderr=%s", exit, stderr.String())
-	}
-
-	stdout.Reset()
-	stderr.Reset()
 	exit := cmd.Execute([]string{"config", "get", "api_secret", "--reveal", "--output-format", "json"}, &stdout, &stderr)
 	if exit != 0 {
 		t.Fatalf("exit=%d stderr=%s", exit, stderr.String())
@@ -511,13 +511,11 @@ func TestConfigGet_APISecret_RevealFlag(t *testing.T) {
 func TestConfigGet_APISecret_QuietMode_AlsoMasks(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)
+	seedConfig(t, dir, map[string]config.Profile{
+		"default": {APISecret: "sec_quietmasked_xyz"},
+	})
 
 	var stdout, stderr bytes.Buffer
-	if exit := cmd.Execute([]string{"auth", "--api-secret", "sec_quietmasked_xyz"}, &stdout, &stderr); exit != 0 {
-		t.Fatalf("auth seed exit=%d stderr=%s", exit, stderr.String())
-	}
-	stdout.Reset()
-	stderr.Reset()
 	exit := cmd.Execute([]string{"config", "get", "api_secret", "--output-format", "quiet"}, &stdout, &stderr)
 	if exit != 0 {
 		t.Fatalf("exit=%d stderr=%s", exit, stderr.String())
@@ -947,10 +945,9 @@ func TestConfigSet_APISecret_RejectsBadValues(t *testing.T) {
 	}
 }
 
-// TestConfigSet_APISecret_OverwriteGuard pins the parity with auth's
-// guard: setting a DIFFERENT secret without --force should refuse, the
-// same way `urlbox auth --api-secret <new>` refuses. Previously config
-// set was the unguarded back door.
+// TestConfigSet_APISecret_OverwriteGuard pins the overwrite guard:
+// setting a DIFFERENT secret without --force should refuse. Previously
+// config set was the unguarded back door.
 func TestConfigSet_APISecret_OverwriteGuard(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)

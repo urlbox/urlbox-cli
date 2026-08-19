@@ -1616,8 +1616,8 @@ func TestRender_NoSecretConfigured_FailsLocallyWithCLIVocabulary(t *testing.T) {
 		t.Errorf("expected CLI vocabulary 'API secret'; got %q", msg)
 	}
 	hint, _ := env["hint"].(string)
-	if !strings.Contains(hint, "urlbox auth") {
-		t.Errorf("hint should mention `urlbox auth`; got %q", hint)
+	if !strings.Contains(hint, "urlbox login") {
+		t.Errorf("hint should mention `urlbox login`; got %q", hint)
 	}
 }
 

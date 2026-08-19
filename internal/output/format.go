@@ -49,16 +49,22 @@ type TextFormatter struct {
 	styles Styles
 }
 
-// WriteSuccess writes a human-readable success message. The data block
-// is INTENTIONALLY omitted — Round 5 Power-2 flagged the previous
-// behavior (✓ <summary> followed by a JSON dump of .data) as noisy:
-// the summary line carries the load-bearing facts, and structured
-// consumers should reach for --output-format json. Text mode is for
-// humans reading their terminal.
+// WriteSuccess writes human-readable output. When the envelope is ok and carries
+// a text view (SetTable/SetKV), only the view is rendered — the view is the
+// content and the summary would just be noise above it. Otherwise the summary
+// line is written first, glyph-coded by env.OK (✓ for ok, ✗ for not-ok — doctor
+// sets ok=false on failing checks), so a failing view keeps its ✗ headline and a
+// viewless success keeps its summary. Structured consumers reach for
+// --output-format json, where summary always rides in the envelope.
 func (f *TextFormatter) WriteSuccess(w io.Writer, env *Envelope) error {
-	if env.Summary != "" {
-		_, _ = fmt.Fprintln(w, f.styles.Success.Render("✓ "+env.Summary))
+	if env.Summary != "" && (!env.OK || env.view == nil) {
+		if env.OK {
+			_, _ = fmt.Fprintln(w, f.styles.Success.Render("✓ "+env.Summary))
+		} else {
+			_, _ = fmt.Fprintln(w, f.styles.Error.Render("✗ "+env.Summary))
+		}
 	}
+	env.view.render(w, &f.styles)
 	return nil
 }
 

@@ -230,14 +230,23 @@ func newRootCmd(stdout, stderr io.Writer) *cobra.Command {
 	cmd.AddCommand(newDashboardCmd())
 	cmd.AddCommand(newDoctorCmd())
 	cmd.AddCommand(newLinkCmd())
+	cmd.AddCommand(newLlmCmd())
+	cmd.AddCommand(newLoginCmd())
+	cmd.AddCommand(newLogoutCmd())
+	cmd.AddCommand(newOrgsCmd())
 	cmd.AddCommand(newPdfCmd())
+	cmd.AddCommand(newProjectsCmd())
+	cmd.AddCommand(newProxiesCmd())
 	cmd.AddCommand(newRenderCmd())
 	cmd.AddCommand(newSchemaCmd())
 	cmd.AddCommand(newScreenshotCmd())
 	cmd.AddCommand(newSkillCmd())
 	cmd.AddCommand(newStatusCmd())
+	cmd.AddCommand(newStorageCmd())
+	cmd.AddCommand(newUsageCmd())
 	cmd.AddCommand(newVersionCmd())
 	cmd.AddCommand(newVideoCmd())
+	cmd.AddCommand(newWhoamiCmd())
 
 	return cmd
 }

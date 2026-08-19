@@ -42,7 +42,7 @@ func TestNewEnvelope_OmitsEmptyOptionals(t *testing.T) {
 }
 
 func TestNewErrorEnvelope_AllFields(t *testing.T) {
-	cliErr := output.NewCLIError(output.ErrAuth, "unauthorized", "run urlbox auth")
+	cliErr := output.NewCLIError(output.ErrAuth, "unauthorized", "run urlbox login")
 	env := output.NewErrorEnvelope("render", cliErr)
 	if env.OK {
 		t.Error("expected OK to be false")
@@ -56,8 +56,8 @@ func TestNewErrorEnvelope_AllFields(t *testing.T) {
 	if env.Code != "auth" {
 		t.Errorf("Code = %q, want %q", env.Code, "auth")
 	}
-	if env.Hint != "run urlbox auth" {
-		t.Errorf("Hint = %q, want %q", env.Hint, "run urlbox auth")
+	if env.Hint != "run urlbox login" {
+		t.Errorf("Hint = %q, want %q", env.Hint, "run urlbox login")
 	}
 }
 

@@ -4,6 +4,73 @@ All notable changes to the `urlbox` CLI are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
+## v1.1.0 — 2026-08-19
+
+**Back on v1, and this time it holds.** The 0.x early-access reset
+(v0.10.0) did its job: the surface settled. `SURFACE.txt` is now a
+stability promise rather than a change log — nothing in it is removed or
+renamed inside the v1 line without a major bump.
+
+v1.0.0–v1.0.4 stay published but are superseded; their npm deprecation
+notices pointing at 0.10.x are cleared with this release, and anyone
+still on that line upgrades straight to v1.1.0. Users on 0.10.0 upgrade
+normally. Note for the v1 line: the npm installer now *requires* the
+sigstore bundle rather than falling back to sha256-only — set
+`URLBOX_ALLOW_UNSIGNED=1` only if a proxy makes the bundle unreachable.
+
+**Browser login and account management.** `urlbox login` signs in via
+the browser and stores the session and the active project's render
+credentials. Adds org and project switching, project CRUD, usage, and
+management of the organisation's storage, proxy, and LLM credentials.
+
+### Changed
+
+- **`urlbox login` is the new interactive path; `urlbox auth` stays.**
+  The device flow needs a browser, so `auth` remains the way to write a
+  secret on a headless box, in CI, or from an agent — unchanged, with
+  `--api-secret`, `--api-secret-stdin`, and `--api-secret-file` all
+  behaving exactly as before. Nothing is removed from the surface: this
+  release is additive.
+- **`urlbox doctor` now checks the session world** — nine checks
+  including session validity, active org/project, and render-credential
+  validity (the old `auth` check folded into `render_credential`).
+  On a machine that authenticates with a render credential only
+  (`URLBOX_API_SECRET`, a stored profile, or the repo overlay) the three
+  session checks report `warn`, not `fail`, and `doctor` still exits 0 —
+  a CI box that never logged in is a supported setup, not a broken one.
+
+### Added
+
+- `login`, `logout`, `whoami` (alias `me`), `usage`, `orgs list|select`.
+- `projects list|select|show|create|rename|enable|disable|delete` and
+  `projects defaults show|set|remove` — with retype-to-confirm deletes,
+  a y/n gate on disable, and `--yes` to skip every prompt for agents.
+  Deleting the active project re-selects the survivor or offers a picker.
+- `storage`, `proxies`, `llm` groups (list/show/create/update/delete,
+  plus `llm test` and `llm models`) and
+  `projects storage|proxy|llm assign|unassign`. Secrets are masked by
+  default in **both** text and JSON — storage keys/secrets, SAS tokens,
+  LLM API keys and cloud credentials, the password inside a proxy URL,
+  and a project's webhook key. `--reveal` unhides, on `list` as well as
+  `show`; non-secret fields always pass through untouched. Every
+  `create` takes the name positionally (`--name` works too).
+- `orgs select --project <name-or-id>` switches organisation and lands
+  the new active project in one step. Switching organisations clears the
+  stored render credential (it belongs to a project in the organisation
+  you are leaving); when the new organisation has several projects and
+  nothing to pick with, the envelope now says so — summary names the
+  count and a breadcrumb points at `urlbox projects select`.
+- Lists render as tables and detail views as aligned blocks in text
+  mode; JSON output is unchanged.
+- `--no-retry` / `--max-retries` on the session commands, matching
+  `render` and `status`.
+
+### Fixed
+
+- `link` in text mode now prints the signed URL it generates.
+- `doctor` in text mode now prints the per-check table with hints, and
+  no longer shows a `✓` when checks failed.
+
 ## v0.10.0 — 2026-05-19
 
 **Early-access version reset.** The v1.0.0–v1.0.4 line (published
@@ -19,8 +86,8 @@ number changes. Migrate with:
 - Homebrew: `brew update && brew upgrade urlbox` (will pick 0.10.0)
 - Scoop: `scoop update urlbox`
 
-The v1.x line is deprecated on npm. The v1.x GitHub Releases stay
-in place as a historical record.
+The v1.x line was deprecated on npm at the time of this reset. That
+deprecation is lifted with v1.1.0 — see that entry.
 
 ## v1.0.4 — 2026-05-15
 

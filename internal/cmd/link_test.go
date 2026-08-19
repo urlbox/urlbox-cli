@@ -391,9 +391,6 @@ func TestLink_MissingAPIKey_AuthError(t *testing.T) {
 	if env["error"] != "Missing publishable API key" {
 		t.Errorf("error=%q", env["error"])
 	}
-	// Round 5 First-1: hint no longer references `urlbox auth` (dead end —
-	// auth doesn't take --api-key). New hint points at config set / config
-	// profile create. Verified by TestLink_MissingAPIKey_HintDoesNotMisleadUserToAuth.
 	if !strings.Contains(env["hint"].(string), "config set api_key") && !strings.Contains(env["hint"].(string), "config profile create") {
 		t.Errorf("hint should point at config set / config profile create; got: %s", env["hint"])
 	}
@@ -432,8 +429,8 @@ func TestLink_MissingAPISecret_AuthError_PinnedEnvelope(t *testing.T) {
 		t.Errorf("error mismatch: %q", env["error"])
 	}
 	hint := env["hint"].(string)
-	if !strings.Contains(hint, "urlbox auth") {
-		t.Errorf("hint should mention urlbox auth; got: %s", hint)
+	if !strings.Contains(hint, "urlbox login") {
+		t.Errorf("hint should mention urlbox login; got: %s", hint)
 	}
 	if !strings.Contains(hint, "secret") {
 		t.Errorf("hint should mention secret; got: %s", hint)
@@ -546,12 +543,10 @@ func TestLink_PositionalAndURLFlag_FlagWins(t *testing.T) {
 	}
 }
 
-// TestLink_MissingAPIKey_HintDoesNotMisleadUserToAuth pins Round 5
-// First-1: the "Missing publishable API key" hint used to say "run
-// urlbox auth" but auth doesn't take an --api-key flag — running it
-// won't fix the error. Hint must point at a command that ACTUALLY
-// sets the api_key.
-func TestLink_MissingAPIKey_HintDoesNotMisleadUserToAuth(t *testing.T) {
+// TestLink_MissingAPIKey_HintPointsAtRealCommand pins that the "Missing
+// publishable API key" hint points at a command that ACTUALLY sets the
+// api_key, rather than a dead end.
+func TestLink_MissingAPIKey_HintPointsAtRealCommand(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)
 	seedConfig(t, dir, map[string]config.Profile{
@@ -566,12 +561,6 @@ func TestLink_MissingAPIKey_HintDoesNotMisleadUserToAuth(t *testing.T) {
 	var env map[string]any
 	_ = json.Unmarshal(stdout.Bytes(), &env)
 	hint, _ := env["hint"].(string)
-	// The misleading "run urlbox auth" reference must be gone — auth
-	// has no --api-key flag, so the hint led users into a dead end.
-	if strings.Contains(hint, "urlbox auth") {
-		t.Errorf("hint must NOT reference `urlbox auth` (it has no --api-key); got %q", hint)
-	}
-	// The hint must point at a command that actually does set api_key.
 	if !strings.Contains(hint, "config set") && !strings.Contains(hint, "config profile create") {
 		t.Errorf("hint should point at `config set api_key` or `config profile create --api-key`; got %q", hint)
 	}

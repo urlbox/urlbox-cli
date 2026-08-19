@@ -83,7 +83,7 @@ func LoadOrCLIError() (*Config, *output.CLIError) {
 		return nil, output.NewCLIError(
 			output.ErrUsage,
 			"config file is malformed JSON: "+err.Error(),
-			"Edit "+Path()+" to fix the JSON, or remove the file and run `urlbox auth --api-secret <secret>` to recreate.",
+			"Edit "+Path()+" to fix the JSON, or remove the file and run `urlbox login` (or `urlbox auth --api-secret <secret>` on a headless box) to recreate.",
 		)
 	}
 	// Everything else (filesystem I/O, encoding, etc.) — still local, so

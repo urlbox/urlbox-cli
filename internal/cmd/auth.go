@@ -3,7 +3,6 @@ package cmd
 import (
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"strings"
 
@@ -13,26 +12,6 @@ import (
 	"github.com/urlbox/urlbox-cli/internal/config"
 	"github.com/urlbox/urlbox-cli/internal/output"
 )
-
-// stdinTTYOverride forces the TTY result used by auth's interactive gate (test helper).
-// Nil = real detection.
-var stdinTTYOverride *bool
-
-// SetStdinTTYForTest forces stdin TTY detection for tests.
-func SetStdinTTYForTest(v bool) { stdinTTYOverride = &v }
-
-// ResetStdinTTYForTest clears the stdin override.
-func ResetStdinTTYForTest() { stdinTTYOverride = nil }
-
-func isStdinTTY(r io.Reader) bool {
-	if stdinTTYOverride != nil {
-		return *stdinTTYOverride
-	}
-	if f, ok := r.(*os.File); ok {
-		return term.IsTerminal(int(f.Fd())) //nolint:gosec // file descriptors fit in int on every platform Go supports
-	}
-	return false
-}
 
 // AuthSecretReader reads one secret from the user with masked echo.
 // Returns the typed value (no trailing newline) and any read error.
@@ -307,12 +286,4 @@ func confirmAuthOverwrite(cmd *cobra.Command, existing, replacement string) bool
 	_, _ = fmt.Fprintln(cmd.ErrOrStderr())
 	answer = strings.ToLower(strings.TrimSpace(answer))
 	return answer == "y" || answer == "yes"
-}
-
-// maskSecret returns a redacted form of the API secret for safe display.
-func maskSecret(s string) string {
-	if len(s) < 8 {
-		return "***"
-	}
-	return s[:4] + "…" + s[len(s)-2:]
 }

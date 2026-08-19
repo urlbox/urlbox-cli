@@ -22,6 +22,21 @@ type Envelope struct {
 	// envelope for json/quiet modes; text mode still prints them inline
 	// to stderr where humans expect them.
 	Warnings []string `json:"warnings,omitempty"`
+	// view is the optional text-mode presentation. It never serialises, so
+	// json/quiet output stays byte-identical whether or not a command sets
+	// it. Only text mode reads it, after the summary line.
+	view *textView `json:"-"`
+}
+
+// SetTable attaches a text-mode table view (list commands). activeIndex marks
+// the active row with a ● marker, or -1 for none.
+func (e *Envelope) SetTable(headers []string, rows [][]string, activeIndex int) {
+	e.view = &textView{headers: headers, rows: rows, activeIndex: activeIndex}
+}
+
+// SetKV attaches a text-mode key/value view (detail commands).
+func (e *Envelope) SetKV(pairs [][2]string) {
+	e.view = &textView{kv: pairs}
 }
 
 // ErrorEnvelope is the error response shape.

@@ -26,6 +26,6 @@ func requireSecret(resolved *config.Resolved) *output.CLIError {
 	return output.NewCLIError(
 		output.ErrAuth,
 		"no API secret configured",
-		"Run `urlbox auth --api-secret <secret>` to store one, or set URLBOX_API_SECRET in the environment. Get your secret from https://urlbox.com/dashboard/projects.",
+		credentialHint,
 	)
 }
