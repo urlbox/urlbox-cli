@@ -6,6 +6,18 @@ and the project follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ## v1.1.0 — 2026-08-19
 
+**Back on v1, and this time it holds.** The 0.x early-access reset
+(v0.10.0) did its job: the surface settled. `SURFACE.txt` is now a
+stability promise rather than a change log — nothing in it is removed or
+renamed inside the v1 line without a major bump.
+
+v1.0.0–v1.0.4 stay published but are superseded; their npm deprecation
+notices pointing at 0.10.x are cleared with this release, and anyone
+still on that line upgrades straight to v1.1.0. Users on 0.10.0 upgrade
+normally. Note for the v1 line: the npm installer now *requires* the
+sigstore bundle rather than falling back to sha256-only — set
+`URLBOX_ALLOW_UNSIGNED=1` only if a proxy makes the bundle unreachable.
+
 **Browser login and account management.** `urlbox login` signs in via
 the browser and stores the session and the active project's render
 credentials. Adds org and project switching, project CRUD, usage, and
@@ -74,8 +86,8 @@ number changes. Migrate with:
 - Homebrew: `brew update && brew upgrade urlbox` (will pick 0.10.0)
 - Scoop: `scoop update urlbox`
 
-The v1.x line is deprecated on npm. The v1.x GitHub Releases stay
-in place as a historical record.
+The v1.x line was deprecated on npm at the time of this reset. That
+deprecation is lifted with v1.1.0 — see that entry.
 
 ## v1.0.4 — 2026-05-15
 

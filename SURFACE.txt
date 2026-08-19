@@ -1,8 +1,9 @@
 # Urlbox CLI surface contract.
 # Every line below is the current public surface: removals and renames
 # fail `make surface-check` in CI so they're caught and reviewed, not
-# so they're forbidden. Pre-1.0 — surface may still change between
-# minor versions. New entries are always fine.
+# so they're forbidden. From v1.0 this file is the stability promise:
+# nothing listed below is removed or renamed within the v1 line without
+# a major bump. New entries are always fine.
 #
 # Excluded by design:
 #   - cobra builtins: `help` subcommand, `--help`/`-h`, `--version`
