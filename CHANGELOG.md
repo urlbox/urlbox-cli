@@ -4,6 +4,50 @@ All notable changes to the `urlbox` CLI are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
+## v0.11.0 — 2026-08-19
+
+**Browser login and account management.** `urlbox login` signs in via
+the browser and stores the session and the active project's render
+credentials. Adds org and project switching, project CRUD, usage, and
+management of the organisation's storage, proxy, and LLM credentials.
+
+### Breaking
+
+- **`urlbox auth` is removed.** Interactive setup is `urlbox login`.
+  CI and headless environments are unchanged: set `URLBOX_API_SECRET`
+  and every render command works exactly as before. Scripts that
+  called `urlbox auth --api-secret*` should write the profile with
+  `urlbox config set api_secret` (same flags, same masking) or move
+  to the env var.
+- **`urlbox doctor` now checks the session world** — nine checks
+  including session validity, active org/project, and render-credential
+  validity (the old `auth` check folded into `render_credential`).
+  A machine that authenticates only via `URLBOX_API_SECRET` fails the
+  three session checks and exits 3.
+
+### Added
+
+- `login`, `logout`, `whoami` (alias `me`), `usage`, `orgs list|select`.
+- `projects list|select|show|create|rename|enable|disable|delete` and
+  `projects defaults show|set|remove` — with retype-to-confirm deletes,
+  a y/n gate on disable, and `--yes` to skip every prompt for agents.
+  Deleting the active project re-selects the survivor or offers a picker.
+- `storage`, `proxies`, `llm` groups (list/show/create/update/delete,
+  plus `llm test` and `llm models`) and
+  `projects storage|proxy|llm assign|unassign`. Secrets are masked in
+  every human view; `--reveal` unhides. Every `create` takes the name
+  positionally (`--name` works too).
+- Lists render as tables and detail views as aligned blocks in text
+  mode; JSON output is unchanged.
+- `--no-retry` / `--max-retries` on the session commands, matching
+  `render` and `status`.
+
+### Fixed
+
+- `link` in text mode now prints the signed URL it generates.
+- `doctor` in text mode now prints the per-check table with hints, and
+  no longer shows a `✓` when checks failed.
+
 ## v0.10.0 — 2026-05-19
 
 **Early-access version reset.** The v1.0.0–v1.0.4 line (published

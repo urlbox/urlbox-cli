@@ -67,6 +67,19 @@ func TestRootCommand_UnknownSubcommand(t *testing.T) {
 	}
 }
 
+func TestNoAuthCommandRemains(t *testing.T) {
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	code := cmd.Execute([]string{"auth"}, stdout, stderr)
+	if code == 0 {
+		t.Fatal("`urlbox auth` must be an unknown command after removal")
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "unknown") || !strings.Contains(out, "auth") {
+		t.Errorf("expected unknown-command error for `auth`, got %q", out)
+	}
+}
+
 func TestRootCommand_NoArgs_ShowsHelp(t *testing.T) {
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}

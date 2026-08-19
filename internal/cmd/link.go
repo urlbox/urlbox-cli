@@ -170,9 +170,6 @@ func runLink(cmd *cobra.Command, args []string, f *linkFlags) error {
 	}
 
 	if resolved.APIKey == "" {
-		// Round 5 First-1: the previous hint referenced `urlbox auth`
-		// which doesn't take --api-key — sent users down a dead end.
-		// Both surviving suggestions actually set api_key.
 		return output.NewCLIError(
 			output.ErrAuth,
 			"Missing publishable API key",
@@ -183,7 +180,7 @@ func runLink(cmd *cobra.Command, args []string, f *linkFlags) error {
 		return output.NewCLIError(
 			output.ErrAuth,
 			"Missing API secret",
-			"Pass --api-secret, set URLBOX_API_SECRET, or run `urlbox auth`. "+
+			"Pass --api-secret, set URLBOX_API_SECRET, or run `urlbox login`. "+
 				"`urlbox link` cannot sign without the secret.",
 		)
 	}
@@ -223,6 +220,11 @@ func runLink(cmd *cobra.Command, args []string, f *linkFlags) error {
 		},
 	}
 	env := output.NewEnvelope("link", data, summary, breadcrumbs)
+	env.SetKV([][2]string{
+		{"URL", signed},
+		{"Format", formatUsed},
+		{"Key", resolved.APIKey},
+	})
 	return writeEnvelope(cmd, env)
 }
 

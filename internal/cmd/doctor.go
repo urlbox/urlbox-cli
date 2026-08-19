@@ -20,7 +20,8 @@ import (
 	"github.com/urlbox/urlbox-cli/internal/version"
 )
 
-// httpTimeout caps each individual HTTP check (api_reachable, auth).
+// httpTimeout caps each individual HTTP check (api_reachable and the
+// render_credential live probe).
 // Set to 10s rather than the original 5s to absorb cold-container
 // startup costs — Round 5 CI-1 reproed a false-fail on the first
 // invocation in a fresh container because DNS+TCP+TLS to api.urlbox.com
@@ -42,13 +43,15 @@ func newDoctorCmd() *cobra.Command {
 		Use:   "doctor",
 		Short: "Check installation, configuration, network, and credentials",
 		Long: `Runs a series of self-checks: version, install method, config file,
-API key, DNS resolution, API reachability, and credential validity.
+session, active organisation and project, render credential, DNS
+resolution, and API reachability.
 Exits non-zero if any check fails.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			// Sized to fit DNS + api_reachable + auth (each httpTimeout
-			// = 10s) plus a little headroom. Round 5 CI-1 bumped the
-			// per-check timeout to absorb cold-start latency.
+			// Sized to fit session + DNS + api_reachable + the
+			// render_credential probe (each httpTimeout = 10s) plus a
+			// little headroom. Round 5 CI-1 bumped the per-check timeout
+			// to absorb cold-start latency.
 			ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 			defer cancel()
 
@@ -85,7 +88,12 @@ Exits non-zero if any check fails.`,
 				)
 			}
 
-			checks := runDoctorChecks(ctx, resolved)
+			profile := config.Profile{}
+			if cfg != nil {
+				profile = cfg.Profiles[resolved.Profile]
+			}
+
+			checks := runDoctorChecks(ctx, resolved, &profile)
 			anyFail := false
 			for _, c := range checks {
 				if c.Status == "fail" {
@@ -108,7 +116,7 @@ Exits non-zero if any check fails.`,
 				map[string]any{"checks": checks, "status": overall},
 				summary,
 				[]output.Breadcrumb{
-					{Action: "auth", Cmd: "urlbox auth --api-secret <secret>"},
+					{Action: "login", Cmd: "urlbox login"},
 				},
 			)
 			// Reflect failure state on the envelope's `ok` field so JSON
@@ -116,6 +124,7 @@ Exits non-zero if any check fails.`,
 			if anyFail {
 				env.OK = false
 			}
+			env.SetTable([]string{"", "CHECK", "MESSAGE", "HINT"}, doctorCheckRows(checks), -1)
 
 			formatFlag, _ := cmd.Root().PersistentFlags().GetString("output-format")
 			jqExpr, _ := cmd.Root().PersistentFlags().GetString("jq")
@@ -146,7 +155,7 @@ Exits non-zero if any check fails.`,
 				// The contract:
 				//   3  (auth)    — credential / api_secret problem
 				//   11 (network) — DNS / unreachable
-				//   10 (server)  — last resort / non-2xx auth response
+				//   10 (server)  — last resort / defensive default
 				return &output.CLIError{
 					Code:    doctorExitCode(checks),
 					Message: summary,
@@ -155,6 +164,25 @@ Exits non-zero if any check fails.`,
 			}
 			return nil
 		},
+	}
+}
+
+func doctorCheckRows(checks []Check) [][]string {
+	rows := make([][]string, len(checks))
+	for i, c := range checks {
+		rows[i] = []string{checkStatusGlyph(c.Status), c.Name, c.Message, c.Hint}
+	}
+	return rows
+}
+
+func checkStatusGlyph(status string) string {
+	switch status {
+	case "ok":
+		return "✓"
+	case "warn":
+		return "!"
+	default:
+		return "✗"
 	}
 }
 
@@ -169,7 +197,7 @@ func doctorExitCode(checks []Check) output.ErrorCode {
 			continue
 		}
 		switch c.Name {
-		case "api_secret", "auth":
+		case "session", "render_credential":
 			hasAuth = true
 		case "dns", "api_reachable":
 			hasNetwork = true
@@ -188,7 +216,7 @@ func doctorExitCode(checks []Check) output.ErrorCode {
 	return output.ErrServer // unreachable when anyFail, defensive default
 }
 
-func runDoctorChecks(ctx context.Context, resolved *config.Resolved) []Check {
+func runDoctorChecks(ctx context.Context, resolved *config.Resolved, profile *config.Profile) []Check {
 	host := api.ResolveAPIHost()
 	if resolved != nil && resolved.APIHost != "" {
 		host = resolved.APIHost
@@ -197,10 +225,12 @@ func runDoctorChecks(ctx context.Context, resolved *config.Resolved) []Check {
 		checkVersion(),
 		checkInstallMethod(),
 		checkConfigFile(),
-		checkAPISecret(resolved),
+		checkSession(ctx, host, profile),
+		checkActiveOrg(profile),
+		checkActiveProject(profile),
+		checkRenderCredential(ctx, host, resolved),
 		checkDNS(ctx, host),
 		checkAPIReachable(ctx, host),
-		checkAuth(ctx, host, resolved),
 	}
 }
 
@@ -234,25 +264,121 @@ func checkConfigFile() Check {
 		Name:    "config_file",
 		Status:  "warn",
 		Message: "missing",
-		Hint:    "Run `urlbox auth --api-secret <secret>` to create",
+		Hint:    loginHint,
 	}
 }
 
-func checkAPISecret(resolved *config.Resolved) Check {
-	if resolved == nil || resolved.APISecret == "" {
+func checkSession(ctx context.Context, host string, profile *config.Profile) Check {
+	if profile.SessionToken == "" {
 		return Check{
-			Name:    "api_secret",
+			Name:    "session",
 			Status:  "fail",
-			Message: "no API secret found",
-			Hint:    "Set URLBOX_API_SECRET or run `urlbox auth --api-secret-stdin` (`--api-secret <secret>` is the legacy form and leaks via ps/shell history).",
+			Message: notLoggedInMsg,
+			Hint:    loginHint,
 		}
 	}
-	// resolved.Source.APISecret is one of: flag / env / repo / profile.
+	client := api.NewSessionClient(host, profile.SessionToken)
+	var session sessionResponse
+	if err := client.GetJSON(ctx, "/v1/auth/get-session", &session); err != nil {
+		return Check{
+			Name:    "session",
+			Status:  "fail",
+			Message: "session token rejected",
+			Hint:    loginHint,
+		}
+	}
+	if session.User.Email == "" {
+		return Check{
+			Name:    "session",
+			Status:  "fail",
+			Message: "session expired",
+			Hint:    loginHint,
+		}
+	}
+	return Check{Name: "session", Status: "ok", Message: "signed in as " + session.User.Email}
+}
+
+func checkActiveOrg(profile *config.Profile) Check {
+	if profile.ActiveOrg == "" {
+		return Check{
+			Name:    "active_org",
+			Status:  "fail",
+			Message: "no active organisation",
+			Hint:    "Select one with `urlbox orgs select`.",
+		}
+	}
+	return Check{Name: "active_org", Status: "ok", Message: profile.ActiveOrg}
+}
+
+func checkActiveProject(profile *config.Profile) Check {
+	if profile.ActiveProject == "" {
+		return Check{
+			Name:    "active_project",
+			Status:  "fail",
+			Message: "no active project",
+			Hint:    "Select one with `urlbox projects select`.",
+		}
+	}
+	return Check{Name: "active_project", Status: "ok", Message: profile.ActiveProject}
+}
+
+func checkRenderCredential(ctx context.Context, host string, resolved *config.Resolved) Check {
+	if resolved == nil || resolved.APISecret == "" {
+		return Check{
+			Name:    "render_credential",
+			Status:  "fail",
+			Message: "no render credential",
+			Hint:    loginHint + " CI and headless environments can set URLBOX_API_SECRET instead.",
+		}
+	}
 	src := resolved.Source.APISecret
 	if src == "profile" {
-		src = "file" // friendlier label (matches legacy behavior)
+		src = "file"
 	}
-	return Check{Name: "api_secret", Status: "ok", Message: "configured (" + src + ")"}
+
+	endpoint := host + "/v1/user/me"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, http.NoBody)
+	if err != nil {
+		return Check{Name: "render_credential", Status: "fail", Message: err.Error()}
+	}
+	req.Header.Set("Authorization", "Bearer "+resolved.APISecret)
+	req.Header.Set("User-Agent", api.BuildUserAgent(version.Version))
+
+	client := &http.Client{Timeout: httpTimeout}
+	resp, err := client.Do(req)
+	if err != nil {
+		return Check{Name: "render_credential", Status: "fail", Message: err.Error()}
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	switch {
+	case resp.StatusCode >= 200 && resp.StatusCode < 300:
+		return Check{Name: "render_credential", Status: "ok", Message: "valid (" + src + ")"}
+	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
+		return Check{
+			Name:    "render_credential",
+			Status:  "fail",
+			Message: "credential invalid",
+			Hint:    loginHint,
+		}
+	case resp.StatusCode >= 500:
+		return Check{
+			Name:    "render_credential",
+			Status:  "warn",
+			Message: fmt.Sprintf("API returned %d", resp.StatusCode),
+		}
+	default:
+		msg := fmt.Sprintf("API returned %d", resp.StatusCode)
+		if apiMsg := readAPIErrorMessage(resp); apiMsg != "" {
+			msg = fmt.Sprintf("API returned %d: %s", resp.StatusCode, apiMsg)
+		}
+		return Check{
+			Name:    "render_credential",
+			Status:  "fail",
+			Message: msg,
+			Hint:    loginHint + " Or check `urlbox config get api_secret --reveal` against the dashboard.",
+		}
+	}
 }
 
 func checkDNS(ctx context.Context, host string) Check {
@@ -287,72 +413,6 @@ func checkAPIReachable(ctx context.Context, host string) Check {
 		Name:    "api_reachable",
 		Status:  "ok",
 		Message: fmt.Sprintf("HTTP %d from %s", resp.StatusCode, host),
-	}
-}
-
-func checkAuth(ctx context.Context, host string, resolved *config.Resolved) Check {
-	key := ""
-	if resolved != nil {
-		key = resolved.APISecret
-	}
-	if key == "" {
-		return Check{Name: "auth", Status: "warn", Message: "skipped (no API secret)"}
-	}
-	endpoint := host + "/v1/user/me"
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, http.NoBody)
-	if err != nil {
-		return Check{Name: "auth", Status: "fail", Message: err.Error()}
-	}
-	req.Header.Set("Authorization", "Bearer "+key)
-	req.Header.Set("User-Agent", api.BuildUserAgent(version.Version))
-
-	client := &http.Client{Timeout: httpTimeout}
-	resp, err := client.Do(req)
-	if err != nil {
-		return Check{Name: "auth", Status: "fail", Message: err.Error()}
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	// Auth status is determined by the HTTP class:
-	//   - 2xx → credentials accepted
-	//   - 401/403 → explicit credential rejection
-	//   - other 4xx (e.g. 400 "Api Key does not exist", 404, 429) → fail too
-	//   - 5xx → warn; we can't tell whether creds are valid when the API is sick
-	//
-	// Round 4 H2: before this, only 401/403/5xx fell out of "ok". A real
-	// production 400 with body `{"error":{"code":"ApiKeyNotFound",...}}`
-	// silently reported "credentials valid", which let CI green-light a
-	// broken secret.
-	switch {
-	case resp.StatusCode >= 200 && resp.StatusCode < 300:
-		return Check{Name: "auth", Status: "ok", Message: "credentials valid"}
-	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
-		return Check{
-			Name:    "auth",
-			Status:  "fail",
-			Message: "credentials rejected",
-			Hint:    "Re-run `urlbox auth --api-secret <secret>` with a valid secret",
-		}
-	case resp.StatusCode >= 500:
-		return Check{
-			Name:    "auth",
-			Status:  "warn",
-			Message: fmt.Sprintf("API returned %d", resp.StatusCode),
-		}
-	default:
-		// Non-2xx, non-401/403, non-5xx — typically a 400 ApiKeyNotFound
-		// or 404. Treat as a credential failure; surface the API's
-		// error message if it parses as the standard envelope.
-		msg := fmt.Sprintf("API returned %d", resp.StatusCode)
-		if apiMsg := readAPIErrorMessage(resp); apiMsg != "" {
-			msg = fmt.Sprintf("API returned %d: %s", resp.StatusCode, apiMsg)
-		}
-		return Check{
-			Name:    "auth",
-			Status:  "fail",
-			Message: msg,
-			Hint:    "Re-run `urlbox auth --api-secret <secret>` with a valid secret, or check `urlbox config get api_secret --reveal` against the dashboard.",
-		}
 	}
 }
 

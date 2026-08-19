@@ -40,6 +40,23 @@ type Source struct {
 	APIKey, APISecret, APIHost, Profile string
 }
 
+// ProfileName resolves the active profile name from the priority chain:
+// flag → repo overlay → env → default_profile → "default".
+func ProfileName(flagProfile, envProfile string, overlay *RepoOverlay, cfg *Config) string {
+	switch {
+	case flagProfile != "":
+		return flagProfile
+	case overlay != nil && overlay.Profile != "":
+		return overlay.Profile
+	case envProfile != "":
+		return envProfile
+	case cfg != nil && cfg.DefaultProfile != "":
+		return cfg.DefaultProfile
+	default:
+		return "default"
+	}
+}
+
 // Resolve flattens opts into a single Resolved.
 //
 // Resolve is the SINGLE chokepoint where credential and host values
@@ -116,17 +133,18 @@ func Resolve(opts ResolveOptions) (*Resolved, error) {
 	}
 	r := &Resolved{}
 
+	r.Profile = ProfileName(opts.FlagProfile, opts.EnvProfile, opts.RepoOverlay, opts.Config)
 	switch {
 	case opts.FlagProfile != "":
-		r.Profile, r.Source.Profile = opts.FlagProfile, "flag"
+		r.Source.Profile = "flag"
 	case opts.RepoOverlay != nil && opts.RepoOverlay.Profile != "":
-		r.Profile, r.Source.Profile = opts.RepoOverlay.Profile, "repo"
+		r.Source.Profile = "repo"
 	case opts.EnvProfile != "":
-		r.Profile, r.Source.Profile = opts.EnvProfile, "env"
+		r.Source.Profile = "env"
 	case opts.Config != nil && opts.Config.DefaultProfile != "":
-		r.Profile, r.Source.Profile = opts.Config.DefaultProfile, "default_profile"
+		r.Source.Profile = "default_profile"
 	default:
-		r.Profile, r.Source.Profile = "default", "default"
+		r.Source.Profile = "default"
 	}
 
 	var profile Profile

@@ -8,6 +8,12 @@ import (
 	"github.com/muesli/termenv"
 )
 
+const (
+	brandIndigo      = lipgloss.Color("#4f46e5")
+	brandIndigoLight = lipgloss.Color("#818cf8")
+	brandMuted       = lipgloss.Color("#64748b")
+)
+
 // Styles holds the terminal styles used across the CLI.
 type Styles struct {
 	Success lipgloss.Style
@@ -15,6 +21,9 @@ type Styles struct {
 	Warning lipgloss.Style
 	Muted   lipgloss.Style
 	Bold    lipgloss.Style
+	Header  lipgloss.Style
+	Active  lipgloss.Style
+	Border  lipgloss.Style
 }
 
 // NewStyles creates a new set of terminal styles.
@@ -34,6 +43,9 @@ func NewStyles() Styles {
 		Warning: renderer.NewStyle().Foreground(lipgloss.Color("3")),
 		Muted:   renderer.NewStyle().Foreground(lipgloss.Color("8")),
 		Bold:    renderer.NewStyle().Bold(true),
+		Header:  renderer.NewStyle().Bold(true).Foreground(brandIndigoLight),
+		Active:  renderer.NewStyle().Bold(true).Foreground(brandIndigo),
+		Border:  renderer.NewStyle().Foreground(brandMuted),
 	}
 }
 
@@ -53,5 +65,8 @@ func NewStylesForWriter(w io.Writer) *Styles {
 		Warning: renderer.NewStyle().Foreground(lipgloss.Color("3")),
 		Muted:   renderer.NewStyle().Foreground(lipgloss.Color("8")),
 		Bold:    renderer.NewStyle().Bold(true),
+		Header:  renderer.NewStyle().Bold(true).Foreground(brandIndigoLight),
+		Active:  renderer.NewStyle().Bold(true).Foreground(brandIndigo),
+		Border:  renderer.NewStyle().Foreground(brandMuted),
 	}
 }

@@ -10,10 +10,10 @@ npm install -g @urlbox/cli
 
 ## Usage
 
-Grab your API secret from [urlbox.com/dashboard/projects](https://urlbox.com/dashboard/projects) (open the project → "API Secret"). Secrets look like `ubx_sk_…`.
+Sign in through your browser with `urlbox login` (CI/headless: set `URLBOX_API_SECRET` instead — grab a secret from [urlbox.com/dashboard/projects](https://urlbox.com/dashboard/projects)).
 
 ```sh
-urlbox auth --api-secret ubx_sk_xxxxxxxxxxxx              # one-time
+urlbox login                                              # one-time, browser sign-in
 urlbox render https://example.com --output home.png       # capture & save
 urlbox screenshot https://example.com --output home.png   # alias: --format png
 urlbox pdf https://example.com --output home.pdf          # alias: --format pdf --full-page
@@ -34,6 +34,27 @@ urlbox link --url https://example.com --output-format quiet
 
 # Open the Urlbox dashboard in your browser
 urlbox dashboard
+
+# Sign in through the browser (CI/headless: set URLBOX_API_SECRET instead)
+urlbox login
+urlbox whoami                                             # signed-in account, org, project
+urlbox orgs list                                          # organisations you belong to
+urlbox projects list                                      # projects in the active org
+urlbox usage                                              # render usage for the active organisation
+
+# Org-owned credentials — create once, assign to projects (secrets masked; --reveal to show)
+urlbox storage list                                       # storage credentials (S3, GCS, R2, Azure, ...)
+urlbox storage create prod --provider aws_s3 --bucket b --region us-east-1 --key k --secret s
+urlbox proxies list                                       # proxy pools (alias: proxy)
+urlbox proxies create eu --url http://user:pass@host:8080
+urlbox llm list                                           # LLM credentials
+urlbox llm create openai --provider openai --api-key sk-…
+urlbox llm test openai                                    # check the stored credential's connection
+urlbox storage show prod --reveal                         # show one, secrets unmasked
+urlbox storage update prod --region eu-west-1             # update only the flags you pass
+urlbox storage delete prod --yes                          # retype-to-confirm; --yes skips the prompt
+urlbox projects storage assign my-project prod            # assign a credential to a project (kind: storage|proxy|llm)
+urlbox projects storage unassign my-project               # unassign the project's current one
 
 # Self-discovery
 urlbox commands --output-format json                      # full command catalog

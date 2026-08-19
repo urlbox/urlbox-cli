@@ -17,7 +17,7 @@ import (
 	"github.com/urlbox/urlbox-cli/internal/output"
 )
 
-var supportedConfigKeys = []string{"api_key", "api_secret", "api_host", "default_profile"}
+var supportedConfigKeys = []string{"api_key", "api_secret", "api_host", "default_profile", "session_token", "active_org", "active_project"}
 
 // profileNameRE pins the allowed shape of a profile name: must start with
 // an alphanumeric, then 0–63 more alphanumerics / underscore / hyphen,
@@ -49,7 +49,7 @@ func unknownKeyError(key string) *output.CLIError {
 	return output.NewCLIError(
 		output.ErrUsage,
 		"Unknown config key: "+key,
-		"Supported: api_key, api_secret, api_host, default_profile",
+		"Supported: api_key, api_secret, api_host, default_profile, session_token, active_org, active_project",
 	)
 }
 
@@ -257,7 +257,7 @@ func newProfileDeleteCmd() *cobra.Command {
 					return output.NewCLIError(
 						output.ErrConflict,
 						`Cannot delete the only profile "`+name+`"`,
-						"Create another profile first, or run 'urlbox auth' to start fresh.",
+						"Create another profile first, or run `urlbox login` to start fresh.",
 					)
 				}
 				if name == cfg.DefaultProfile {
@@ -311,10 +311,10 @@ func newConfigGetCmd() *cobra.Command {
 		Short: "Read a config value",
 		Long: `Read a config value from the resolved profile.
 
-For api_secret, the raw value is masked by default (Round 1 UX I1) to
-avoid leaking into scrollback / clipboard / log capture. Pass --reveal
-to print the unmasked secret (intended for clipboard-copy workflows
-with eyes on the screen).`,
+For api_secret and session_token, the raw value is masked by default
+(Round 1 UX I1) to avoid leaking into scrollback / clipboard / log
+capture. Pass --reveal to print the unmasked value (intended for
+clipboard-copy workflows with eyes on the screen).`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			key := args[0]
@@ -341,7 +341,7 @@ with eyes on the screen).`,
 			}
 			value := readKey(c, profileName, key)
 			display := value
-			if key == "api_secret" && !reveal && value != "" {
+			if (key == "api_secret" || key == "session_token") && !reveal && value != "" {
 				display = maskSecret(value)
 			}
 			env := output.NewEnvelope(
@@ -353,7 +353,7 @@ with eyes on the screen).`,
 			return writeEnvelopeWithQuietData(cmd, env, display)
 		},
 	}
-	c.Flags().BoolVar(&reveal, "reveal", false, "Print api_secret unmasked (default: masked)")
+	c.Flags().BoolVar(&reveal, "reveal", false, "Print api_secret / session_token unmasked (default: masked)")
 	return c
 }
 
@@ -367,11 +367,11 @@ func newConfigSetCmd() *cobra.Command {
 For per-profile keys (api_key, api_secret, api_host) the target profile is:
   - the only profile, if exactly one is configured (no --profile required);
   - the value of --profile, if given (must already exist);
-  - otherwise an error: with 0 profiles, run urlbox auth first;
+  - otherwise an error: with 0 profiles, run urlbox login first;
     with 2+, --profile is required.
 
 Setting api_secret on a profile that already has a different secret
-refuses unless --force is passed — the same guard ` + "`urlbox auth`" + ` uses.
+refuses unless --force is passed.
 
 The default_profile key is top-level and always writes regardless of
 profile count.`,
@@ -381,10 +381,10 @@ profile count.`,
 			if !isSupportedKey(key) {
 				return unknownKeyError(key)
 			}
-			// Validate api_secret value through the same gate every secret-
-			// writing path uses. Rejects empty / whitespace / control chars.
-			// Round 6 class-fix.
-			if key == "api_secret" {
+			// Validate api_secret / session_token values through the same gate
+			// every secret-writing path uses. Rejects empty / whitespace /
+			// control chars. Round 6 class-fix.
+			if key == "api_secret" || key == "session_token" {
 				validated, vErr := config.ValidateSecretValue(val)
 				if vErr != nil {
 					return vErr
@@ -409,7 +409,7 @@ profile count.`,
 						return output.NewCLIError(
 							output.ErrUsage,
 							"No profiles configured",
-							"Run `urlbox auth --api-secret <secret>` to create one.",
+							"Run `urlbox login` to create one.",
 						)
 					}
 					if _, ok := c.Profiles[val]; !ok {
@@ -447,16 +447,13 @@ profile count.`,
 					return perr
 				}
 				profileName = name
-				// Overwrite guard for api_secret — same shape as `urlbox auth`'s
-				// guard (Round 1 S-C3). Without this, `config set api_secret X`
-				// was the unguarded back door past the auth-side protection.
 				if key == "api_secret" && !force {
 					existing := c.Profiles[name].APISecret
 					if existing != "" && existing != val {
 						return output.NewCLIError(
 							output.ErrConflict,
 							fmt.Sprintf("profile %q already has an API secret (%s); overwrite refused", name, maskSecret(existing)),
-							"Pass --force to overwrite, or use `urlbox config profile create <name>` for a separate profile. This guard mirrors `urlbox auth`'s protection.",
+							"Pass --force to overwrite, or use `urlbox config profile create <name>` for a separate profile.",
 						)
 					}
 				}
@@ -475,7 +472,7 @@ profile count.`,
 			// The raw value is still persisted on disk; only the
 			// human/agent-facing echo is masked.
 			displayVal := val
-			if key == "api_secret" && val != "" {
+			if (key == "api_secret" || key == "session_token") && val != "" {
 				displayVal = maskSecret(val)
 			}
 			env := output.NewEnvelope(
@@ -487,7 +484,7 @@ profile count.`,
 			return writeEnvelope(cmd, env)
 		},
 	}
-	c.Flags().BoolVar(&force, "force", false, "Overwrite an existing api_secret without confirmation (mirrors `urlbox auth --force`).")
+	c.Flags().BoolVar(&force, "force", false, "Overwrite an existing api_secret without confirmation.")
 	return c
 }
 
@@ -510,7 +507,7 @@ func resolveTargetProfile(cmd *cobra.Command, c *config.Config) (string, error) 
 		return "", output.NewCLIError(
 			output.ErrUsage,
 			"No profiles configured",
-			"Run `urlbox auth --api-secret <secret>` to create one.",
+			"Run `urlbox login` to create one.",
 		)
 	}
 	flagProfile, _ := cmd.Root().PersistentFlags().GetString("profile")
@@ -589,6 +586,12 @@ func readKey(c *config.Config, profile, key string) string {
 		return p.APISecret
 	case "api_host":
 		return p.APIHost
+	case "session_token":
+		return p.SessionToken
+	case "active_org":
+		return p.ActiveOrg
+	case "active_project":
+		return p.ActiveProject
 	}
 	return ""
 }
@@ -606,6 +609,12 @@ func writeKey(c *config.Config, profile, key, val string) {
 		p.APISecret = val
 	case "api_host":
 		p.APIHost = val
+	case "session_token":
+		p.SessionToken = val
+	case "active_org":
+		p.ActiveOrg = val
+	case "active_project":
+		p.ActiveProject = val
 	}
 	c.Profiles[profile] = p
 }

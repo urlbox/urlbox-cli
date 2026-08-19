@@ -152,7 +152,6 @@ documents the well-known options, but the API accepts more.
 
 | Command                          | Purpose                                                |
 |----------------------------------|--------------------------------------------------------|
-| `urlbox auth`                    | Save API secret (`--api-secret <secret>`; or interactive) |
 | `urlbox commands`                | List every command + flag                              |
 | `urlbox config get <key>`        | Read a config value                                    |
 | `urlbox config set <key> <val>`  | Write a config value                                   |
@@ -164,6 +163,16 @@ documents the well-known options, but the API accepts more.
 | `urlbox dashboard`               | Open the Urlbox dashboard in the user's browser        |
 | `urlbox doctor`                  | Diagnose install, config, network, credentials         |
 | `urlbox link`                    | Generate an HMAC-signed render URL with no API call    |
+| `urlbox login`                   | Browser sign-in (agents: use `URLBOX_API_SECRET` instead) |
+| `urlbox logout`                  | Revoke and clear this device's saved session           |
+| `urlbox whoami` / `urlbox me`    | Show the signed-in account, org, and active project    |
+| `urlbox orgs list\|select`       | List organisations or switch the active one            |
+| `urlbox projects list\|select\|show\|create\|rename\|enable\|disable\|delete\|defaults` | Manage projects and their defaults |
+| `urlbox projects <kind> assign\|unassign` | Assign/unassign a project's `storage`, `proxy`, or `llm` credential |
+| `urlbox usage`                   | Show the render usage summary for the active organisation |
+| `urlbox storage list\|show\|create\|update\|delete` | Manage org storage credentials (S3/GCS/R2/Azure/...) |
+| `urlbox proxies list\|show\|create\|update\|delete` | Manage org proxy pools (alias: `proxy`)     |
+| `urlbox llm list\|show\|create\|update\|delete\|test\|models` | Manage org LLM credentials         |
 | `urlbox render <url>`            | Capture a screenshot, PDF, or video of a web page      |
 | `urlbox screenshot <url>`        | Alias for `render --format png` (also `urlbox shot`)   |
 | `urlbox pdf <url>`               | Alias for `render --format pdf --full-page`            |
@@ -283,7 +292,7 @@ the render likely captured a captcha page rather than the target content.
 |--------------|------|------------------------------------------------------------|
 | `usage`      | 1    | bad flags / missing url                                    |
 | `validation` | 2    | payload failed schema validation; see `hint` for the fix   |
-| `auth`       | 3    | missing/invalid API secret; run `urlbox auth --api-secret` |
+| `auth`       | 3    | missing/invalid credentials; run `urlbox login` (CI: set `URLBOX_API_SECRET`) |
 | `forbidden`  | 4    | account/plan doesn't allow this feature                    |
 | `not_found`  | 5    | endpoint or render ID unknown                              |
 | `rate_limit` | 6    | retry budget exhausted; back off and retry                 |
@@ -353,6 +362,53 @@ return `ok: true` with a breadcrumb suggesting `urlbox status <id> --wait`.
 With `--wait`, the deadline is governed by `--timeout`; if it elapses
 before a terminal state, the envelope is `usage` / exit 1 with a hint to
 raise `--timeout` or re-run later.
+
+## storage / proxies / llm: org-owned credentials
+
+Storage credentials, proxy pools, and LLM credentials are owned by the active
+organisation and assigned to projects — create one once, then assign it to any
+project's renders. All three groups share the same verb set (`list`, `show`,
+`create`, `update`, `delete`); `llm` adds `test` and `models`. They require a
+session and an active org (agents on `URLBOX_API_SECRET` alone are not signed
+in — these commands return `auth` / exit 3 until `urlbox login` runs).
+
+Secrets are masked on display. Text output masks by default; pass `--reveal`
+to unmask. JSON output (`--output-format json`) always contains the full
+values. A target is resolved by name or id (ids: `store_`, `pool_`, `llm_`).
+
+```sh
+# List / show (JSON gives full, machine-readable records)
+urlbox storage list --output-format json
+urlbox proxies show eu --reveal
+urlbox llm show openai --output-format json
+
+# Create — name as a positional or --name; typed flags or a full --json payload
+# (typed flags win); --assign-to attaches the new credential to a project in the
+# same call.
+urlbox storage create prod --provider aws_s3 --bucket b --region us-east-1 --key k --secret s
+urlbox proxies create eu --url http://user:pass@host:8080 --assign-to my-project
+urlbox llm create openai --provider openai --api-key sk-… --assign-to my-project
+
+# Update sends only the fields you pass (proxies: any --url replaces the list)
+urlbox storage update prod --region eu-west-1
+urlbox llm update openai --model gpt-5-mini
+
+# llm test / models exercise the stored credential against the provider
+urlbox llm test openai        # exit 0 + "Connection OK", or non-zero + provider error
+urlbox llm models openai      # table/JSON of the provider's model ids
+
+# Delete is retype-to-confirm. Agents (non-interactive) MUST pass --yes;
+# without it and without a TTY the command errors `usage` / exit 1.
+urlbox storage delete prod --yes
+```
+
+Assign / unassign a project's credential of a given `<kind>` (`storage`,
+`proxy`, `llm`) — a project holds at most one of each kind:
+
+```sh
+urlbox projects storage assign my-project prod
+urlbox projects llm unassign my-project
+```
 
 ## dashboard: open the Urlbox dashboard
 
@@ -440,7 +496,7 @@ on a profile directly: `urlbox --profile <name> config set api_host https://...`
 
 `config set` and `config get` adapt to the profile count:
 
-- **0 profiles:** `config set` errors with "No profiles configured" — run `urlbox auth --api-secret <secret>` to bootstrap.
+- **0 profiles:** `config set` errors with "No profiles configured" — run `urlbox login` to bootstrap.
 - **1 profile:** `--profile` is implicit; `urlbox config set api_secret sk_xxx` Just Works.
 - **2+ profiles:** `--profile` is required; the error lists configured names.
 
@@ -451,38 +507,38 @@ default_profile <name>` requires `<name>` to exist as a profile.
 
 ### For agents and CI (non-interactive)
 
-All options below are agent-safe — none prompts. Listed in order of
-secret-hygiene; prefer the higher items.
+The device flow needs a browser, so agents and CI authenticate with the render
+secret directly. All options below are agent-safe — none prompts. Listed in
+order of secret-hygiene; prefer the higher items.
 
 ```sh
-# A — pipe on stdin (no argv leak, no shell-history exposure)
-printf %s "$URLBOX_API_SECRET" | urlbox auth --api-secret-stdin
-
-# B — read from a file (handy when the secret already lives on disk)
-urlbox auth --api-secret-file /run/secrets/urlbox
-
-# C — env var (never touches the config file)
+# A — env var (never touches the config file)
 URLBOX_API_SECRET=<secret> urlbox render <url>
 
+# B — pipe on stdin (no argv leak, no shell-history exposure)
+printf %s "$URLBOX_API_SECRET" | urlbox config profile create default --api-secret-stdin
+
+# C — read from a file (handy when the secret already lives on disk)
+urlbox config profile create default --api-secret-file /run/secrets/urlbox
+
 # D — argv flag (leaks into `ps` and shell history; emits a TTY warning)
-urlbox auth --api-secret <secret>
+urlbox config profile create default --api-secret <secret>
 
 urlbox doctor --output-format json # JSON envelope: ok/not-ok
 ```
 
 `--api-secret-stdin` and `--api-secret-file` are accepted by every
-command that takes `--api-secret` (auth, render, status, link,
+command that takes `--api-secret` (render, status, link,
 config profile create, and the render aliases screenshot/pdf/video).
 Mutually exclusive — pass at most one.
 
 ### For humans on a TTY
 
 ```sh
-urlbox auth                        # prompts once for the secret with masked echo
+urlbox login                       # browser sign-in; stores session + render credential
 ```
 
-Saves to `~/.config/urlbox/config.json` (mode 0600), under the default profile
-(creates one if none exists). Verify with `urlbox doctor`.
+Verify with `urlbox doctor`.
 
 ## Coming next
 

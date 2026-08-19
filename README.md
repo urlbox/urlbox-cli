@@ -56,8 +56,8 @@ The secret authenticates render API calls. The **API key** (publishable,
 ## Quick Start
 
 ```sh
-# One-time: store your API secret (get it from urlbox.com/dashboard/projects)
-urlbox auth --api-secret ubx_sk_xxxxxxxxxxxx
+# One-time: sign in through the browser (CI/headless: set URLBOX_API_SECRET instead)
+urlbox login
 
 # Render a URL — saves screenshot.png to the current directory
 urlbox render https://example.com --output screenshot.png
@@ -75,6 +75,17 @@ urlbox render https://example.com --curl
 
 # Verify install, config, and credentials
 urlbox doctor
+
+# Sign in through the browser (CI/headless: set URLBOX_API_SECRET instead)
+urlbox login
+
+# Inspect the signed-in account, organisations, and projects
+urlbox whoami
+urlbox orgs list
+urlbox projects list
+
+# Render usage summary for the active organisation
+urlbox usage
 
 # Self-discovery for agents
 urlbox commands --output-format json    # full command catalog
@@ -166,21 +177,24 @@ Local hard errors that always reject before sending: payloads larger than
 1 MiB, URL-like fields with control characters, malformed JSON. Everything
 else flows to the API.
 
-### `auth`
+### `login`
 
-Saves your Urlbox API secret to `~/.config/urlbox/config.json` (mode 0600). The
-env var `URLBOX_API_SECRET` takes precedence at runtime if both are set.
+Signs in through your browser using the device flow. Prints a short code, opens
+the approval page, and once you approve stores a session, sets your active
+organisation and project, and fetches the active project's render credential so
+render commands work immediately.
 
 ```sh
-# Non-interactive (preferred for agents and CI)
-urlbox auth --api-secret sec_xxxxxxxxxxxx
+# Sign in and pick org + project interactively
+urlbox login
 
-# Interactive (humans on a TTY) — prompts once with masked echo
-urlbox auth
+# Skip the pickers
+urlbox login --org acme --project production
 ```
 
-The interactive path is gated on stdin AND stderr being TTYs, so headless
-agents and piped invocations always require `--api-secret`.
+CI and headless environments should set `URLBOX_API_SECRET` instead — the device
+flow needs a browser. `URLBOX_API_SECRET` takes precedence at runtime over the
+stored render credential.
 
 ### `config`
 
@@ -204,7 +218,7 @@ urlbox config profile delete work
 
 **Profile-target resolution for `config set` / `config get`** (per-profile keys):
 
-- 0 profiles: errors with "No profiles configured" — bootstrap with `urlbox auth`.
+- 0 profiles: errors with "No profiles configured" — bootstrap with `urlbox login`.
 - 1 profile: `--profile` is implicit; `config set api_secret sk_xxx` Just Works.
 - 2+ profiles: `--profile` is required; the error lists configured names.
 
@@ -251,6 +265,115 @@ asset) and `failed` / `error` (exit 10). Non-terminal states (`created`,
 `retrying`, `processing`) without `--wait` return `ok: true` with a
 breadcrumb suggesting `urlbox status <id> --wait`.
 
+### `storage`
+
+Manage the active organisation's storage credentials. Storage credentials are
+owned by the organisation and assigned to projects — create one once, then
+assign it to any project's renders. Secrets are masked on display; pass
+`--reveal` for full values (JSON output always includes them in full).
+
+```sh
+# List, show (masked), show with secrets revealed
+urlbox storage list
+urlbox storage show prod-bucket
+urlbox storage show prod-bucket --reveal
+
+# Create (name as a positional or --name; typed flags or a full --json payload; typed flags win)
+urlbox storage create prod --provider aws_s3 --bucket b --region us-east-1 --key k --secret s
+urlbox storage create --json '{"name":"prod","type":"s3","provider":"aws_s3","bucket":"b","key":"k","secret":"s","region":"us-east-1"}'
+
+# Create and assign to a project in one step
+urlbox storage create prod --provider aws_s3 --bucket b --assign-to my-project
+
+# Update only the fields you pass
+urlbox storage update prod --region eu-west-1
+
+# Delete (retype-to-confirm; --yes skips the prompt)
+urlbox storage delete prod --yes
+```
+
+Providers: `aws_s3`, `google_cloud_storage`, `cloudflare_r2`, `backblaze_b2`,
+`digitalocean_spaces`, `wasabi`, `custom`, `azure`. A name or id resolves the
+target; ids carry the `store_` prefix.
+
+### `proxies`
+
+Manage the active organisation's proxy pools (alias: `proxy`). Proxy pools are
+owned by the organisation and assigned to projects. Proxy URLs routinely embed
+credentials, so the password portion is masked on display; pass `--reveal` for
+full values (JSON output always includes them in full).
+
+```sh
+# List, show (password masked), show revealed
+urlbox proxies list
+urlbox proxies show eu
+urlbox proxies show eu --reveal
+
+# Create with one or more proxy URLs (name as a positional or --name; --url is repeatable)
+urlbox proxies create eu --url http://user:pass@host:8080
+
+# Create and assign to a project
+urlbox proxies create eu --url http://user:pass@host:8080 --assign-to my-project
+
+# Update the name and/or the whole URL list (any --url replaces the list)
+urlbox proxies update eu --url http://user:pass@host:8080
+
+# Delete (retype-to-confirm; --yes skips the prompt)
+urlbox proxies delete eu --yes
+```
+
+A name or id resolves the target; ids carry the `pool_` prefix.
+
+### `llm`
+
+Manage the active organisation's LLM credentials. LLM credentials are owned by
+the organisation and assigned to projects. Secrets are masked on display; pass
+`--reveal` for full values (JSON output always includes them in full).
+
+```sh
+# List, show (masked), show revealed
+urlbox llm list
+urlbox llm show openai-prod
+urlbox llm show openai-prod --reveal
+
+# Create (name as a positional or --name; typed flags or a full --json payload; typed flags win)
+urlbox llm create openai --provider openai --api-key sk-…
+urlbox llm create openai --provider openai --api-key sk-… --assign-to my-project
+
+# Update only the fields you pass
+urlbox llm update openai --model gpt-5-mini
+
+# Test the stored credential's connection, list the provider's model ids
+urlbox llm test openai
+urlbox llm models openai
+
+# Delete (retype-to-confirm; --yes skips the prompt)
+urlbox llm delete openai --yes
+```
+
+Providers include `openai`, `anthropic`, `azure`, `amazon-bedrock`, and
+`google-vertex`. `llm test` returns exit 0 with `Connection OK` on success, or
+a non-zero exit with the provider's error on failure. A name or id resolves the
+target; ids carry the `llm_` prefix.
+
+### `projects <kind> assign` / `unassign`
+
+Assign an org-owned credential to a project, or unassign the project's current
+one. A project holds at most one storage credential, one proxy pool, and one
+LLM credential. `<kind>` is `storage`, `proxy`, or `llm`.
+
+```sh
+# Assign a credential (by name or id) to a project (by name or id)
+urlbox projects storage assign my-project prod-bucket
+urlbox projects proxy assign my-project eu
+urlbox projects llm assign my-project openai
+
+# Unassign the project's current credential of that kind
+urlbox projects storage unassign my-project
+urlbox projects proxy unassign my-project
+urlbox projects llm unassign my-project
+```
+
 ### `dashboard`
 
 Opens https://urlbox.com/dashboard in your default browser. On headless
@@ -272,20 +395,29 @@ In a terminal, output is a human-readable table. When piped or with `--output-fo
 $ urlbox commands
 Available commands:
 
-  auth        Configure API credentials
   commands    List all available commands
   config      Inspect and modify CLI configuration
   dashboard   Open the Urlbox dashboard in your browser
   doctor      Check installation, configuration, network, and credentials
   link        Generate an HMAC-signed render URL (no API call)
+  llm         Manage org LLM credentials
+  login       Sign in via your browser (device flow)
+  logout      Sign out and revoke this device's session
+  orgs        Manage the active organisation
   pdf         Render a URL as PDF (alias for `render --format pdf --full-page`)
+  projects    Manage projects and the active project
+  proxies     Manage org proxy pools
   render      Render a URL to a screenshot, PDF, video, or other format
   schema      Print JSON Schemas describing Urlbox API payloads
   screenshot  Capture a screenshot (alias for `render --format png`)
   skill       Agent skill content
   status      Look up the state of an async render
+  storage     Manage org storage credentials
   upgrade     Update urlbox to the latest version
+  usage       Show the organisation's render usage for the current period
+  version     Print CLI version, commit, and build date
   video       Render a URL as MP4 video (alias for `render --format mp4`)
+  whoami      Show the signed-in user and active context
 
 Use "urlbox <command> --help" for more information about a command.
 ```
@@ -293,8 +425,9 @@ Use "urlbox <command> --help" for more information about a command.
 ### `doctor`
 
 Diagnoses installation, configuration, network, and credential issues. Runs
-seven checks: version, install method, config file, API secret, DNS, API
-reachability, and credential validity. Exits non-zero if any check fails.
+nine checks: version, install method, config file, session, active org, active
+project, render credential, DNS, and API reachability.
+Exits non-zero if any check fails.
 
 ```sh
 urlbox doctor
@@ -415,8 +548,8 @@ urlbox --profile <name> render <url>
 # 2. Env var — preferred for CI / containers
 export URLBOX_API_SECRET=sec_xxxxxxxxxxxx
 
-# 3. Persisted to ~/.config/urlbox/config.json (mode 0600)
-urlbox auth --api-secret sec_xxxxxxxxxxxx
+# 3. Sign in through the browser — persists a session + render credential
+urlbox login
 ```
 
 The full priority chain:

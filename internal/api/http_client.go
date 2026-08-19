@@ -189,7 +189,7 @@ func mapStatusToCLIError(resp *http.Response, body []byte) *output.CLIError {
 			msg = "API rejected the request: not authenticated"
 		}
 		return output.NewCLIError(output.ErrAuth, msg,
-			"Run `urlbox auth --api-secret <secret>` to set or update your API secret.")
+			"Run `urlbox login` to refresh your credentials, or set URLBOX_API_SECRET.")
 	case resp.StatusCode == http.StatusForbidden:
 		msg := apiMsg
 		if msg == "" {

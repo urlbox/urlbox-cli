@@ -17,15 +17,6 @@ urlbox --agent
 urlbox --jq
 urlbox --output-format
 urlbox --profile
-urlbox auth
-urlbox auth --agent
-urlbox auth --api-secret
-urlbox auth --api-secret-file
-urlbox auth --api-secret-stdin
-urlbox auth --force
-urlbox auth --jq
-urlbox auth --output-format
-urlbox auth --profile
 urlbox commands
 urlbox commands --agent
 urlbox commands --jq
@@ -105,6 +96,114 @@ urlbox link [url] --json
 urlbox link [url] --output-format
 urlbox link [url] --profile
 urlbox link [url] --url
+urlbox llm
+urlbox llm --agent
+urlbox llm --jq
+urlbox llm --max-retries
+urlbox llm --no-retry
+urlbox llm --output-format
+urlbox llm --profile
+urlbox llm create <name>
+urlbox llm create <name> --agent
+urlbox llm create <name> --api-key
+urlbox llm create <name> --assign-to
+urlbox llm create <name> --base-url
+urlbox llm create <name> --jq
+urlbox llm create <name> --json
+urlbox llm create <name> --max-retries
+urlbox llm create <name> --model
+urlbox llm create <name> --name
+urlbox llm create <name> --no-retry
+urlbox llm create <name> --output-format
+urlbox llm create <name> --profile
+urlbox llm create <name> --provider
+urlbox llm delete <name-or-id>
+urlbox llm delete <name-or-id> --agent
+urlbox llm delete <name-or-id> --jq
+urlbox llm delete <name-or-id> --max-retries
+urlbox llm delete <name-or-id> --no-retry
+urlbox llm delete <name-or-id> --output-format
+urlbox llm delete <name-or-id> --profile
+urlbox llm delete <name-or-id> --yes
+urlbox llm list
+urlbox llm list --agent
+urlbox llm list --jq
+urlbox llm list --max-retries
+urlbox llm list --no-retry
+urlbox llm list --output-format
+urlbox llm list --profile
+urlbox llm models <name-or-id>
+urlbox llm models <name-or-id> --agent
+urlbox llm models <name-or-id> --jq
+urlbox llm models <name-or-id> --max-retries
+urlbox llm models <name-or-id> --no-retry
+urlbox llm models <name-or-id> --output-format
+urlbox llm models <name-or-id> --profile
+urlbox llm show <name-or-id>
+urlbox llm show <name-or-id> --agent
+urlbox llm show <name-or-id> --jq
+urlbox llm show <name-or-id> --max-retries
+urlbox llm show <name-or-id> --no-retry
+urlbox llm show <name-or-id> --output-format
+urlbox llm show <name-or-id> --profile
+urlbox llm show <name-or-id> --reveal
+urlbox llm test <name-or-id>
+urlbox llm test <name-or-id> --agent
+urlbox llm test <name-or-id> --jq
+urlbox llm test <name-or-id> --max-retries
+urlbox llm test <name-or-id> --no-retry
+urlbox llm test <name-or-id> --output-format
+urlbox llm test <name-or-id> --profile
+urlbox llm update <name-or-id>
+urlbox llm update <name-or-id> --agent
+urlbox llm update <name-or-id> --api-key
+urlbox llm update <name-or-id> --base-url
+urlbox llm update <name-or-id> --jq
+urlbox llm update <name-or-id> --json
+urlbox llm update <name-or-id> --max-retries
+urlbox llm update <name-or-id> --model
+urlbox llm update <name-or-id> --name
+urlbox llm update <name-or-id> --no-retry
+urlbox llm update <name-or-id> --output-format
+urlbox llm update <name-or-id> --profile
+urlbox llm update <name-or-id> --provider
+urlbox login
+urlbox login --agent
+urlbox login --jq
+urlbox login --max-retries
+urlbox login --no-retry
+urlbox login --org
+urlbox login --output-format
+urlbox login --profile
+urlbox login --project
+urlbox logout
+urlbox logout --agent
+urlbox logout --jq
+urlbox logout --max-retries
+urlbox logout --no-retry
+urlbox logout --output-format
+urlbox logout --profile
+urlbox orgs
+urlbox orgs --agent
+urlbox orgs --jq
+urlbox orgs --max-retries
+urlbox orgs --no-retry
+urlbox orgs --output-format
+urlbox orgs --profile
+urlbox orgs list
+urlbox orgs list --agent
+urlbox orgs list --jq
+urlbox orgs list --max-retries
+urlbox orgs list --no-retry
+urlbox orgs list --output-format
+urlbox orgs list --profile
+urlbox orgs select [name-or-id]
+urlbox orgs select [name-or-id] --agent
+urlbox orgs select [name-or-id] --jq
+urlbox orgs select [name-or-id] --max-retries
+urlbox orgs select [name-or-id] --no-retry
+urlbox orgs select [name-or-id] --output-format
+urlbox orgs select [name-or-id] --profile
 urlbox pdf [url]
 urlbox pdf [url] --agent
 urlbox pdf [url] --api-secret
@@ -136,6 +235,216 @@ urlbox pdf [url] --user-agent
 urlbox pdf [url] --wait-until
 urlbox pdf [url] --webhook-url
 urlbox pdf [url] --width
+urlbox projects
+urlbox projects --agent
+urlbox projects --jq
+urlbox projects --max-retries
+urlbox projects --no-retry
+urlbox projects --output-format
+urlbox projects --profile
+urlbox projects create <name>
+urlbox projects create <name> --agent
+urlbox projects create <name> --jq
+urlbox projects create <name> --max-retries
+urlbox projects create <name> --no-retry
+urlbox projects create <name> --output-format
+urlbox projects create <name> --profile
+urlbox projects create <name> --select
+urlbox projects defaults
+urlbox projects defaults --agent
+urlbox projects defaults --jq
+urlbox projects defaults --max-retries
+urlbox projects defaults --no-retry
+urlbox projects defaults --output-format
+urlbox projects defaults --profile
+urlbox projects defaults remove <name-or-id>
+urlbox projects defaults remove <name-or-id> --agent
+urlbox projects defaults remove <name-or-id> --jq
+urlbox projects defaults remove <name-or-id> --max-retries
+urlbox projects defaults remove <name-or-id> --no-retry
+urlbox projects defaults remove <name-or-id> --output-format
+urlbox projects defaults remove <name-or-id> --profile
+urlbox projects defaults remove <name-or-id> --yes
+urlbox projects defaults set <name-or-id> --json <object>
+urlbox projects defaults set <name-or-id> --json <object> --agent
+urlbox projects defaults set <name-or-id> --json <object> --jq
+urlbox projects defaults set <name-or-id> --json <object> --json
+urlbox projects defaults set <name-or-id> --json <object> --max-retries
+urlbox projects defaults set <name-or-id> --json <object> --merge
+urlbox projects defaults set <name-or-id> --json <object> --no-retry
+urlbox projects defaults set <name-or-id> --json <object> --output-format
+urlbox projects defaults set <name-or-id> --json <object> --profile
+urlbox projects defaults show <name-or-id>
+urlbox projects defaults show <name-or-id> --agent
+urlbox projects defaults show <name-or-id> --jq
+urlbox projects defaults show <name-or-id> --max-retries
+urlbox projects defaults show <name-or-id> --no-retry
+urlbox projects defaults show <name-or-id> --output-format
+urlbox projects defaults show <name-or-id> --profile
+urlbox projects delete <name-or-id>
+urlbox projects delete <name-or-id> --agent
+urlbox projects delete <name-or-id> --jq
+urlbox projects delete <name-or-id> --max-retries
+urlbox projects delete <name-or-id> --no-retry
+urlbox projects delete <name-or-id> --output-format
+urlbox projects delete <name-or-id> --profile
+urlbox projects delete <name-or-id> --yes
+urlbox projects disable <name-or-id>
+urlbox projects disable <name-or-id> --agent
+urlbox projects disable <name-or-id> --jq
+urlbox projects disable <name-or-id> --max-retries
+urlbox projects disable <name-or-id> --no-retry
+urlbox projects disable <name-or-id> --output-format
+urlbox projects disable <name-or-id> --profile
+urlbox projects disable <name-or-id> --yes
+urlbox projects enable <name-or-id>
+urlbox projects enable <name-or-id> --agent
+urlbox projects enable <name-or-id> --jq
+urlbox projects enable <name-or-id> --max-retries
+urlbox projects enable <name-or-id> --no-retry
+urlbox projects enable <name-or-id> --output-format
+urlbox projects enable <name-or-id> --profile
+urlbox projects list
+urlbox projects list --agent
+urlbox projects list --jq
+urlbox projects list --max-retries
+urlbox projects list --no-retry
+urlbox projects list --output-format
+urlbox projects list --profile
+urlbox projects llm
+urlbox projects llm --agent
+urlbox projects llm --jq
+urlbox projects llm --max-retries
+urlbox projects llm --no-retry
+urlbox projects llm --output-format
+urlbox projects llm --profile
+urlbox projects llm assign <project> <llm>
+urlbox projects llm assign <project> <llm> --agent
+urlbox projects llm assign <project> <llm> --jq
+urlbox projects llm assign <project> <llm> --max-retries
+urlbox projects llm assign <project> <llm> --no-retry
+urlbox projects llm assign <project> <llm> --output-format
+urlbox projects llm assign <project> <llm> --profile
+urlbox projects llm unassign <project>
+urlbox projects llm unassign <project> --agent
+urlbox projects llm unassign <project> --jq
+urlbox projects llm unassign <project> --max-retries
+urlbox projects llm unassign <project> --no-retry
+urlbox projects llm unassign <project> --output-format
+urlbox projects llm unassign <project> --profile
+urlbox projects proxy
+urlbox projects proxy --agent
+urlbox projects proxy --jq
+urlbox projects proxy --max-retries
+urlbox projects proxy --no-retry
+urlbox projects proxy --output-format
+urlbox projects proxy --profile
+urlbox projects proxy assign <project> <proxy>
+urlbox projects proxy assign <project> <proxy> --agent
+urlbox projects proxy assign <project> <proxy> --jq
+urlbox projects proxy assign <project> <proxy> --max-retries
+urlbox projects proxy assign <project> <proxy> --no-retry
+urlbox projects proxy assign <project> <proxy> --output-format
+urlbox projects proxy assign <project> <proxy> --profile
+urlbox projects proxy unassign <project>
+urlbox projects proxy unassign <project> --agent
+urlbox projects proxy unassign <project> --jq
+urlbox projects proxy unassign <project> --max-retries
+urlbox projects proxy unassign <project> --no-retry
+urlbox projects proxy unassign <project> --output-format
+urlbox projects proxy unassign <project> --profile
+urlbox projects rename <name-or-id> <new-name>
+urlbox projects rename <name-or-id> <new-name> --agent
+urlbox projects rename <name-or-id> <new-name> --jq
+urlbox projects rename <name-or-id> <new-name> --max-retries
+urlbox projects rename <name-or-id> <new-name> --no-retry
+urlbox projects rename <name-or-id> <new-name> --output-format
+urlbox projects rename <name-or-id> <new-name> --profile
+urlbox projects select [name-or-id]
+urlbox projects select [name-or-id] --agent
+urlbox projects select [name-or-id] --jq
+urlbox projects select [name-or-id] --max-retries
+urlbox projects select [name-or-id] --no-retry
+urlbox projects select [name-or-id] --output-format
+urlbox projects select [name-or-id] --profile
+urlbox projects show <name-or-id>
+urlbox projects show <name-or-id> --agent
+urlbox projects show <name-or-id> --jq
+urlbox projects show <name-or-id> --max-retries
+urlbox projects show <name-or-id> --no-retry
+urlbox projects show <name-or-id> --output-format
+urlbox projects show <name-or-id> --profile
+urlbox projects show <name-or-id> --reveal
+urlbox projects storage
+urlbox projects storage --agent
+urlbox projects storage --jq
+urlbox projects storage --max-retries
+urlbox projects storage --no-retry
+urlbox projects storage --output-format
+urlbox projects storage --profile
+urlbox projects storage assign <project> <storage>
+urlbox projects storage assign <project> <storage> --agent
+urlbox projects storage assign <project> <storage> --jq
+urlbox projects storage assign <project> <storage> --max-retries
+urlbox projects storage assign <project> <storage> --no-retry
+urlbox projects storage assign <project> <storage> --output-format
+urlbox projects storage assign <project> <storage> --profile
+urlbox projects storage unassign <project>
+urlbox projects storage unassign <project> --agent
+urlbox projects storage unassign <project> --jq
+urlbox projects storage unassign <project> --max-retries
+urlbox projects storage unassign <project> --no-retry
+urlbox projects storage unassign <project> --output-format
+urlbox projects storage unassign <project> --profile
+urlbox proxies
+urlbox proxies --agent
+urlbox proxies --jq
+urlbox proxies --max-retries
+urlbox proxies --no-retry
+urlbox proxies --output-format
+urlbox proxies --profile
+urlbox proxies create <name>
+urlbox proxies create <name> --agent
+urlbox proxies create <name> --assign-to
+urlbox proxies create <name> --jq
+urlbox proxies create <name> --max-retries
+urlbox proxies create <name> --name
+urlbox proxies create <name> --no-retry
+urlbox proxies create <name> --output-format
+urlbox proxies create <name> --profile
+urlbox proxies create <name> --url
+urlbox proxies delete <name-or-id>
+urlbox proxies delete <name-or-id> --agent
+urlbox proxies delete <name-or-id> --jq
+urlbox proxies delete <name-or-id> --max-retries
+urlbox proxies delete <name-or-id> --no-retry
+urlbox proxies delete <name-or-id> --output-format
+urlbox proxies delete <name-or-id> --profile
+urlbox proxies delete <name-or-id> --yes
+urlbox proxies list
+urlbox proxies list --agent
+urlbox proxies list --jq
+urlbox proxies list --max-retries
+urlbox proxies list --no-retry
+urlbox proxies list --output-format
+urlbox proxies list --profile
+urlbox proxies show <name-or-id>
+urlbox proxies show <name-or-id> --agent
+urlbox proxies show <name-or-id> --jq
+urlbox proxies show <name-or-id> --max-retries
+urlbox proxies show <name-or-id> --no-retry
+urlbox proxies show <name-or-id> --output-format
+urlbox proxies show <name-or-id> --profile
+urlbox proxies show <name-or-id> --reveal
+urlbox proxies update <name-or-id>
+urlbox proxies update <name-or-id> --agent
+urlbox proxies update <name-or-id> --jq
+urlbox proxies update <name-or-id> --max-retries
+urlbox proxies update <name-or-id> --name
+urlbox proxies update <name-or-id> --no-retry
+urlbox proxies update <name-or-id> --output-format
+urlbox proxies update <name-or-id> --profile
+urlbox proxies update <name-or-id> --url
 urlbox render [url]
 urlbox render [url] --agent
 urlbox render [url] --api-secret
@@ -240,11 +549,91 @@ urlbox status <renderId> --poll-interval
 urlbox status <renderId> --profile
 urlbox status <renderId> --timeout
 urlbox status <renderId> --wait
+urlbox storage
+urlbox storage --agent
+urlbox storage --jq
+urlbox storage --max-retries
+urlbox storage --no-retry
+urlbox storage --output-format
+urlbox storage --profile
+urlbox storage create <name>
+urlbox storage create <name> --account-name
+urlbox storage create <name> --agent
+urlbox storage create <name> --assign-to
+urlbox storage create <name> --bucket
+urlbox storage create <name> --cdn-host
+urlbox storage create <name> --container-name
+urlbox storage create <name> --endpoint
+urlbox storage create <name> --jq
+urlbox storage create <name> --json
+urlbox storage create <name> --key
+urlbox storage create <name> --max-retries
+urlbox storage create <name> --name
+urlbox storage create <name> --no-retry
+urlbox storage create <name> --object-lock
+urlbox storage create <name> --output-format
+urlbox storage create <name> --private-bucket
+urlbox storage create <name> --profile
+urlbox storage create <name> --provider
+urlbox storage create <name> --region
+urlbox storage create <name> --sas-token
+urlbox storage create <name> --secret
+urlbox storage delete <name-or-id>
+urlbox storage delete <name-or-id> --agent
+urlbox storage delete <name-or-id> --jq
+urlbox storage delete <name-or-id> --max-retries
+urlbox storage delete <name-or-id> --no-retry
+urlbox storage delete <name-or-id> --output-format
+urlbox storage delete <name-or-id> --profile
+urlbox storage delete <name-or-id> --yes
+urlbox storage list
+urlbox storage list --agent
+urlbox storage list --jq
+urlbox storage list --max-retries
+urlbox storage list --no-retry
+urlbox storage list --output-format
+urlbox storage list --profile
+urlbox storage show <name-or-id>
+urlbox storage show <name-or-id> --agent
+urlbox storage show <name-or-id> --jq
+urlbox storage show <name-or-id> --max-retries
+urlbox storage show <name-or-id> --no-retry
+urlbox storage show <name-or-id> --output-format
+urlbox storage show <name-or-id> --profile
+urlbox storage show <name-or-id> --reveal
+urlbox storage update <name-or-id>
+urlbox storage update <name-or-id> --account-name
+urlbox storage update <name-or-id> --agent
+urlbox storage update <name-or-id> --bucket
+urlbox storage update <name-or-id> --cdn-host
+urlbox storage update <name-or-id> --container-name
+urlbox storage update <name-or-id> --endpoint
+urlbox storage update <name-or-id> --jq
+urlbox storage update <name-or-id> --json
+urlbox storage update <name-or-id> --key
+urlbox storage update <name-or-id> --max-retries
+urlbox storage update <name-or-id> --name
+urlbox storage update <name-or-id> --no-retry
+urlbox storage update <name-or-id> --object-lock
+urlbox storage update <name-or-id> --output-format
+urlbox storage update <name-or-id> --private-bucket
+urlbox storage update <name-or-id> --profile
+urlbox storage update <name-or-id> --provider
+urlbox storage update <name-or-id> --region
+urlbox storage update <name-or-id> --sas-token
+urlbox storage update <name-or-id> --secret
 urlbox upgrade
 urlbox upgrade --agent
 urlbox upgrade --jq
 urlbox upgrade --output-format
 urlbox upgrade --profile
+urlbox usage
+urlbox usage --agent
+urlbox usage --jq
+urlbox usage --max-retries
+urlbox usage --no-retry
+urlbox usage --output-format
+urlbox usage --profile
 urlbox version
 urlbox version --agent
 urlbox version --jq
@@ -281,3 +670,10 @@ urlbox video [url] --user-agent
 urlbox video [url] --wait-until
 urlbox video [url] --webhook-url
 urlbox video [url] --width
+urlbox whoami
+urlbox whoami --agent
+urlbox whoami --jq
+urlbox whoami --max-retries
+urlbox whoami --no-retry
+urlbox whoami --output-format
+urlbox whoami --profile

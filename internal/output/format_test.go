@@ -86,6 +86,71 @@ func TestTextFormatter_WriteError_ContainsMessage(t *testing.T) {
 	}
 }
 
+func TestTextFormatter_WriteSuccess_OkWithView_ViewOnlyNoSummary(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	env := output.NewEnvelope("orgs list", map[string]any{"n": 2}, "2 organisations", nil)
+	env.SetTable([]string{"NAME", "ID"}, [][]string{{"Acme", "org_a"}}, -1)
+	buf := &bytes.Buffer{}
+	f := output.NewFormatter(output.FormatText, output.NewStylesForWriter(buf))
+
+	if err := f.WriteSuccess(buf, env); err != nil {
+		t.Fatalf("WriteSuccess error: %v", err)
+	}
+	out := buf.String()
+	if strings.Contains(out, "2 organisations") {
+		t.Errorf("ok+view text should omit the summary line, got:\n%s", out)
+	}
+	if !strings.Contains(out, "Acme") || !strings.Contains(out, "org_a") {
+		t.Errorf("ok+view text should still render the view, got:\n%s", out)
+	}
+}
+
+func TestTextFormatter_WriteSuccess_NotOkWithView_SummaryThenView(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	env := output.NewEnvelope("doctor", map[string]any{"status": "fail"}, "Some checks failed", nil)
+	env.OK = false
+	env.SetTable([]string{"CHECK", "STATUS"}, [][]string{{"api_secret", "fail"}}, -1)
+	buf := &bytes.Buffer{}
+	f := output.NewFormatter(output.FormatText, output.NewStylesForWriter(buf))
+
+	if err := f.WriteSuccess(buf, env); err != nil {
+		t.Fatalf("WriteSuccess error: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "Some checks failed") {
+		t.Errorf("not-ok+view text should keep the summary line, got:\n%s", out)
+	}
+	if !strings.Contains(out, "✗") {
+		t.Errorf("not-ok+view summary should use ✗, got:\n%s", out)
+	}
+	if !strings.Contains(out, "api_secret") {
+		t.Errorf("not-ok+view text should render the view, got:\n%s", out)
+	}
+	summaryIdx := strings.Index(out, "Some checks failed")
+	viewIdx := strings.Index(out, "api_secret")
+	if summaryIdx > viewIdx {
+		t.Errorf("summary must appear above the view, got:\n%s", out)
+	}
+}
+
+func TestTextFormatter_WriteSuccess_OkNoView_SummaryAsToday(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	env := output.NewEnvelope("logout", nil, "Logged out", nil)
+	buf := &bytes.Buffer{}
+	f := output.NewFormatter(output.FormatText, output.NewStylesForWriter(buf))
+
+	if err := f.WriteSuccess(buf, env); err != nil {
+		t.Fatalf("WriteSuccess error: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "Logged out") {
+		t.Errorf("ok+no-view text should keep the summary line, got:\n%s", out)
+	}
+	if !strings.Contains(out, "✓") {
+		t.Errorf("ok+no-view summary should use ✓, got:\n%s", out)
+	}
+}
+
 func TestQuietFormatter_WriteSuccess_DataOnly(t *testing.T) {
 	env := output.NewEnvelope("test", map[string]string{"id": "abc"}, "summary", nil)
 	buf := &bytes.Buffer{}

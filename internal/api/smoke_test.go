@@ -129,8 +129,8 @@ func TestSmoke_AuthFails_BadSecret(t *testing.T) {
 	if cli.Code != output.ErrAuth {
 		t.Errorf("Code=%q, want %q (bad secret should map to auth regardless of HTTP status)", cli.Code, output.ErrAuth)
 	}
-	if !strings.Contains(cli.Hint, "urlbox auth") {
-		t.Errorf("Hint=%q, want pointer to `urlbox auth`", cli.Hint)
+	if !strings.Contains(cli.Hint, "urlbox login") {
+		t.Errorf("Hint=%q, want pointer to `urlbox login`", cli.Hint)
 	}
 }
 

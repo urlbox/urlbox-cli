@@ -44,15 +44,47 @@ func extractCheck(t *testing.T, env map[string]any, name string) map[string]any 
 	return nil
 }
 
+func hasCheck(t *testing.T, env map[string]any, name string) bool {
+	t.Helper()
+	data, ok := env["data"].(map[string]any)
+	if !ok {
+		t.Fatalf("data not a map: %v", env["data"])
+	}
+	checks, ok := data["checks"].([]any)
+	if !ok {
+		t.Fatalf("checks not an array: %v", data["checks"])
+	}
+	for _, c := range checks {
+		m, _ := c.(map[string]any)
+		if m["name"] == name {
+			return true
+		}
+	}
+	return false
+}
+
 func TestDoctor_AllChecksPass_Exit0(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/auth/get-session" {
+			_, _ = w.Write([]byte(`{"user":{"email":"a@urlbox.com"},"session":{"activeOrganizationPublicId":"org_acme"}}`))
+			return
+		}
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer srv.Close()
 
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	t.Setenv("URLBOX_API_SECRET", "sec_test")
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	t.Setenv("URLBOX_API_SECRET", "")
 	t.Setenv("URLBOX_API_HOST", srv.URL)
+	seedConfig(t, dir, map[string]config.Profile{
+		"default": {
+			APISecret:     "sec_test",
+			SessionToken:  "sess_tok",
+			ActiveOrg:     "org_acme",
+			ActiveProject: "proj_1",
+		},
+	})
 
 	env, exit, _, _ := runDoctor(t)
 	if exit != 0 {
@@ -62,28 +94,68 @@ func TestDoctor_AllChecksPass_Exit0(t *testing.T) {
 		t.Fatalf("ok=%v", env["ok"])
 	}
 
-	// Validate at least these checks are present
-	for _, name := range []string{"version", "install_method", "config_file", "api_secret", "dns", "api_reachable", "auth"} {
+	for _, name := range []string{"version", "install_method", "config_file", "session", "active_org", "active_project", "render_credential", "dns", "api_reachable"} {
 		_ = extractCheck(t, env, name)
+	}
+
+	rc := extractCheck(t, env, "render_credential")
+	if rc["status"] != "ok" {
+		t.Fatalf("render_credential status = %v want ok", rc["status"])
+	}
+	if msg, _ := rc["message"].(string); msg != "valid (file)" {
+		t.Fatalf("render_credential message = %q, want \"valid (file)\"", msg)
 	}
 }
 
-func TestDoctor_NoAPISecret_FailsAPISecretCheck(t *testing.T) {
+func TestDoctor_NoRenderCredential_FailsRenderCredentialCheck(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("URLBOX_API_SECRET", "")
 
 	env, exit, _, _ := runDoctor(t)
 
-	c := extractCheck(t, env, "api_secret")
+	c := extractCheck(t, env, "render_credential")
 	if c["status"] != "fail" {
-		t.Fatalf("api_secret status = %v want fail", c["status"])
+		t.Fatalf("render_credential status = %v want fail", c["status"])
+	}
+	if hint, _ := c["hint"].(string); !strings.Contains(hint, "urlbox login") {
+		t.Fatalf("render_credential hint should point at login; got %q", hint)
 	}
 	if exit == 0 {
 		t.Fatal("expected non-zero exit when checks fail")
 	}
 }
 
-func TestDoctor_AuthFailure_FailsAuthCheck(t *testing.T) {
+func TestDoctor_LoggedOut_FailsSessionCheck(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("URLBOX_API_SECRET", "")
+
+	env, exit, _, _ := runDoctor(t)
+
+	c := extractCheck(t, env, "session")
+	if c["status"] != "fail" {
+		t.Fatalf("session status = %v want fail", c["status"])
+	}
+	if hint, _ := c["hint"].(string); hint != "Run `urlbox login` to sign in." {
+		t.Fatalf("session hint = %q, want the unified login hint", hint)
+	}
+	for _, name := range []string{"active_org", "active_project"} {
+		if extractCheck(t, env, name)["status"] != "fail" {
+			t.Fatalf("%s should fail when logged out", name)
+		}
+	}
+	if hasCheck(t, env, "auth") {
+		t.Fatal("auth check name should no longer appear — folded into render_credential")
+	}
+	if exit == 0 {
+		t.Fatal("expected non-zero exit when logged out")
+	}
+}
+
+// TestDoctor_CredentialRejected_FailsRenderCredential pins the folded
+// behaviour: a present secret the API rejects (401-class) marks
+// render_credential fail with "credential invalid" and the pinned login
+// hint, and drives the auth-class exit code (3).
+func TestDoctor_CredentialRejected_FailsRenderCredential(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
 	}))
@@ -95,25 +167,66 @@ func TestDoctor_AuthFailure_FailsAuthCheck(t *testing.T) {
 
 	env, exit, _, _ := runDoctor(t)
 
-	c := extractCheck(t, env, "auth")
+	c := extractCheck(t, env, "render_credential")
 	if c["status"] != "fail" {
-		t.Fatalf("auth check status = %v want fail", c["status"])
+		t.Fatalf("render_credential status = %v want fail", c["status"])
 	}
-	if !strings.Contains(c["message"].(string), "credentials") &&
-		!strings.Contains(c["hint"].(string), "auth") {
-		t.Fatalf("auth check message should reference credentials: %v", c)
+	if msg, _ := c["message"].(string); msg != "credential invalid" {
+		t.Fatalf("render_credential message = %q, want \"credential invalid\"", msg)
 	}
-	if exit == 0 {
-		t.Fatal("expected non-zero exit on auth failure")
+	if hint, _ := c["hint"].(string); hint != "Run `urlbox login` to sign in." {
+		t.Fatalf("render_credential hint = %q, want the pinned login hint", hint)
+	}
+	if exit != 3 {
+		t.Fatalf("exit = %d, want 3 (auth class)", exit)
 	}
 }
 
-// TestDoctor_AuthBadRequest_FailsAuthCheck pins Round 4 H2: the auth check
-// previously only treated 401/403/5xx as failure. A real-world 400 from
-// /v1/user/me with body {"error":{"code":"ApiKeyNotFound",...}} fell into
-// the default arm and was reported as "credentials valid" — a critical
-// false-positive that let CI green-light a broken secret.
-func TestDoctor_AuthBadRequest_FailsAuthCheck(t *testing.T) {
+// TestDoctor_CredentialValid_PassesRenderCredential pins the positive
+// fold: a present secret the API accepts (2xx) marks render_credential ✓
+// with the source-tagged "valid (env)" message.
+func TestDoctor_CredentialValid_PassesRenderCredential(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/auth/get-session" {
+			_, _ = w.Write([]byte(`{"user":{"email":"a@urlbox.com"},"session":{"activeOrganizationPublicId":"org_acme"}}`))
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	t.Setenv("URLBOX_API_SECRET", "sec_good")
+	t.Setenv("URLBOX_API_HOST", srv.URL)
+	seedConfig(t, dir, map[string]config.Profile{
+		"default": {
+			SessionToken:  "sess_tok",
+			ActiveOrg:     "org_acme",
+			ActiveProject: "proj_1",
+		},
+	})
+
+	env, exit, _, _ := runDoctor(t)
+	if exit != 0 {
+		t.Fatalf("exit=%d env=%v", exit, env)
+	}
+	c := extractCheck(t, env, "render_credential")
+	if c["status"] != "ok" {
+		t.Fatalf("render_credential status = %v want ok", c["status"])
+	}
+	if msg, _ := c["message"].(string); msg != "valid (env)" {
+		t.Fatalf("render_credential message = %q, want \"valid (env)\"", msg)
+	}
+}
+
+// TestDoctor_CredentialBadRequest_FailsRenderCredential pins Round 4 H2
+// through the fold: the probe previously only treated 401/403/5xx as
+// failure. A real-world 400 from /v1/user/me with body
+// {"error":{"code":"ApiKeyNotFound",...}} fell into the default arm and
+// was reported valid — a critical false-positive that let CI green-light
+// a broken secret.
+func TestDoctor_CredentialBadRequest_FailsRenderCredential(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		_, _ = w.Write([]byte(`{"error":{"code":"ApiKeyNotFound","message":"Api Key does not exist"}}`))
@@ -126,18 +239,19 @@ func TestDoctor_AuthBadRequest_FailsAuthCheck(t *testing.T) {
 
 	env, exit, _, _ := runDoctor(t)
 
-	c := extractCheck(t, env, "auth")
+	c := extractCheck(t, env, "render_credential")
 	if c["status"] != "fail" {
-		t.Fatalf("auth check on HTTP 400 should fail; got %v (full check: %v)", c["status"], c)
+		t.Fatalf("render_credential on HTTP 400 should fail; got %v (full check: %v)", c["status"], c)
 	}
 	if exit == 0 {
-		t.Fatal("expected non-zero exit when auth check fails")
+		t.Fatal("expected non-zero exit when render_credential fails")
 	}
 }
 
-// TestDoctor_AuthNotFound_FailsAuthCheck pins another non-2xx, non-401/403
-// case — 404 on /v1/user/me should not be "credentials valid" either.
-func TestDoctor_AuthNotFound_FailsAuthCheck(t *testing.T) {
+// TestDoctor_CredentialNotFound_FailsRenderCredential pins another
+// non-2xx, non-401/403 case — 404 on /v1/user/me should not be valid
+// either.
+func TestDoctor_CredentialNotFound_FailsRenderCredential(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 	}))
@@ -149,12 +263,12 @@ func TestDoctor_AuthNotFound_FailsAuthCheck(t *testing.T) {
 
 	env, exit, _, _ := runDoctor(t)
 
-	c := extractCheck(t, env, "auth")
+	c := extractCheck(t, env, "render_credential")
 	if c["status"] != "fail" {
-		t.Fatalf("auth check on HTTP 404 should fail; got %v", c["status"])
+		t.Fatalf("render_credential on HTTP 404 should fail; got %v", c["status"])
 	}
 	if exit == 0 {
-		t.Fatal("expected non-zero exit when auth check fails")
+		t.Fatal("expected non-zero exit when render_credential fails")
 	}
 }
 
@@ -249,6 +363,10 @@ func TestDoctor_HonorsProfileFlag_ValidTargetsThatProfile(t *testing.T) {
 		if r.URL.Path == "/v1/user/me" {
 			seenAuth = r.Header.Get("Authorization")
 		}
+		if r.URL.Path == "/v1/auth/get-session" {
+			_, _ = w.Write([]byte(`{"user":{"email":"a@urlbox.com"},"session":{"activeOrganizationPublicId":"org_acme"}}`))
+			return
+		}
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer srv.Close()
@@ -259,7 +377,12 @@ func TestDoctor_HonorsProfileFlag_ValidTargetsThatProfile(t *testing.T) {
 	t.Setenv("URLBOX_API_HOST", srv.URL)
 	seedConfig(t, dir, map[string]config.Profile{
 		"default": {APISecret: "sec_default_xx"},
-		"work":    {APISecret: "sec_work_yy"},
+		"work": {
+			APISecret:     "sec_work_yy",
+			SessionToken:  "sess_work",
+			ActiveOrg:     "org_acme",
+			ActiveProject: "proj_1",
+		},
 	})
 
 	env, exit, _, _ := runDoctor(t, "--profile", "work")

@@ -62,7 +62,7 @@ func TestCLIError_ExitCode_UnknownDefaultsToServer(t *testing.T) {
 }
 
 func TestCLIError_CanBeUnwrappedWithErrorsAs(t *testing.T) {
-	original := output.NewCLIError(output.ErrAuth, "unauthorized", "run urlbox auth")
+	original := output.NewCLIError(output.ErrAuth, "unauthorized", "run urlbox login")
 	wrapped := errors.New("command failed: " + original.Error())
 	_ = wrapped // We just verify CLIError works with errors.As directly
 	var target *output.CLIError
