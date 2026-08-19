@@ -373,13 +373,17 @@ project's renders. All three groups share the same verb set (`list`, `show`,
 session and an active org (agents on `URLBOX_API_SECRET` alone are not signed
 in — these commands return `auth` / exit 3 until `urlbox login` runs).
 
-Secrets are masked on display. Text output masks by default; pass `--reveal`
-to unmask. JSON output (`--output-format json`) always contains the full
-values. A target is resolved by name or id (ids: `store_`, `pool_`, `llm_`).
+Secrets are masked by default in **both** text and JSON — storage keys and
+secrets, SAS tokens, LLM API keys and cloud credentials, the password component
+of proxy URLs, and a project's webhook key. Pass `--reveal` (on `list` and
+`show`) to get the full values. Non-secret fields always pass through
+untouched, so `--jq` over ids, names, buckets and regions works either way.
+A target is resolved by name or id (ids: `store_`, `pool_`, `llm_`).
 
 ```sh
-# List / show (JSON gives full, machine-readable records)
+# List / show — JSON is machine-readable and masked by default
 urlbox storage list --output-format json
+urlbox storage list --reveal --output-format json   # full values when you need them
 urlbox proxies show eu --reveal
 urlbox llm show openai --output-format json
 

@@ -21,9 +21,9 @@ func newProxiesCmd() *cobra.Command {
 Proxy pools are owned by the organisation and assigned to projects.
 Create one once, then assign it to any project's renders.
 
-Proxy URLs routinely embed credentials, so the password portion is masked
-on display — pass --reveal for full values (JSON output always includes them
-in full).
+Proxy URLs routinely embed credentials, so the password portion is masked in
+both text and JSON output — pass --reveal for full values. The host and port
+stay legible either way.
 
 Examples:
   urlbox proxies list
@@ -32,12 +32,16 @@ Examples:
   urlbox proxies update eu --url http://user:pass@host:8080
   urlbox proxies delete eu`,
 	}
+	var listReveal bool
 	list := &cobra.Command{
 		Use:   "list",
 		Short: "List the organisation's proxy pools",
 		Args:  cobra.NoArgs,
-		RunE:  runProxiesList,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runProxiesList(cmd, args, listReveal)
+		},
 	}
+	list.Flags().BoolVar(&listReveal, "reveal", false, "Print proxy URLs unmasked (default: passwords masked)")
 	var showReveal bool
 	show := &cobra.Command{
 		Use:   "show <name-or-id>",
@@ -132,7 +136,7 @@ func proxyDetailPairs(pool map[string]any, reveal bool) [][2]string {
 	return pairs
 }
 
-func runProxiesList(cmd *cobra.Command, _ []string) error {
+func runProxiesList(cmd *cobra.Command, _ []string, reveal bool) error {
 	sess, cliErr := loadSession(cmd)
 	if cliErr != nil {
 		return cliErr
@@ -147,7 +151,7 @@ func runProxiesList(cmd *cobra.Command, _ []string) error {
 		return asCLIError(err)
 	}
 	env := output.NewEnvelope("proxies list",
-		map[string]any{"proxies": items},
+		map[string]any{"proxies": redactProxyPools(items, reveal)},
 		fmt.Sprintf("%d proxy pools", len(items)), nil)
 	env.SetTable([]string{"ID", "NAME", "URLS", "ASSIGNED"}, proxyListRows(items), -1)
 	return writeEnvelopeWithQuietData(cmd, env, strconv.Itoa(len(items)))
@@ -179,7 +183,7 @@ func runProxiesShow(cmd *cobra.Command, args []string, reveal bool) error {
 	if name == "" {
 		name = valueOrEmpty(detail["id"])
 	}
-	env := output.NewEnvelope("proxies show", detail,
+	env := output.NewEnvelope("proxies show", redactProxyPool(detail, reveal),
 		fmt.Sprintf("Proxy pool %s", name), nil)
 	env.SetKV(proxyDetailPairs(detail, reveal))
 	return writeEnvelopeWithQuietData(cmd, env, valueOrEmpty(detail["id"]))

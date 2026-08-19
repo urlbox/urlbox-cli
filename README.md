@@ -154,7 +154,7 @@ urlbox projects storage assign my-project prod
 | `llm` | `list` `show` `create` `update` `delete` `test` `models` |
 | `projects <kind> assign` / `unassign` | Attach or detach a project's `storage`, `proxy`, or `llm` credential |
 
-Secrets are masked in every human-readable view — pass `--reveal` to unmask (JSON output always shows them in full). Deletes are retype-to-confirm; `--yes` skips the prompt. A target resolves by name or id (`store_…`, `pool_…`, `llm_…`).
+Secrets are masked by default in both text and JSON — pass `--reveal` on `list` or `show` to unmask. Deletes are retype-to-confirm; `--yes` skips the prompt. A target resolves by name or id (`store_…`, `pool_…`, `llm_…`).
 
 ### Utilities
 

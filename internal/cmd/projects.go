@@ -486,7 +486,7 @@ func runProjectsShow(cmd *cobra.Command, args []string, reveal bool) error {
 	if name == "" {
 		name = valueOrEmpty(resp["id"])
 	}
-	env := output.NewEnvelope("projects show", resp,
+	env := output.NewEnvelope("projects show", redactMap(resp, projectSecretFields, reveal),
 		fmt.Sprintf("Project %s", name), nil)
 	env.SetKV(projectDetailPairs(resp, reveal))
 	return writeEnvelope(cmd, env)

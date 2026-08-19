@@ -32,12 +32,16 @@ Examples:
   urlbox llm models openai
   urlbox llm delete openai`,
 	}
+	var listReveal bool
 	list := &cobra.Command{
 		Use:   "list",
 		Short: "List the organisation's LLM credentials",
 		Args:  cobra.NoArgs,
-		RunE:  runLlmList,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runLlmList(cmd, args, listReveal)
+		},
 	}
+	list.Flags().BoolVar(&listReveal, "reveal", false, "Print secrets unmasked (default: masked)")
 	var showReveal bool
 	show := &cobra.Command{
 		Use:   "show <name-or-id>",
@@ -174,7 +178,7 @@ func llmTestMessage(result map[string]any) (string, bool) {
 	return "Connection failed", false
 }
 
-func runLlmList(cmd *cobra.Command, _ []string) error {
+func runLlmList(cmd *cobra.Command, _ []string, reveal bool) error {
 	sess, cliErr := loadSession(cmd)
 	if cliErr != nil {
 		return cliErr
@@ -189,7 +193,7 @@ func runLlmList(cmd *cobra.Command, _ []string) error {
 		return asCLIError(err)
 	}
 	env := output.NewEnvelope("llm list",
-		map[string]any{"llmCredentials": items},
+		map[string]any{"llmCredentials": redactMaps(items, llmSecretFields, reveal)},
 		fmt.Sprintf("%d LLM credentials", len(items)), nil)
 	env.SetTable([]string{"ID", "NAME", "PROVIDER", "MODEL", "ASSIGNED"}, llmListRows(items), -1)
 	return writeEnvelopeWithQuietData(cmd, env, strconv.Itoa(len(items)))
@@ -221,7 +225,7 @@ func runLlmShow(cmd *cobra.Command, args []string, reveal bool) error {
 	if name == "" {
 		name = valueOrEmpty(detail["id"])
 	}
-	env := output.NewEnvelope("llm show", detail,
+	env := output.NewEnvelope("llm show", redactMap(detail, llmSecretFields, reveal),
 		fmt.Sprintf("LLM credential %s", name), nil)
 	env.SetKV(llmDetailPairs(detail, reveal))
 	return writeEnvelopeWithQuietData(cmd, env, valueOrEmpty(detail["id"]))

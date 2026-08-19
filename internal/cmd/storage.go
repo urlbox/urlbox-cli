@@ -32,12 +32,16 @@ Examples:
   urlbox storage update prod --region eu-west-1
   urlbox storage delete prod`,
 	}
+	var listReveal bool
 	list := &cobra.Command{
 		Use:   "list",
 		Short: "List the organisation's storage credentials",
 		Args:  cobra.NoArgs,
-		RunE:  runStorageList,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runStorageList(cmd, args, listReveal)
+		},
 	}
+	list.Flags().BoolVar(&listReveal, "reveal", false, "Print secrets unmasked (default: masked)")
 	var showReveal bool
 	show := &cobra.Command{
 		Use:   "show <name-or-id>",
@@ -231,7 +235,7 @@ func revealOrMask(value string, reveal bool) string {
 	return maskSecret(value)
 }
 
-func runStorageList(cmd *cobra.Command, _ []string) error {
+func runStorageList(cmd *cobra.Command, _ []string, reveal bool) error {
 	sess, cliErr := loadSession(cmd)
 	if cliErr != nil {
 		return cliErr
@@ -246,7 +250,7 @@ func runStorageList(cmd *cobra.Command, _ []string) error {
 		return asCLIError(err)
 	}
 	env := output.NewEnvelope("storage list",
-		map[string]any{"storageCredentials": items},
+		map[string]any{"storageCredentials": redactMaps(items, storageSecretFields, reveal)},
 		fmt.Sprintf("%d storage credentials", len(items)), nil)
 	env.SetTable([]string{"BUCKET", "ID", "PROVIDER", "ENDPOINT", "KEY", "ASSIGNED"}, storageListRows(items), -1)
 	return writeEnvelopeWithQuietData(cmd, env, strconv.Itoa(len(items)))
@@ -278,7 +282,7 @@ func runStorageShow(cmd *cobra.Command, args []string, reveal bool) error {
 	if name == "" {
 		name = valueOrEmpty(detail["id"])
 	}
-	env := output.NewEnvelope("storage show", detail,
+	env := output.NewEnvelope("storage show", redactMap(detail, storageSecretFields, reveal),
 		fmt.Sprintf("Storage credential %s", name), nil)
 	env.SetKV(storageDetailPairs(detail, reveal))
 	return writeEnvelopeWithQuietData(cmd, env, valueOrEmpty(detail["id"]))
