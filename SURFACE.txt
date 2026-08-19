@@ -18,15 +18,6 @@ urlbox --agent
 urlbox --jq
 urlbox --output-format
 urlbox --profile
-urlbox auth
-urlbox auth --agent
-urlbox auth --api-secret
-urlbox auth --api-secret-file
-urlbox auth --api-secret-stdin
-urlbox auth --force
-urlbox auth --jq
-urlbox auth --output-format
-urlbox auth --profile
 urlbox commands
 urlbox commands --agent
 urlbox commands --jq

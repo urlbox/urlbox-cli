@@ -122,13 +122,18 @@ func TestConfigSet_NoProfiles_Errors(t *testing.T) {
 		t.Errorf("error=%v", env["error"])
 	}
 	// The hint must name BOTH onboarding paths. `login` needs a browser, so a
-	// headless box pointed only at `login` has nowhere to go; `auth` is the
-	// route that works there.
+	// headless box pointed only at `login` has nowhere to go. This is the one
+	// error where that matters most: it fires precisely when there are zero
+	// profiles, which is the bare-machine case, and `config set` is the one
+	// command that cannot fix it.
 	hint, _ := env["hint"].(string)
-	for _, want := range []string{"urlbox login", "urlbox auth"} {
+	for _, want := range []string{"urlbox login", "config profile create", "URLBOX_API_SECRET"} {
 		if !strings.Contains(hint, want) {
 			t.Errorf("hint must mention %q for the headless path; got %q", want, hint)
 		}
+	}
+	if strings.Contains(hint, "urlbox auth") {
+		t.Errorf("hint must not point at the removed `urlbox auth`; got %q", hint)
 	}
 }
 

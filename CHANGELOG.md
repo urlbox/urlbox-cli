@@ -4,7 +4,29 @@ All notable changes to the `urlbox` CLI are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
-## v1.1.0 — 2026-08-19
+## v1.2.0 — 2026-08-19
+
+**`urlbox login` is the only interactive sign-in; `urlbox auth` is gone.**
+The device flow covers humans on a terminal. Headless and CI use the
+render secret directly:
+
+```sh
+URLBOX_API_SECRET=ubx_sk_… urlbox render https://example.com   # stateless
+printf %s "$URLBOX_API_SECRET" | urlbox config profile create default --api-secret-stdin
+```
+
+`config profile create` is the headless bootstrap and always was: unlike
+`config set` it works on a machine with no config at all, writes mode
+0600, and additionally accepts `--api-key` (which `link` needs) and
+`--api-host` — none of which `auth` offered. Every `auth` flag has a
+direct equivalent there (`--api-secret`, `--api-secret-stdin`,
+`--api-secret-file`). Error hints across the CLI now name that path.
+
+*(v1.1.0 was published briefly and withdrawn before it had any
+downloads; it is not a release anyone should have. v1.2.0 is the first
+stable release, and no v1 release has ever contained `urlbox auth`.)*
+
+## v1.1.0 — 2026-08-19 (withdrawn)
 
 **Back on v1, and this time it holds.** The 0.x early-access reset
 (v0.10.0) did its job: the surface settled. `SURFACE.txt` is now a

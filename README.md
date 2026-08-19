@@ -54,15 +54,16 @@ urlbox login
 
 Your browser opens, you approve, and the CLI stores your session plus the active project's render credential — renders work immediately.
 
-In CI and headless environments, where the browser can't open, use `urlbox auth` or the `URLBOX_API_SECRET` env var instead (the secret looks like `ubx_sk_…`, found under your project in the [dashboard](https://urlbox.com/dashboard/projects)):
+In CI and headless environments, where the browser can't open, authenticate with the render secret directly (it looks like `ubx_sk_…`, found under your project in the [dashboard](https://urlbox.com/dashboard/projects)):
 
 ```sh
-printf %s "$URLBOX_API_SECRET" | urlbox auth --api-secret-stdin   # persists to the config file
-urlbox auth --api-secret-file /run/secrets/urlbox                 # or read it from disk
-URLBOX_API_SECRET=ubx_sk_… urlbox render https://example.com      # or stay stateless
+URLBOX_API_SECRET=ubx_sk_… urlbox render https://example.com      # stateless — nothing written
+
+printf %s "$URLBOX_API_SECRET" | urlbox config profile create default --api-secret-stdin
+urlbox config profile create default --api-secret-file /run/secrets/urlbox   # or read it from disk
 ```
 
-Avoid the bare `--api-secret`, which leaks into `ps` and shell history. `--api-secret-stdin` / `--api-secret-file` also work as a one-shot override on any single command.
+`config profile create` is the headless bootstrap: it works on a machine with no config at all, writes mode 0600, and also takes `--api-key` (needed by `link`) and `--api-host`. Avoid the bare `--api-secret`, which leaks into `ps` and shell history. `--api-secret-stdin` / `--api-secret-file` also work as a one-shot override on any single command.
 
 When more than one source is present, the highest-priority wins: **command flag → environment variable → a per-repo `.urlbox/config.json` overlay → your stored config**.
 
@@ -127,7 +128,6 @@ urlbox usage                 # render usage for the current period
 | Command | Does |
 |---------|------|
 | `login` / `logout` | Sign in through the browser; sign out and revoke this device's session |
-| `auth` | Store an API secret without a browser — the CI, container, and agent path |
 | `whoami` (alias `me`) | Show the signed-in user and active org/project |
 | `orgs list` / `orgs select` | List or switch your active organisation (`--project` finishes the switch in one step) |
 | `projects list` / `select` / `show` | Browse and switch the active project |
@@ -163,6 +163,7 @@ Secrets are masked by default in both text and JSON — pass `--reveal` on `list
 | Command | Does |
 |---------|------|
 | `config get` / `set` / `path` | Read and write the stored config |
+| `config profile create` | Store credentials without a browser — the CI, container, and agent path |
 | `schema render` | Print the JSON Schema of every render option |
 | `commands` | List every command and flag (human table, or JSON when piped) |
 | `skill show` / `install` | Print or install the agent skill (see below) |

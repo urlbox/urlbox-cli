@@ -67,22 +67,34 @@ func TestRootCommand_UnknownSubcommand(t *testing.T) {
 	}
 }
 
-// TestAuthCommandStillRegistered guards the headless bootstrap path.
-// `urlbox login` needs a browser, so `urlbox auth` remains the only
-// non-interactive way to write a secret into a fresh config on a machine
-// that has never been logged in. Removing it regresses CI and agent setup.
-func TestAuthCommandStillRegistered(t *testing.T) {
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
+// TestNoAuthCommandRemains pins the removal of `urlbox auth`. `login` is the
+// interactive door; the headless bootstrap is
+// `config profile create <name> --api-secret-stdin`, which works from zero
+// profiles and also carries --api-key / --api-host that auth never had.
+// URLBOX_API_SECRET stays the stateless path.
+func TestNoAuthCommandRemains(t *testing.T) {
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
 	code := cmd.Execute([]string{"auth"}, stdout, stderr)
-	out := stdout.String()
-	if strings.Contains(out, "unknown command") {
-		t.Fatalf("`urlbox auth` must stay registered as the headless bootstrap path; got %q", out)
+	out := stdout.String() + stderr.String()
+	if code == 0 || !strings.Contains(out, "unknown command") {
+		t.Fatalf("`urlbox auth` must be gone; got exit=%d %q", code, out)
 	}
-	// No secret supplied and no TTY, so it fails on input — not on the
-	// command being missing. Exit code is usage, not the unknown-command path.
-	if code == 0 {
-		t.Errorf("expected a usage failure with no secret supplied, got exit 0: %q", out)
+}
+
+// TestHeadlessBootstrapWorksFromZeroProfiles is the reason the removal is
+// safe: the path that replaces auth has to work on a machine with no config
+// at all, which is exactly where `config set` fails with "No profiles
+// configured".
+func TestHeadlessBootstrapWorksFromZeroProfiles(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	code := cmd.Execute([]string{
+		"config", "profile", "create", "default",
+		"--api-secret", "ubx_sk_abcdefghijklmnopqrstuvwxyz012345",
+		"--output-format", "json",
+	}, stdout, stderr)
+	if code != 0 {
+		t.Fatalf("headless bootstrap must work from zero profiles: exit=%d %s%s", code, stdout, stderr)
 	}
 }
 

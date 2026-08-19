@@ -257,7 +257,7 @@ func newProfileDeleteCmd() *cobra.Command {
 					return output.NewCLIError(
 						output.ErrConflict,
 						`Cannot delete the only profile "`+name+`"`,
-						"Create another profile first, or run `urlbox login` / `urlbox auth --api-secret <secret>` to start fresh.",
+						"Create another profile first, or run `urlbox login` / `urlbox config profile create <name> --api-secret-stdin` to start fresh.",
 					)
 				}
 				if name == cfg.DefaultProfile {
