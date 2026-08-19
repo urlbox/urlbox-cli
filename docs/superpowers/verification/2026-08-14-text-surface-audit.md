@@ -29,7 +29,7 @@ live against production on the current branch build.
 |---|---|---|---|
 | D1 | `orgs select`, `projects select` | summary only | summary + KV of the new context (org, project, render-credential status) |
 | D2 | `projects create` | `Created project audit-tmp` | + KV (name, id) so the id is visible without a follow-up call |
-| D3 | `rename`/`enable`/`disable`/`delete`/`defaults set/remove` | summaries print the raw id (`Disabled proj_paygm8iqos`) though the user typed a name | summaries name the project (`Disabled audit-tmp2 (proj_…)`) |
+| D3 | `rename`/`enable`/`disable`/`delete`/`defaults set/remove` | summaries print the raw id (`Disabled proj_example`) though the user typed a name | summaries name the project (`Disabled audit-tmp2 (proj_…)`) |
 | D4 | `defaults set` | `Set 1 default options` | grammar: `1 default option` / `N default options`; plus KV of the resulting defaults |
 | D5 | `render`/`screenshot`/`pdf`/`video --dry-run` (shipped surface) | summary only; validated payload invisible in text | + KV of the validated options |
 | D6 | `schema render` (shipped surface) | prints a title, no schema | print the schema body in text mode |

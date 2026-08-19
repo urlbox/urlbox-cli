@@ -3,7 +3,7 @@
 This file is auto-loaded by Claude Code when working in this repo.
 
 ## Spec
-Canonical: `/Users/gustavomeneses/code/urlbox/urlbox-mono/urlbox-cli-final-spec.md`
+Canonical: `urlbox-cli-final-spec.md` in the internal monorepo (not mirrored here).
 
 ## Non-negotiables
 - **TDD from commit one.** Failing test → minimal implementation → green → refactor → commit.

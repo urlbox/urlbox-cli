@@ -16,8 +16,8 @@ manual checklist that gates the Plan 2 release.
   ./...`, build, surface-check) and `make surface-snapshot` produced **no**
   `SURFACE.txt` diff — Plan 2's commands were snapshotted by their own tasks;
   Task 8 adds no new commands or flags.
-- The machine carries a real logged-in session (`arnold@urlbox.com`, org
-  `AJ's Org` / `org_u6jgi2c27o`, project `Default` / `proj_2j6ehq29fy`), used
+- The machine carries a real logged-in session (`someone@example.com`, org
+  `Example Org` / `org_example`, project `Default` / `proj_example`), used
   for the read-only and gate-behaviour drives against production. **No
   credentials were created, updated, assigned, or deleted against
   production** — every destructive/creating verb was driven only to its
@@ -175,9 +175,9 @@ text mode in both states.
 **Logged in** (real session), exit 0 — all ten checks pass:
 
 ```
-│ ✓ │ session           │ signed in as arnold@urlbox.com  │
-│ ✓ │ active_org        │ org_u6jgi2c27o                  │
-│ ✓ │ active_project    │ proj_2j6ehq29fy                 │
+│ ✓ │ session           │ signed in as someone@example.com  │
+│ ✓ │ active_org        │ org_example                  │
+│ ✓ │ active_project    │ proj_example                 │
 ```
 
 **Logged out** (legacy config, fake secret), exit 3 — the three session-world

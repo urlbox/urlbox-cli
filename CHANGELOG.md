@@ -78,16 +78,13 @@ management of the organisation's storage, proxy, and LLM credentials.
 carry a v1 stability promise. We're resetting to 0.x to set
 expectations honestly while the surface keeps iterating.
 
-v0.10.0 is functionally identical to v1.0.4 — same commands, same
-flags, same envelope contract, same exit codes. Only the version
-number changes. Migrate with:
+v0.10.0 was functionally identical to v1.0.4 — same commands, same
+flags, same envelope contract, same exit codes; only the version number
+changed.
 
-- npm: `npm install -g @urlbox/cli@0.10.0`
-- Homebrew: `brew update && brew upgrade urlbox` (will pick 0.10.0)
-- Scoop: `scoop update urlbox`
-
-The v1.x line was deprecated on npm at the time of this reset. That
-deprecation is lifted with v1.1.0 — see that entry.
+*Historical entry.* The v1.x line was deprecated on npm at the time of
+this reset; that deprecation was lifted with v1.1.0, which is the
+current release. Nothing here is current installation advice.
 
 ## v1.0.4 — 2026-05-15
 

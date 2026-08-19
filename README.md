@@ -129,13 +129,15 @@ urlbox usage                 # render usage for the current period
 | `login` / `logout` | Sign in through the browser; sign out and revoke this device's session |
 | `auth` | Store an API secret without a browser — the CI, container, and agent path |
 | `whoami` (alias `me`) | Show the signed-in user and active org/project |
-| `orgs list` / `orgs select` | List or switch your active organisation |
+| `orgs list` / `orgs select` | List or switch your active organisation (`--project` finishes the switch in one step) |
 | `projects list` / `select` / `show` | Browse and switch the active project |
 | `projects create` / `rename` / `enable` / `disable` / `delete` | Manage projects |
 | `projects defaults show` / `set` / `remove` | Manage a project's default render options |
 | `usage` | Render usage summary for the active org |
 
-Deletes and disables prompt for confirmation; pass `--yes` to skip the prompt (agents should). Details at [urlbox.com/docs/cli/configuration](https://urlbox.com/docs/cli/configuration).
+Deletes and disables prompt for confirmation; pass `--yes` to skip the prompt (agents should).
+
+Switching organisation clears the stored render credential — it belongs to a project in the organisation you are leaving. The CLI picks the new organisation's project back up automatically when there is exactly one; when there are several, pass `urlbox orgs select <org> --project <name>` to land both in one step, or follow up with `urlbox projects select`. Details at [urlbox.com/docs/cli/configuration](https://urlbox.com/docs/cli/configuration).
 
 ### Org resources
 
@@ -220,11 +222,13 @@ urlbox render --help --agent            # structured JSON help
 urlbox schema render                    # every render option and its type
 ```
 
-Pipe any command and it defaults to JSON. Add `--yes` to skip confirmation prompts, `--org` / `--project` to pin context, and `URLBOX_API_SECRET` to authenticate without a browser. Skill install targets are `claude-code`, `cursor`, `codex`, and `opencode`. Setup guide: [urlbox.com/docs/cli/ai-agents](https://urlbox.com/docs/cli/ai-agents).
+Pipe any command and it defaults to JSON. Add `--yes` to skip confirmation prompts, `URLBOX_API_SECRET` to authenticate without a browser, and the global `--profile <name>` to pin a whole credential set. Pin context up front with `urlbox login --org <o> --project <p>`, or `urlbox orgs select <o> --project <p>` when switching later — both avoid the interactive picker, which refuses to run without a terminal rather than hanging. Skill install targets are `claude-code`, `cursor`, `codex`, and `opencode`. Setup guide: [urlbox.com/docs/cli/ai-agents](https://urlbox.com/docs/cli/ai-agents).
 
 ## Versioning
 
-Versions `v0.1` through `v0.10` were early access. A `v1.0.0`–`v1.0.4` line was published in May 2026, then reset back to `v0.10.0` because the surface wasn't ready to carry a v1 stability promise. This release is **v1.1.0** — the first official stable release. The `1.0.x` numbers are unavailable on npm because that earlier line used them.
+**v1.1.0 is the current stable release**, and the CLI follows [SemVer](https://semver.org) from here. `SURFACE.txt` is the contract: nothing listed in it is removed or renamed within the v1 line without a major bump — new commands and flags can arrive in any minor release.
+
+Earlier `0.x` and `1.0.x` versions were the pre-stable line and are superseded; `npm install -g @urlbox/cli` always resolves to the current release.
 
 ## Development
 

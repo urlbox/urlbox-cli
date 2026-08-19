@@ -4,7 +4,7 @@
 
 **Goal:** Bring spec slices 1–3 of `docs/superpowers/specs/2026-08-12-account-management-port-design.md` into this repo: session config fields, the existing-command compatibility net, a session-authenticated API client, browser device-flow `login`/`logout`, `whoami`, `orgs`, `projects` (context + CRUD + defaults), and `usage`.
 
-**Architecture:** Behaviour is ported from `/Users/arnoldcubici-jones/Code/work/cli` (branch `feat/device-login`, the behaviour spec); every command is written natively in this repo's idioms (cobra, `output.Envelope`/`CLIError` closed codes, `config.Resolve`/`Update`, `apitest` fakes, `internal/clock`). Five framework-free logic pieces are transplanted with their tests. Slices 4–5 (credential resources, auth sweep) are Plan 2 — do not touch `auth.go`, `doctor.go`, or storage/proxies/llm here.
+**Architecture:** Behaviour is ported from `/Users/you/Code/work/cli` (branch `feat/device-login`, the behaviour spec); every command is written natively in this repo's idioms (cobra, `output.Envelope`/`CLIError` closed codes, `config.Resolve`/`Update`, `apitest` fakes, `internal/clock`). Five framework-free logic pieces are transplanted with their tests. Slices 4–5 (credential resources, auth sweep) are Plan 2 — do not touch `auth.go`, `doctor.go`, or storage/proxies/llm here.
 
 **Tech Stack:** Go 1.23, cobra, charmbracelet/huh (new dep, picker only), lipgloss (present), httptest via `internal/api/apitest`, `internal/clock`.
 
@@ -20,7 +20,7 @@
 - NO commits during tasks: mark the task complete and move on — all work accumulates uncommitted for a single review-gated commit at the end (this overrides the usual per-task commit convention).
 - Do not modify: `auth.go`, `doctor.go`, `link.go`, `dashboard.go`, `skill.go`, `commands.go`, `upgrade.go`, `render*.go`, `screenshot.go`, `pdf.go`, `video.go`, `status.go` (Plan 2 owns the auth sweep; render-family behaviour must not change).
 
-**Source-repo shorthand:** `SRC = /Users/arnoldcubici-jones/Code/work/cli` (read-only reference). Target repo root is this repo.
+**Source-repo shorthand:** `SRC = /Users/you/Code/work/cli` (read-only reference). Target repo root is this repo.
 
 ---
 
