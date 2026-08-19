@@ -221,13 +221,23 @@ func runDoctorChecks(ctx context.Context, resolved *config.Resolved, profile *co
 	if resolved != nil && resolved.APIHost != "" {
 		host = resolved.APIHost
 	}
+	// A render credential resolved from a flag, URLBOX_API_SECRET, the repo
+	// overlay, or a stored profile is a complete, supported setup: it is the
+	// documented CI/headless path and every render command works on it. The
+	// session checks below still report what they find, but they downgrade
+	// to "warn" in that case — a machine that never logged in is not broken,
+	// it just isn't using the browser flow. Without this, `urlbox doctor`
+	// exits 3 on a perfectly healthy CI box and stops being usable as a
+	// health gate.
+	credentialOnly := resolved != nil && resolved.APISecret != ""
+
 	return []Check{
 		checkVersion(),
 		checkInstallMethod(),
 		checkConfigFile(),
-		checkSession(ctx, host, profile),
-		checkActiveOrg(profile),
-		checkActiveProject(profile),
+		checkSession(ctx, host, profile, credentialOnly),
+		checkActiveOrg(profile, credentialOnly),
+		checkActiveProject(profile, credentialOnly),
 		checkRenderCredential(ctx, host, resolved),
 		checkDNS(ctx, host),
 		checkAPIReachable(ctx, host),
@@ -268,8 +278,16 @@ func checkConfigFile() Check {
 	}
 }
 
-func checkSession(ctx context.Context, host string, profile *config.Profile) Check {
+func checkSession(ctx context.Context, host string, profile *config.Profile, credentialOnly bool) Check {
 	if profile.SessionToken == "" {
+		if credentialOnly {
+			return Check{
+				Name:    "session",
+				Status:  "warn",
+				Message: "not logged in (using a render credential)",
+				Hint:    "Optional: `urlbox login` adds account management (orgs, projects, usage).",
+			}
+		}
 		return Check{
 			Name:    "session",
 			Status:  "fail",
@@ -277,7 +295,12 @@ func checkSession(ctx context.Context, host string, profile *config.Profile) Che
 			Hint:    loginHint,
 		}
 	}
+	// One attempt, like every other check here. checkRenderCredential,
+	// checkAPIReachable, and checkDNS all probe once; a session probe that
+	// retries 4x with backoff just makes `doctor` hang for ~7s on an
+	// unreachable host without changing the diagnosis.
 	client := api.NewSessionClient(host, profile.SessionToken)
+	client.SetRetryConfig(api.NoRetryConfig())
 	var session sessionResponse
 	if err := client.GetJSON(ctx, "/v1/auth/get-session", &session); err != nil {
 		return Check{
@@ -298,8 +321,15 @@ func checkSession(ctx context.Context, host string, profile *config.Profile) Che
 	return Check{Name: "session", Status: "ok", Message: "signed in as " + session.User.Email}
 }
 
-func checkActiveOrg(profile *config.Profile) Check {
+func checkActiveOrg(profile *config.Profile, credentialOnly bool) Check {
 	if profile.ActiveOrg == "" {
+		if credentialOnly {
+			return Check{
+				Name:    "active_org",
+				Status:  "warn",
+				Message: "none (not needed for rendering)",
+			}
+		}
 		return Check{
 			Name:    "active_org",
 			Status:  "fail",
@@ -310,8 +340,15 @@ func checkActiveOrg(profile *config.Profile) Check {
 	return Check{Name: "active_org", Status: "ok", Message: profile.ActiveOrg}
 }
 
-func checkActiveProject(profile *config.Profile) Check {
+func checkActiveProject(profile *config.Profile, credentialOnly bool) Check {
 	if profile.ActiveProject == "" {
+		if credentialOnly {
+			return Check{
+				Name:    "active_project",
+				Status:  "warn",
+				Message: "none (not needed for rendering)",
+			}
+		}
 		return Check{
 			Name:    "active_project",
 			Status:  "fail",
@@ -328,7 +365,7 @@ func checkRenderCredential(ctx context.Context, host string, resolved *config.Re
 			Name:    "render_credential",
 			Status:  "fail",
 			Message: "no render credential",
-			Hint:    loginHint + " CI and headless environments can set URLBOX_API_SECRET instead.",
+			Hint:    credentialHint,
 		}
 	}
 	src := resolved.Source.APISecret

@@ -11,19 +11,21 @@ the browser and stores the session and the active project's render
 credentials. Adds org and project switching, project CRUD, usage, and
 management of the organisation's storage, proxy, and LLM credentials.
 
-### Breaking
+### Changed
 
-- **`urlbox auth` is removed.** Interactive setup is `urlbox login`.
-  CI and headless environments are unchanged: set `URLBOX_API_SECRET`
-  and every render command works exactly as before. Scripts that
-  called `urlbox auth --api-secret*` should write the profile with
-  `urlbox config set api_secret` (same flags, same masking) or move
-  to the env var.
+- **`urlbox login` is the new interactive path; `urlbox auth` stays.**
+  The device flow needs a browser, so `auth` remains the way to write a
+  secret on a headless box, in CI, or from an agent — unchanged, with
+  `--api-secret`, `--api-secret-stdin`, and `--api-secret-file` all
+  behaving exactly as before. Nothing is removed from the surface: this
+  release is additive.
 - **`urlbox doctor` now checks the session world** — nine checks
   including session validity, active org/project, and render-credential
   validity (the old `auth` check folded into `render_credential`).
-  A machine that authenticates only via `URLBOX_API_SECRET` fails the
-  three session checks and exits 3.
+  On a machine that authenticates with a render credential only
+  (`URLBOX_API_SECRET`, a stored profile, or the repo overlay) the three
+  session checks report `warn`, not `fail`, and `doctor` still exits 0 —
+  a CI box that never logged in is a supported setup, not a broken one.
 
 ### Added
 
