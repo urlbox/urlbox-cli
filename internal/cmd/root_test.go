@@ -67,16 +67,22 @@ func TestRootCommand_UnknownSubcommand(t *testing.T) {
 	}
 }
 
-func TestNoAuthCommandRemains(t *testing.T) {
+// TestAuthCommandStillRegistered guards the headless bootstrap path.
+// `urlbox login` needs a browser, so `urlbox auth` remains the only
+// non-interactive way to write a secret into a fresh config on a machine
+// that has never been logged in. Removing it regresses CI and agent setup.
+func TestAuthCommandStillRegistered(t *testing.T) {
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
 	code := cmd.Execute([]string{"auth"}, stdout, stderr)
-	if code == 0 {
-		t.Fatal("`urlbox auth` must be an unknown command after removal")
-	}
 	out := stdout.String()
-	if !strings.Contains(out, "unknown") || !strings.Contains(out, "auth") {
-		t.Errorf("expected unknown-command error for `auth`, got %q", out)
+	if strings.Contains(out, "unknown command") {
+		t.Fatalf("`urlbox auth` must stay registered as the headless bootstrap path; got %q", out)
+	}
+	// No secret supplied and no TTY, so it fails on input — not on the
+	// command being missing. Exit code is usage, not the unknown-command path.
+	if code == 0 {
+		t.Errorf("expected a usage failure with no secret supplied, got exit 0: %q", out)
 	}
 }
 

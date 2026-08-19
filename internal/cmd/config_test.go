@@ -121,8 +121,14 @@ func TestConfigSet_NoProfiles_Errors(t *testing.T) {
 	if env["error"] != "No profiles configured" {
 		t.Errorf("error=%v", env["error"])
 	}
-	if got, want := env["hint"], "Run `urlbox login` to create one."; got != want {
-		t.Errorf("hint=%v want=%v", got, want)
+	// The hint must name BOTH onboarding paths. `login` needs a browser, so a
+	// headless box pointed only at `login` has nowhere to go; `auth` is the
+	// route that works there.
+	hint, _ := env["hint"].(string)
+	for _, want := range []string{"urlbox login", "urlbox auth"} {
+		if !strings.Contains(hint, want) {
+			t.Errorf("hint must mention %q for the headless path; got %q", want, hint)
+		}
 	}
 }
 

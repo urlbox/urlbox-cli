@@ -18,7 +18,7 @@ urlbox login
 urlbox render https://example.com --output home.png
 ```
 
-In CI, set `URLBOX_API_SECRET` (your project's secret, `ubx_sk_…`, from the [dashboard](https://urlbox.com/dashboard/projects)) and skip `login`.
+In CI, skip `login` — it needs a browser. Either set `URLBOX_API_SECRET` (your project's secret, `ubx_sk_…`, from the [dashboard](https://urlbox.com/dashboard/projects)), or persist it once with `printf %s "$URLBOX_API_SECRET" | urlbox auth --api-secret-stdin`.
 
 Every command speaks JSON when piped, supports a built-in `--jq <expr>` filter, and returns a clear exit code.
 

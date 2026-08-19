@@ -257,7 +257,7 @@ func newProfileDeleteCmd() *cobra.Command {
 					return output.NewCLIError(
 						output.ErrConflict,
 						`Cannot delete the only profile "`+name+`"`,
-						"Create another profile first, or run `urlbox login` to start fresh.",
+						"Create another profile first, or run `urlbox login` / `urlbox auth --api-secret <secret>` to start fresh.",
 					)
 				}
 				if name == cfg.DefaultProfile {
@@ -409,7 +409,7 @@ profile count.`,
 						return output.NewCLIError(
 							output.ErrUsage,
 							"No profiles configured",
-							"Run `urlbox login` to create one.",
+							credentialHint,
 						)
 					}
 					if _, ok := c.Profiles[val]; !ok {
@@ -507,7 +507,7 @@ func resolveTargetProfile(cmd *cobra.Command, c *config.Config) (string, error) 
 		return "", output.NewCLIError(
 			output.ErrUsage,
 			"No profiles configured",
-			"Run `urlbox login` to create one.",
+			credentialHint,
 		)
 	}
 	flagProfile, _ := cmd.Root().PersistentFlags().GetString("profile")

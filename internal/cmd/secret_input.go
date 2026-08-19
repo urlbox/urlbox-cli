@@ -117,7 +117,7 @@ func resolveAPISecretInput(stdin io.Reader, stderr io.Writer, direct string, dir
 			return "", output.NewCLIError(
 				output.ErrUsage,
 				"--api-secret-stdin received no secret on stdin",
-				"Pipe the secret on stdin, e.g. `printf %s \"$URLBOX_API_SECRET\" | urlbox config profile create default --api-secret-stdin`.",
+				"Pipe the secret on stdin, e.g. `printf %s \"$URLBOX_API_SECRET\" | urlbox auth --api-secret-stdin`.",
 			)
 		}
 		return s, nil

@@ -54,7 +54,15 @@ urlbox login
 
 Your browser opens, you approve, and the CLI stores your session plus the active project's render credential — renders work immediately.
 
-In CI and headless environments, where the browser can't open, set the `URLBOX_API_SECRET` env var instead (the secret looks like `ubx_sk_…`, found under your project in the [dashboard](https://urlbox.com/dashboard/projects)). For a one-shot override on a single command there's also `--api-secret-stdin` / `--api-secret-file` — avoid the bare `--api-secret`, which leaks into `ps` and shell history.
+In CI and headless environments, where the browser can't open, use `urlbox auth` or the `URLBOX_API_SECRET` env var instead (the secret looks like `ubx_sk_…`, found under your project in the [dashboard](https://urlbox.com/dashboard/projects)):
+
+```sh
+printf %s "$URLBOX_API_SECRET" | urlbox auth --api-secret-stdin   # persists to the config file
+urlbox auth --api-secret-file /run/secrets/urlbox                 # or read it from disk
+URLBOX_API_SECRET=ubx_sk_… urlbox render https://example.com      # or stay stateless
+```
+
+Avoid the bare `--api-secret`, which leaks into `ps` and shell history. `--api-secret-stdin` / `--api-secret-file` also work as a one-shot override on any single command.
 
 When more than one source is present, the highest-priority wins: **command flag → environment variable → a per-repo `.urlbox/config.json` overlay → your stored config**.
 
@@ -119,6 +127,7 @@ urlbox usage                 # render usage for the current period
 | Command | Does |
 |---------|------|
 | `login` / `logout` | Sign in through the browser; sign out and revoke this device's session |
+| `auth` | Store an API secret without a browser — the CI, container, and agent path |
 | `whoami` (alias `me`) | Show the signed-in user and active org/project |
 | `orgs list` / `orgs select` | List or switch your active organisation |
 | `projects list` / `select` / `show` | Browse and switch the active project |

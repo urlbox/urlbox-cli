@@ -225,6 +225,7 @@ func newRootCmd(stdout, stderr io.Writer) *cobra.Command {
 	cmd.AddCommand(newUpgradeCmd(stdout, stderr))
 	cmd.AddCommand(newCommandsCmd(stdout, stderr))
 	cmd.AddCommand(newSurfaceCmd(cmd))
+	cmd.AddCommand(newAuthCmd())
 	cmd.AddCommand(newConfigCmd())
 	cmd.AddCommand(newDashboardCmd())
 	cmd.AddCommand(newDoctorCmd())

@@ -26,6 +26,6 @@ func requireSecret(resolved *config.Resolved) *output.CLIError {
 	return output.NewCLIError(
 		output.ErrAuth,
 		"no API secret configured",
-		loginHint+" CI and headless environments can set URLBOX_API_SECRET in the environment instead.",
+		credentialHint,
 	)
 }

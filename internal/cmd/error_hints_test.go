@@ -91,11 +91,12 @@ func TestNoEmptyCLIErrorHints(t *testing.T) {
 //
 //   - "urlbox config show" — no such subcommand. Closest real: `config get`,
 //     `config path`, `config profile list`.
-//   - "urlbox auth" — the auth command was removed in favour of `urlbox
-//     login`; no production hint may point users at it.
+//   - "urlbox auth --api-key" — flag was removed in v0.6.0; auth takes
+//     `--api-secret`. Pinned removed in auth_test.go. (The `auth` command
+//     itself stays: it is the headless bootstrap path `login` cannot serve.)
 var ghostCommandSubstrings = []string{
 	"urlbox config show",
-	"urlbox auth",
+	"urlbox auth --api-key",
 }
 
 // TestNoGhostCommandsInHints walks production .go files and fails when

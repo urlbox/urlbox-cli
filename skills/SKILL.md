@@ -163,7 +163,8 @@ documents the well-known options, but the API accepts more.
 | `urlbox dashboard`               | Open the Urlbox dashboard in the user's browser        |
 | `urlbox doctor`                  | Diagnose install, config, network, credentials         |
 | `urlbox link`                    | Generate an HMAC-signed render URL with no API call    |
-| `urlbox login`                   | Browser sign-in (agents: use `URLBOX_API_SECRET` instead) |
+| `urlbox auth`                    | Save API secret headlessly (`--api-secret`/`-stdin`/`-file`) |
+| `urlbox login`                   | Browser sign-in (agents: use `urlbox auth` or `URLBOX_API_SECRET`) |
 | `urlbox logout`                  | Revoke and clear this device's saved session           |
 | `urlbox whoami` / `urlbox me`    | Show the signed-in account, org, and active project    |
 | `urlbox orgs list\|select`       | List organisations or switch the active one            |
@@ -292,7 +293,7 @@ the render likely captured a captcha page rather than the target content.
 |--------------|------|------------------------------------------------------------|
 | `usage`      | 1    | bad flags / missing url                                    |
 | `validation` | 2    | payload failed schema validation; see `hint` for the fix   |
-| `auth`       | 3    | missing/invalid credentials; run `urlbox login` (CI: set `URLBOX_API_SECRET`) |
+| `auth`       | 3    | missing/invalid credentials; run `urlbox login`, or `urlbox auth` / `URLBOX_API_SECRET` when headless |
 | `forbidden`  | 4    | account/plan doesn't allow this feature                    |
 | `not_found`  | 5    | endpoint or render ID unknown                              |
 | `rate_limit` | 6    | retry budget exhausted; back off and retry                 |
@@ -496,7 +497,7 @@ on a profile directly: `urlbox --profile <name> config set api_host https://...`
 
 `config set` and `config get` adapt to the profile count:
 
-- **0 profiles:** `config set` errors with "No profiles configured" — run `urlbox login` to bootstrap.
+- **0 profiles:** `config set` errors with "No profiles configured" — run `urlbox login` (browser) or `urlbox auth --api-secret <secret>` (headless) to bootstrap.
 - **1 profile:** `--profile` is implicit; `urlbox config set api_secret sk_xxx` Just Works.
 - **2+ profiles:** `--profile` is required; the error lists configured names.
 
@@ -516,19 +517,25 @@ order of secret-hygiene; prefer the higher items.
 URLBOX_API_SECRET=<secret> urlbox render <url>
 
 # B — pipe on stdin (no argv leak, no shell-history exposure)
-printf %s "$URLBOX_API_SECRET" | urlbox config profile create default --api-secret-stdin
+printf %s "$URLBOX_API_SECRET" | urlbox auth --api-secret-stdin
 
 # C — read from a file (handy when the secret already lives on disk)
-urlbox config profile create default --api-secret-file /run/secrets/urlbox
+urlbox auth --api-secret-file /run/secrets/urlbox
 
 # D — argv flag (leaks into `ps` and shell history; emits a TTY warning)
-urlbox config profile create default --api-secret <secret>
+urlbox auth --api-secret <secret>
 
 urlbox doctor --output-format json # JSON envelope: ok/not-ok
 ```
 
+`urlbox auth` is the headless bootstrap: it writes the secret into the
+config file (mode 0600), creating a profile if none exists. Use it when
+there is no browser — `urlbox login` cannot run in CI, in a container,
+or under an agent. `urlbox config profile create <name> --api-secret*`
+does the same for a *named* profile.
+
 `--api-secret-stdin` and `--api-secret-file` are accepted by every
-command that takes `--api-secret` (render, status, link,
+command that takes `--api-secret` (auth, render, status, link,
 config profile create, and the render aliases screenshot/pdf/video).
 Mutually exclusive — pass at most one.
 
