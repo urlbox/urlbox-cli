@@ -291,7 +291,7 @@ func TestUnknownCommand_FarTypo_NoSuggestion(t *testing.T) {
 	}
 }
 
-// TestRoot_DidYouMean_NoSelfSuggestion pins Round 6 Tester #2 + Adv-8:
+// TestRoot_DidYouMean_NoSelfSuggestion pins a regression:
 // the suggester used to return the exact rejected flag back as the
 // suggestion, because its candidate pool was the union of every flag
 // across every command in the tree. If the typed flag existed on ANY
@@ -308,7 +308,7 @@ func TestRoot_DidYouMean_NoSelfSuggestion(t *testing.T) {
 		args []string
 	}{
 		// `render` has no --url (it takes positional URL). Without the
-		// class-fix, this suggests --url (from link).
+		// scoped pool, this suggests --url (from link).
 		{"render --url tautology", []string{"render", "--url", "https://example.com"}},
 		// `link` accepts only api-* + format + jq + json + output-format + profile + url.
 		// --width is render's. Used to suggest --width back to itself.
@@ -353,7 +353,7 @@ func TestRoot_DidYouMean_NoSelfSuggestion(t *testing.T) {
 }
 
 // TestRoot_DidYouMean_TyposStillWork pins that legitimate typos still
-// get a useful suggestion — the class-fix narrows the pool, it doesn't
+// get a useful suggestion — the fix narrows the pool, it doesn't
 // eliminate suggestions.
 func TestRoot_DidYouMean_TyposStillWork(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
@@ -372,7 +372,7 @@ func TestRoot_DidYouMean_TyposStillWork(t *testing.T) {
 	}
 }
 
-// TestRoot_UnknownSubcommand_ScopedSuggestion pins Round 6 Adv-9 bonus
+// TestRoot_UnknownSubcommand_ScopedSuggestion pins a review
 // finding: `urlbox schema list` suggested "link" — a sibling top-level
 // command — because the suggester walked root.Commands() instead of
 // the actual parent's subcommands. Class-fix: scope candidates to the
@@ -410,7 +410,7 @@ func TestRoot_UnknownSubcommand_ScopedSuggestion(t *testing.T) {
 
 // TestRoot_EnvelopeOkMatchesExit_Contract is the meta-test: every
 // command/scenario that produces ok:false in the envelope MUST also
-// exit non-zero, and vice versa. Round 6 Adv-9 surfaced sibling
+// exit non-zero, and vice versa. A review surfaced sibling
 // suspicions on schema list / config profile show; this test walks a
 // representative slice of error paths and pins the contract.
 func TestRoot_EnvelopeOkMatchesExit_Contract(t *testing.T) {
@@ -453,7 +453,7 @@ func TestRoot_EnvelopeOkMatchesExit_Contract(t *testing.T) {
 	}
 }
 
-// ─── v1.0.4 Class 3.2 — error stream routing per format ────────────
+// ─── error stream routing per format ────────────
 //
 // Invariant: the output stream a byte goes to depends on what kind of
 // byte it is, not on where the code happens to be.

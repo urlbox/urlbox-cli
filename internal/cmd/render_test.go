@@ -281,7 +281,7 @@ func TestRender_KnownKeyBadType_PassesThroughToAPI(t *testing.T) {
 // v0.9.0 schema-as-docs contract: unknown key with a fuzzy match emits
 // an agent-consumable warning; the request still goes through verbatim.
 //
-// v1.0.4 Class 3.4: in JSON/quiet mode the warning rides in
+// In JSON/quiet mode the warning rides in
 // envelope.warnings, not as plain stderr text alongside the JSON on
 // stdout (the pre-1.0.4 behaviour mixed streams in a way that broke
 // agents who consumed either stream alone).
@@ -297,7 +297,7 @@ func TestRender_FuzzyCorrection_JSONMode_WarningInEnvelope(t *testing.T) {
 	if exit != 0 {
 		t.Fatalf("exit=%d, want 0 (passthrough); stdout=%s stderr=%s", exit, stdout.String(), stderr.String())
 	}
-	// v1.0.4 Class 3.4: no plain-text warning on stderr in JSON mode.
+	// No plain-text warning on stderr in JSON mode.
 	if strings.Contains(stderr.String(), "warning:") {
 		t.Errorf("JSON mode: warning must NOT leak to stderr; got %q", stderr.String())
 	}
@@ -910,7 +910,7 @@ func TestRender_WaitUntilHelp_ListsRealEnumValues(t *testing.T) {
 
 // TestRender_APISecretStdin_ConflictsWithJSONStdin pins that --api-secret-stdin
 // and --json - cannot share stdin; the runRender entry rejects the combo
-// before either reader touches stdin. Round 1 S-C2 follow-up.
+// before either reader touches stdin.
 func TestRender_APISecretStdin_ConflictsWithJSONStdin(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("URLBOX_API_SECRET", "sec_test")
@@ -932,7 +932,7 @@ func TestRender_APISecretStdin_ConflictsWithJSONStdin(t *testing.T) {
 	}
 }
 
-// TestRender_DryRun_ValidatesOutputSandbox pins Round 4 M1: --dry-run
+// TestRender_DryRun_ValidatesOutputSandbox pins a regression: --dry-run
 // must catch --output paths that escape the CWD sandbox. Before this fix,
 // "ok: true, payload validated" came back for paths the real run would
 // reject — defeating dry-run as a pre-flight tool.
@@ -957,7 +957,7 @@ func TestRender_DryRun_ValidatesOutputSandbox(t *testing.T) {
 	}
 }
 
-// TestRender_OutputPath_WritabilityPreflight pins Round 4 M6: when
+// TestRender_OutputPath_WritabilityPreflight pins a regression: when
 // --output points at a directory the user can't write, the failure must
 // be detected BEFORE the API call (no wasted credit) and surfaced as
 // ErrValidation (not ErrServer — that misclassified the user error as
@@ -1012,7 +1012,7 @@ func TestRender_OutputPath_WritabilityPreflight(t *testing.T) {
 	}
 }
 
-// TestRender_NumericFlag_BeyondJSONSafeInt_Errors pins Round 4 M2:
+// TestRender_NumericFlag_BeyondJSONSafeInt_Errors pins a regression:
 // width/height/etc. accepted Go int64 values past 2^53 and JSON-marshaled
 // them as float64 — silently rounding to a different value than the user
 // passed. The schema documents [-9007199254740991, 9007199254740991]; the
@@ -1071,8 +1071,8 @@ func TestRender_NumericFlag_AtBoundary_Allowed(t *testing.T) {
 	}
 }
 
-// TestRender_JSONPath_BeyondJSONSafeInt_Errors pins Round 5 Adv-1 (High):
-// the M2 flag-parser fix doesn't apply to values passed through --json,
+// TestRender_JSONPath_BeyondJSONSafeInt_Errors pins a regression:
+// the flag-parser fix doesn't apply to values passed through --json,
 // even though the flag-parser's own error message warns about exactly
 // this rounding. The dry-run output silently substituted
 // 9007199254740993 → 9007199254740992 (float64 rounding).
@@ -1186,8 +1186,8 @@ func TestRender_JSONPath_NestedSlice_NoStrayJSONNumber(t *testing.T) {
 	}
 }
 
-// TestRender_QuietMode_EmitsSingleUsefulValue pins Round 5 First-3 /
-// Power-1: render --output-format quiet used to dump the full data
+// TestRender_QuietMode_EmitsSingleUsefulValue pins a regression:
+// render --output-format quiet used to dump the full data
 // JSON. Other quiet-mode commands (link, config get, config path)
 // emit a single bare value suitable for piping. Render should follow
 // suit, contextually:
@@ -1236,7 +1236,7 @@ func TestRender_QuietMode_EmitsSingleUsefulValue(t *testing.T) {
 	})
 }
 
-// TestRender_TextMode_SummaryOnly pins Round 5 Power-2: --output-format
+// TestRender_TextMode_SummaryOnly pins a regression: --output-format
 // text used to print the green ✓ summary AND a raw JSON dump of .data.
 // "text" should be the human-readable format — summary only. Users who
 // want JSON should pass --output-format json.
@@ -1263,7 +1263,7 @@ func TestRender_TextMode_SummaryOnly(t *testing.T) {
 	}
 }
 
-// TestRender_DryRunWithCurl_WarnsAboutSilentDrop pins Round 5 Adv-3:
+// TestRender_DryRunWithCurl_WarnsAboutSilentDrop pins a regression:
 // when --dry-run AND --curl are passed together, --dry-run wins
 // silently. The agent's complaint was "the user has no signal that
 // --curl was dropped". Now: a breadcrumb in the dry-run envelope
@@ -1315,7 +1315,7 @@ func TestRender_DryRunWithOutput_WarnsAboutSilentDrop(t *testing.T) {
 	}
 }
 
-// TestRender_NegativeTimeout_Errors pins Round 5 Adv-5: --timeout -5s
+// TestRender_NegativeTimeout_Errors pins a regression: --timeout -5s
 // used to produce the nonsense diagnostic "Render timed out after -5s".
 // Negative durations should be rejected at parse time with a clear
 // usage error.
@@ -1342,7 +1342,7 @@ func TestRender_NegativeTimeout_Errors(t *testing.T) {
 	}
 }
 
-// TestRender_JSONEmptyURL_Errors pins Round 5 Adv-7: --json '{"url":""}'
+// TestRender_JSONEmptyURL_Errors pins a regression: --json '{"url":""}'
 // and --json '{"url":null}' bypassed the "missing url" guard because
 // it only checked the KEY's presence, not the value. Empty / null URL
 // is structurally equivalent to "no URL" — reject both.
@@ -1379,14 +1379,14 @@ func TestRender_JSONEmptyURL_Errors(t *testing.T) {
 	}
 }
 
-// TestRender_JSONPath_RecursiveBigIntGuard pins Round 6 Adv-1 class-fix:
-// the original guard (Round 5 Commit O) only walked the top-level keys
+// TestRender_JSONPath_RecursiveBigIntGuard pins a regression:
+// the original guard only walked the top-level keys
 // width/height/delay/quality, leaving every other integer in the JSON
 // tree unchecked. The adversarial agent demonstrated the bypass with
 // {"viewport":{"width":9007199254740993}} — same incident class, one
 // level deeper.
 //
-// The class-fix walks the entire tree (nested objects + arrays + deep
+// The guard walks the entire tree (nested objects + arrays + deep
 // combinations). Any integer past ±2^53-1 anywhere is rejected with
 // a path-qualified error message.
 func TestRender_JSONPath_RecursiveBigIntGuard(t *testing.T) {
@@ -1397,7 +1397,7 @@ func TestRender_JSONPath_RecursiveBigIntGuard(t *testing.T) {
 		// Top-level (already worked, regression guard)
 		{"top-level width", `{"url":"https://e.com","width":9007199254740993}`},
 
-		// Nested object — the original Adv-1 Round 6 repro
+		// Nested object — the original repro
 		{"nested in viewport", `{"url":"https://e.com","viewport":{"width":9007199254740993}}`},
 
 		// Array element
@@ -1488,9 +1488,9 @@ func TestRender_JSONPath_RecursiveBigIntGuard_AcceptsValid(t *testing.T) {
 	}
 }
 
-// TestRender_JSON_LargeIntBeyondInt64_Rejected pins Round 8 LL: numbers
-// > 2^63-1 were silently coerced to float scientific notation (the Y
-// commit's walker called Int64() and silently passed through on error,
+// TestRender_JSON_LargeIntBeyondInt64_Rejected pins a regression: numbers
+// > 2^63-1 were silently coerced to float scientific notation (the earlier
+// walker called Int64() and silently passed through on error,
 // missing the case where the error was "out of int64 range" not "not
 // an integer").
 func TestRender_JSON_LargeIntBeyondInt64_Rejected(t *testing.T) {
@@ -1521,9 +1521,9 @@ func TestRender_JSON_LargeIntBeyondInt64_Rejected(t *testing.T) {
 	}
 }
 
-// TestRender_JSON_DuplicateKey_Rejected pins Round 8 LL: standard
+// TestRender_JSON_DuplicateKey_Rejected pins a regression: standard
 // json.Unmarshal silently takes the last value when keys repeat. The
-// Adv-2 demo `{"url":"a","url":"b"}` signed b with no warning.
+// repro `{"url":"a","url":"b"}` signed b with no warning.
 func TestRender_JSON_DuplicateKey_Rejected(t *testing.T) {
 	cases := []struct {
 		name, payload string
@@ -1580,7 +1580,7 @@ func TestRender_JSON_FractionalAndScientific_PassThrough(t *testing.T) {
 	}
 }
 
-// ─── v1.0.4 Class 5.1 — auth pre-flight ─────────────────────────────
+// ─── auth pre-flight ─────────────────────────────
 //
 // Invariant: missing-secret renders fail fast on the CLI side with the
 // CLI's own vocabulary, not a wasted round-trip to the API's confusing

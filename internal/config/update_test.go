@@ -15,7 +15,7 @@ import (
 	"github.com/urlbox/urlbox-cli/internal/output"
 )
 
-// TestUpdate_ConcurrentProfileCreates_AllPersist pins Round 7 Adv-3 (High):
+// TestUpdate_ConcurrentProfileCreates_AllPersist pins a regression:
 // 20 goroutines each calling config.Update to add a distinct profile must
 // all persist. Before the lock, the Load -> mutate -> Save sequence raced —
 // processes started from the same "before" state and silently overwrote
@@ -80,7 +80,7 @@ func TestUpdate_MutateFnErrorPropagates(t *testing.T) {
 	}
 }
 
-// TestUpdate_StaleLock_AfterKill_SelfHeals pins Round 8 KK: the pre-KK
+// TestUpdate_StaleLock_AfterKill_SelfHeals pins a regression: the previous
 // O_EXCL approach left a 0-byte .lock file after SIGKILL of the
 // previous writer, wedging every subsequent write for 5s. Now we
 // detect dead-PID/zero-byte lock files and clobber them on the spot.
@@ -158,8 +158,8 @@ func TestUpdate_StaleLock_DeadPID_SelfHeals(t *testing.T) {
 	}
 }
 
-// TestUpdate_LockAcquireTimeout_ReturnsConflictNotServer pins Round 8
-// KK / Adv-1 M1: local-IO / lock-contention errors used to surface as
+// TestUpdate_LockAcquireTimeout_ReturnsConflictNotServer pins a regression:
+// local-IO / lock-contention errors used to surface as
 // code:"server" (exit 10), which the contract reserves for upstream
 // server problems. Now they're code:"conflict" (exit 7).
 func TestUpdate_LockAcquireTimeout_ReturnsConflictNotServer(t *testing.T) {

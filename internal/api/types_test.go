@@ -11,7 +11,7 @@ import (
 
 func TestResponse_JSON_RoundTrip(t *testing.T) {
 	// `data` payload uses camelCase to match the locked Urlbox API wire
-	// format (renderUrl, renderId — see urlbox-mono apps/api).
+	// format (renderUrl, renderId).
 	src := `{
 		"ok": true,
 		"command": "render",

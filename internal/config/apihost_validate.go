@@ -1,4 +1,4 @@
-// internal/config/apihost_validate.go — Round 8 Class B (GG): single
+// internal/config/apihost_validate.go — single
 // gate for api_host values. Before this commit, every write/read site
 // accepted any string verbatim, including:
 //
@@ -82,7 +82,7 @@ func ValidateAPIHost(raw string) (string, *output.CLIError) {
 			"The Urlbox API only speaks HTTP(S). Schemes like javascript:, file://, ftp:// are rejected as either paste corruption or a phishing attempt.",
 		)
 	}
-	// v1.0.4 Class 1.2: plain http:// is only allowed for loopback hosts.
+	// Plain http:// is only allowed for loopback hosts.
 	// The Urlbox API endpoint is HTTPS; permitting http:// for arbitrary
 	// hosts turned a careless URLBOX_API_HOST or a hostile overlay into a
 	// cleartext-downgrade primitive on the Authorization header. Loopback

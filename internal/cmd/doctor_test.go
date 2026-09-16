@@ -220,7 +220,7 @@ func TestDoctor_CredentialValid_PassesRenderCredential(t *testing.T) {
 	}
 }
 
-// TestDoctor_CredentialBadRequest_FailsRenderCredential pins Round 4 H2
+// TestDoctor_CredentialBadRequest_FailsRenderCredential pins a regression
 // through the fold: the probe previously only treated 401/403/5xx as
 // failure. A real-world 400 from /v1/user/me with body
 // {"error":{"code":"ApiKeyNotFound",...}} fell into the default arm and
@@ -306,7 +306,7 @@ func TestDoctor_HasBreadcrumbs(t *testing.T) {
 	}
 }
 
-// TestDoctor_HonorsProfileFlag pins Round 6 class-fix: doctor used to
+// TestDoctor_HonorsProfileFlag pins a regression: doctor used to
 // silently ignore --profile / URLBOX_PROFILE and always look at the
 // default profile's secret. Now: profile resolution is uniform with
 // every other command — unknown name errors, valid name targets that
@@ -352,7 +352,7 @@ func TestDoctor_HonorsEnvProfile_UnknownErrors(t *testing.T) {
 }
 
 // TestDoctor_HonorsProfileFlag_ValidTargetsThatProfile pins the positive
-// case for the Round 6 Z class-fix: --profile work makes doctor check
+// case for the --profile fix: --profile work makes doctor check
 // the work profile's secret, not default's.
 func TestDoctor_HonorsProfileFlag_ValidTargetsThatProfile(t *testing.T) {
 	// Use a httptest server so the auth check is hermetic. The handler
@@ -394,7 +394,7 @@ func TestDoctor_HonorsProfileFlag_ValidTargetsThatProfile(t *testing.T) {
 	}
 }
 
-// TestDoctor_QuietMode_PrintsScalar pins Round 8 JJ: doctor's quiet
+// TestDoctor_QuietMode_PrintsScalar pins a regression: doctor's quiet
 // mode used to dump the full JSON tree, violating the "quiet = single
 // useful scalar" contract. Now prints the overall status ("ok" or
 // "fail") on one line.
@@ -414,7 +414,7 @@ func TestDoctor_QuietMode_PrintsScalar(t *testing.T) {
 	}
 }
 
-// TestDoctor_ExitCode_AuthFail pins Round 8 JJ: when only credential
+// TestDoctor_ExitCode_AuthFail pins a regression: when only credential
 // checks fail (no api_secret), exit code should be 3 (auth), not 10
 // (server). The contract maps exit 10 to upstream-server problems,
 // which is misleading when the actual issue is local config.

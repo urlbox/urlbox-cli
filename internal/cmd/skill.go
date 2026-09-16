@@ -155,7 +155,7 @@ Interactive (humans, on a TTY):
 				return output.NewCLIError(output.ErrServer, "could not resolve install path", err.Error())
 			}
 
-			// v1.0.4 Class 4 — every CLI-initiated write to a user-owned
+			// Every CLI-initiated write to a user-owned
 			// path goes through SafeWriteUserFile: Lstat refuses symlinks,
 			// atomic rename, no clobber without Force. Pre-1.0.4 this used
 			// bare os.WriteFile, silently destroying user-edited skill

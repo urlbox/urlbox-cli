@@ -72,7 +72,7 @@ If you actually want the rendered asset, use:
 }
 
 func runLink(cmd *cobra.Command, args []string, f *linkFlags) error {
-	// Round 5 First-1: accept a positional URL like `render` does so
+	// Accept a positional URL like `render` does so
 	// `urlbox link https://example.com` is the obvious entry point. --url
 	// still wins when both are present, matching render's precedence.
 	if len(args) == 1 && f.urlFlag == "" {

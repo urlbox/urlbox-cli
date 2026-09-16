@@ -66,7 +66,7 @@ func TestHelpAgent_NotSet_FallsThroughToDefault(t *testing.T) {
 	}
 }
 
-// v1.0.4 Class 3.3 — --output-format json --help triggers agent help.
+// --output-format json --help triggers agent help.
 //
 // Pre-1.0.4 only --agent --help produced JSON; --output-format json
 // --help silently fell through to plain text. Agents probing the

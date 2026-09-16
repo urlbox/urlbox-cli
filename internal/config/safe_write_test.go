@@ -1,5 +1,3 @@
-// internal/config/safe_write_test.go — v1.0.4 Class 4.
-//
 // Pins the SafeWriteUserFile contract: Lstat refuses symlinks (no
 // write-anywhere primitive), atomic rename (no half-written files
 // visible mid-write), refuses to clobber existing content without

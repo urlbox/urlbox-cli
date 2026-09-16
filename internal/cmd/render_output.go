@@ -159,8 +159,8 @@ func canonicalizeExistingPrefix(path string) string {
 //
 // The download is bounded by api.DownloadTimeout even if the caller's
 // context has no deadline — a stalled CDN connection mustn't hang the
-// CLI indefinitely. Body size is capped at api.DownloadMaxBytes (v1.0.4
-// Class 2.1 — pre-1.0.4 the body was unbounded, letting a misconfigured
+// CLI indefinitely. Body size is capped at api.DownloadMaxBytes (pre-1.0.4
+// the body was unbounded, letting a misconfigured
 // or malicious renderUrl fill the disk).
 // checkOutputWritable verifies the user's --output path can be written to
 // BEFORE the API call, so a bad path doesn't burn a render credit. Mkdirs
@@ -168,8 +168,7 @@ func canonicalizeExistingPrefix(path string) string {
 // a unique name so the user's actual --output target is untouched).
 //
 // Returns ErrValidation — the user owns the path; misclassifying this as
-// ErrServer (as the pre-Round-4 download path did) blames the wrong party.
-// Round 4 M6.
+// ErrServer (as the old download path did) blames the wrong party.
 func checkOutputWritable(abs string) *output.CLIError {
 	parent := filepath.Dir(abs)
 	if err := os.MkdirAll(parent, 0o750); err != nil {

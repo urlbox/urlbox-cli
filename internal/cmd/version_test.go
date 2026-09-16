@@ -9,7 +9,7 @@ import (
 	"github.com/urlbox/urlbox-cli/internal/cmd"
 )
 
-// TestVersion_Subcommand_EmitsEnvelope pins Round 8 II: the new
+// TestVersion_Subcommand_EmitsEnvelope pins that the
 // `version` subcommand emits an envelope, unlike --version which is
 // plain text only. JSON consumers (agents) can call this.
 func TestVersion_Subcommand_EmitsEnvelope(t *testing.T) {
@@ -52,10 +52,9 @@ func TestVersion_Subcommand_QuietPrintsScalar(t *testing.T) {
 	}
 }
 
-// TestRootError_CommandFieldNotEmpty pins Round 8 II / Adv-3 H2:
-// root-level errors (unknown command, unknown flag, bare `urlbox`)
-// must carry a non-empty `command` field. EE fixed sub-subcommand
-// path; this fixes the root-level case.
+// TestRootError_CommandFieldNotEmpty pins that root-level errors
+// (unknown command, unknown flag, bare `urlbox`) must carry a
+// non-empty `command` field, the same as sub-subcommand errors.
 func TestRootError_CommandFieldNotEmpty_UnknownCommand(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	var stdout, stderr bytes.Buffer
@@ -84,7 +83,7 @@ func TestRootError_CommandFieldNotEmpty_UnknownFlag(t *testing.T) {
 	}
 }
 
-// TestProfileFlag_EmptyOrWhitespace_Rejected pins Round 8 NN: an
+// TestProfileFlag_EmptyOrWhitespace_Rejected pins a regression: an
 // empty or whitespace-only --profile value used to silently behave
 // like "no flag" because the resolver's `if flagProfile != ""` check
 // skipped them. Confusing for agents that programmatically set the
@@ -108,7 +107,7 @@ func TestProfileFlag_EmptyOrWhitespace_Rejected(t *testing.T) {
 	}
 }
 
-// TestJQ_AppliedToErrorEnvelope pins Round 8 OO / Adv-4 M3: --jq used
+// TestJQ_AppliedToErrorEnvelope pins a regression: --jq used
 // to be ignored on the error path, so `urlbox render --jq '.code'`
 // emitted a clean string on success but dumped the full envelope on
 // failure. Now both paths honor the same jq expression.

@@ -11,7 +11,7 @@ import (
 	"github.com/urlbox/urlbox-cli/internal/cmd"
 )
 
-// TestOverlay_RenderDryRun_PicksUpOverlay pins Round 8 HH: before this
+// TestOverlay_RenderDryRun_PicksUpOverlay pins a regression: before this
 // commit, `.urlbox/config.json` was advertised but never read. With
 // overlay loading wired in, the api_host from the overlay should
 // surface through the resolver (verified via `urlbox link` whose

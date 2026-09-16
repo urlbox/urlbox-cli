@@ -1,4 +1,4 @@
-// internal/api/download_client_test.go — v1.0.4 Class 2.1.
+// internal/api/download_client_test.go
 //
 // Pins the hardened render-download HTTP client contract: TLS 1.2 min,
 // no non-http(s) redirects, no HTTPS→HTTP downgrades, no unbounded

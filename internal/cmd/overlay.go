@@ -1,10 +1,10 @@
-// internal/cmd/overlay.go — Round 8 Class C (HH): wires up the
+// internal/cmd/overlay.go — wires up the
 // per-repo overlay loader. Before this commit, internal/config/repo.go
 // defined LoadRepoOverlay and internal/config/resolve.go handled the
 // "repo" precedence slot, but NO command actually called the loader.
 // README + SKILL.md + CHANGELOG all advertised `.urlbox/config.json`
-// support, while in reality the file was silently ignored — Round 8
-// Adv-4 found this by setting an overlay and seeing render use the
+// support, while in reality the file was silently ignored — caught
+// by setting an overlay and seeing render use the
 // global default instead.
 package cmd
 

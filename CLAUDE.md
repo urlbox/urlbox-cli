@@ -13,6 +13,7 @@ Canonical: `urlbox-cli-final-spec.md` in the internal monorepo (not mirrored her
   Adding new entries is fine; removing or renaming triggers `make surface-check` failure.
   After an intentional surface change, run `make surface-snapshot` and commit `SURFACE.txt` with the code.
 - **Never commit autonomously.** Show diff + proposed message, wait for approval.
+- **Planning docs are public.** Anything under `docs/` ships in a public repo. No internal infrastructure, services, repo names or paths, account details, or personal contact info.
 
 ## Workflow when adding a command
 1. Write failing tests in `*_test.go` (envelope shape, exit codes, edge cases).

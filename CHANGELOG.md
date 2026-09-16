@@ -7,6 +7,16 @@ and the project follows [SemVer](https://semver.org/spec/v2.0.0.html).
 ## Unreleased
 
 ### Added
+- **Report a bad render from the CLI.** Every render response now prints a
+  muted hint line with the render's id and the ready-to-run report command
+  (interactive, signed-in terminals only, and never for a cached render or a
+  request the API rejected: json/quiet/piped output is byte-identical).
+  `urlbox report <renderId>` files the report: `--category` + `--comment`
+  for agents and scripts, an interactive category picker + comment prompt
+  for humans. Reports need a signed-in session (`urlbox login`); render
+  secrets cannot file them.
+- `urlbox support` opens the support contact page, with the dashboard
+  command's headless and machine-readable behaviour.
 - **New-version notice.** Once a day, interactive runs check GitHub for a
   newer release and print a one-line notice to stderr pointing at
   `urlbox upgrade`. Text output to a terminal only: JSON, quiet, `--jq`,

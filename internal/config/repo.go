@@ -36,7 +36,7 @@ func LoadRepoOverlay(start, boundary string) (*RepoOverlay, error) {
 		if err == nil {
 			var o RepoOverlay
 			if err := json.Unmarshal(b, &o); err != nil {
-				// Round 8 HH: wrap the path in so callers can produce
+				// Wrap the path in so callers can produce
 				// actionable error messages ("fix the JSON at <path>").
 				return nil, fmt.Errorf("%s: %w", candidate, err)
 			}
