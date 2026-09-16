@@ -90,3 +90,22 @@ func TypeToConfirm(title, expected string) error {
 	}
 	return nil
 }
+
+// TextInput draws a single-line text input to stderr and returns the
+// trimmed value. validate (optional) runs inside the form so the user can
+// correct in place. It returns ErrNotInteractive when stdin is not a
+// terminal.
+func TextInput(title string, validate func(string) error) (string, error) {
+	if !term.IsTerminal(int(os.Stdin.Fd())) { //nolint:gosec // file descriptors fit in int on every platform Go supports
+		return "", ErrNotInteractive
+	}
+	var typed string
+	input := huh.NewInput().Title(title).Value(&typed)
+	if validate != nil {
+		input = input.Validate(validate)
+	}
+	if err := input.WithTheme(theme()).Run(); err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(typed), nil
+}

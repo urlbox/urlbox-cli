@@ -70,12 +70,12 @@ func Execute(args []string, stdout, stderr io.Writer) int {
 
 	if !cliErr.Silent {
 		env := output.NewErrorEnvelope(calledCommandFromArgs(rootCmd, args), cliErr)
-		// Round 8 OO: honor --jq on error envelopes too. Before this,
+		// Honor --jq on error envelopes too. Before this,
 		// `urlbox … --jq '.code'` extracted on success but the failure
 		// path always dumped the full envelope, breaking agents that
 		// scripted around a single jq expression across both paths.
 		jqExpr, _ := rootCmd.PersistentFlags().GetString("jq")
-		// v1.0.4 Class 3.2 — route errors per the CLAUDE.md
+		// Route errors per the CLAUDE.md
 		// "stdout for data, stderr for human messages" contract:
 		//   - JSON envelope is structured data (agents pipe it) → stdout.
 		//   - Text-mode "Error:" line is a human message → stderr.
@@ -105,7 +105,7 @@ func Execute(args []string, stdout, stderr io.Writer) int {
 // retained on every code path, so deriving the path from args via
 // Find() is the dependable source.
 //
-// Round 8 II: when no subcommand matched (bare `urlbox`, unknown
+// When no subcommand matched (bare `urlbox`, unknown
 // command, unknown flag at root), returns the root name rather than
 // "". The contract is that every error envelope carries a command —
 // "urlbox" is more useful for agents than "".
@@ -166,7 +166,7 @@ func newRootCmd(stdout, stderr io.Writer) *cobra.Command {
 					"Use one of: json, text, quiet.",
 				)
 			}
-			// Round 8 NN: --profile flag value validation. The Adv-4
+			// --profile flag value validation. The
 			// `validateProfileName` rule applied to creation but not to
 			// flag-resolution-time. So `--profile ""`, `--profile " "`,
 			// `--profile $'\t'` silently behaved like "no flag" (the
@@ -207,7 +207,7 @@ func newRootCmd(stdout, stderr io.Writer) *cobra.Command {
 	defaultHelp := cmd.HelpFunc()
 	cmd.SetHelpFunc(func(c *cobra.Command, args []string) {
 		agent, _ := c.Flags().GetBool("agent")
-		// v1.0.4 Class 3.3 — --output-format json on --help is the
+		// --output-format json on --help is the
 		// agent-discoverable equivalent of --agent. Pre-1.0.4 only
 		// --agent --help returned JSON; agents probing the obvious
 		// combo (the existing format flag) silently got plain text.
@@ -237,11 +237,13 @@ func newRootCmd(stdout, stderr io.Writer) *cobra.Command {
 	cmd.AddCommand(newProjectsCmd())
 	cmd.AddCommand(newProxiesCmd())
 	cmd.AddCommand(newRenderCmd())
+	cmd.AddCommand(newReportCmd())
 	cmd.AddCommand(newSchemaCmd())
 	cmd.AddCommand(newScreenshotCmd())
 	cmd.AddCommand(newSkillCmd())
 	cmd.AddCommand(newStatusCmd())
 	cmd.AddCommand(newStorageCmd())
+	cmd.AddCommand(newSupportCmd())
 	cmd.AddCommand(newUsageCmd())
 	cmd.AddCommand(newVersionCmd())
 	cmd.AddCommand(newVideoCmd())
@@ -255,7 +257,7 @@ func newRootCmd(stdout, stderr io.Writer) *cobra.Command {
 // cobra.NoArgs) and returns the closest known IMMEDIATE-subcommand name
 // of that parent, if any.
 //
-// Round 6 BB class-fix: the previous version always walked root.Commands(),
+// The previous version always walked root.Commands(),
 // which meant `urlbox schema list` (where schema has no `list`) cross-
 // suggested top-level commands like `link`. Now the parent path is
 // parsed from the error string and the candidate pool is scoped to
@@ -302,7 +304,7 @@ func suggestUnknownCommand(root *cobra.Command, msg string) (string, bool) {
 			continue
 		}
 		if sub.Name() == typed {
-			continue // belt-and-braces (matches AA's class-fix shape)
+			continue // belt-and-braces: never suggest the typed token back
 		}
 		candidates = append(candidates, sub.Name())
 	}
@@ -314,7 +316,7 @@ func suggestUnknownCommand(root *cobra.Command, msg string) (string, bool) {
 // long flag name on the ACTIVE subcommand (plus its inherited persistent
 // flags). The flag prefix (`--`) is NOT included in the returned name.
 //
-// Round 6 AA class-fix: the candidate pool used to be the union of every
+// The candidate pool used to be the union of every
 // flag in the command tree. A typo on one command could match a flag
 // from an unrelated command — including the rejected flag itself when
 // it happened to live on a sibling. `urlbox render --url` would suggest

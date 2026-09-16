@@ -28,7 +28,7 @@ func TestResolveOutputPath_RejectsEmpty(t *testing.T) {
 
 // TestResolveOutputPath_RejectsOutsideCWD_HintMentionsCdWorkaround pins
 // the rejection hint includes the `cd <dir> && urlbox render ...` escape
-// hatch. Round 1 UX I4 — agents bouncing off /tmp/foo.png deserved to be
+// hatch. Agents bouncing off /tmp/foo.png deserved to be
 // told the workaround inline, not just "pass a path under CWD".
 func TestResolveOutputPath_RejectsOutsideCWD_HintMentionsCdWorkaround(t *testing.T) {
 	cwd := t.TempDir()

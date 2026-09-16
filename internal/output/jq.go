@@ -73,8 +73,8 @@ func WriteEnvelopeWithJQ(w io.Writer, env *Envelope, jqExpr string, quiet bool) 
 	return err
 }
 
-// WriteErrorEnvelopeWithJQ is the error-envelope analogue. Round 8 OO:
-// before this commit, --jq was only applied to success envelopes —
+// WriteErrorEnvelopeWithJQ is the error-envelope analogue.
+// Before this commit, --jq was only applied to success envelopes —
 // error envelopes always printed the full structure regardless of
 // --jq. Agents that did `urlbox … --jq '.code'` expecting a single
 // code string got the whole envelope on the failure path.

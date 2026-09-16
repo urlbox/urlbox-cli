@@ -130,7 +130,7 @@ func TestSkill_DocumentsRenderSurface(t *testing.T) {
 		"renderId",         // status command's positional arg term
 		"HMAC",             // load-bearing crypto term for link
 		"headless",         // dashboard fallback behaviour
-		// v1.0.4 Class 5.2 — the --output sandbox failure mode is the most
+		// The --output sandbox failure mode is the most
 		// common bounce-off point for agents; SKILL.md must teach it up
 		// front, not just bury it in `render --help`. Pin the section
 		// header + the two escape hatches.
@@ -168,7 +168,7 @@ func TestSkillInstall_NonTTY_NoTarget_Errors(t *testing.T) {
 
 // TestSkillInstall_SupportedTargetsListIsStableSorted pins that the
 // "Supported targets" hint is alphabetically sorted, not map-iteration
-// random. Caught Round 1 review (Arch I8 + UX I8).
+// random.
 func TestSkillInstall_SupportedTargetsListIsStableSorted(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	exit := cmd.Execute([]string{
@@ -515,7 +515,7 @@ func TestSkillInstall_Opencode_Project_WritesUnderCWD(t *testing.T) {
 	}
 }
 
-// ─── v1.0.4 Class 4.2 — skill install uses SafeWriteUserFile ────────
+// ─── skill install uses SafeWriteUserFile ────────
 //
 // Invariant (via config.SafeWriteUserFile): every CLI-initiated write
 // to a user-owned path Lstats first (refuses symlinks), atomic-renames

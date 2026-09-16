@@ -23,7 +23,7 @@ import (
 // httpTimeout caps each individual HTTP check (api_reachable and the
 // render_credential live probe).
 // Set to 10s rather than the original 5s to absorb cold-container
-// startup costs — Round 5 CI-1 reproed a false-fail on the first
+// startup costs — a false-fail reproed on the first
 // invocation in a fresh container because DNS+TCP+TLS to api.urlbox.com
 // blew through the 5s budget even though warm-cache curl returned in
 // ~350ms. The outer doctor context is sized to fit all checks at this
@@ -50,12 +50,12 @@ Exits non-zero if any check fails.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			// Sized to fit session + DNS + api_reachable + the
 			// render_credential probe (each httpTimeout = 10s) plus a
-			// little headroom. Round 5 CI-1 bumped the per-check timeout
+			// little headroom. The per-check timeout was bumped
 			// to absorb cold-start latency.
 			ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 			defer cancel()
 
-			// Round 6 Z class-fix: doctor previously called
+			// Doctor previously called
 			// config.ResolveAPISecret() directly, which always looks at
 			// the default profile and ignores --profile / URLBOX_PROFILE.
 			// Now it goes through config.Resolve — the same path
@@ -137,7 +137,7 @@ Exits non-zero if any check fails.`,
 			case jqExpr != "":
 				writeErr = output.WriteEnvelopeWithJQ(stdout, env, jqExpr, format == output.FormatQuiet)
 			case format == output.FormatQuiet:
-				// Round 8 JJ: quiet mode used to print the whole checks
+				// Quiet mode used to print the whole checks
 				// tree (broke the "single scalar" contract). Print the
 				// overall status string instead — agents can pipe it.
 				_, writeErr = fmt.Fprintln(stdout, overall)
@@ -150,7 +150,7 @@ Exits non-zero if any check fails.`,
 			}
 
 			if anyFail {
-				// Round 8 JJ: pick the exit code based on which checks
+				// Pick the exit code based on which checks
 				// failed, rather than always returning ErrServer (10).
 				// The contract:
 				//   3  (auth)    — credential / api_secret problem

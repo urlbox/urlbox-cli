@@ -17,8 +17,7 @@ import (
 	"github.com/urlbox/urlbox-cli/internal/version"
 )
 
-// Endpoint paths locked from urlbox-mono spec
-// (apps/api/src/modules/render/render.routes.ts). Exported so callers like
+// Endpoint paths locked to the Urlbox render API. Exported so callers like
 // `urlbox render --curl` can reference the same paths the HTTPClient uses.
 const (
 	// PathSync is the synchronous render endpoint.
@@ -131,7 +130,11 @@ func (c *HTTPClient) do(ctx context.Context, method, path string, body any) (*Re
 	}
 
 	if resp.StatusCode >= 400 {
-		return nil, mapStatusToCLIError(resp, respBody)
+		cliErr := mapStatusToCLIError(resp, respBody)
+		if rid := extractRequestID(respBody); rid != "" {
+			return nil, &RenderIDError{Err: cliErr, RenderID: rid}
+		}
+		return nil, cliErr
 	}
 
 	// Success path: the API returns the response body directly (no envelope
@@ -143,10 +146,10 @@ func (c *HTTPClient) do(ctx context.Context, method, path string, body any) (*Re
 		}
 	}
 
-	// If the API surfaced the upstream HTTP status (under data.response per
-	// urlbox-mono apps/api/src/lib/utils.ts:86-122), promote it to top-level
-	// agent-friendly fields. statusCodeInitial captures the first request's
-	// code before redirects — a 401→302→200 chain must mark upstreamOk=false.
+	// If the API surfaced the upstream HTTP status (under data.response),
+	// promote it to top-level agent-friendly fields. statusCodeInitial
+	// captures the first request's code before redirects — a 401→302→200
+	// chain must mark upstreamOk=false.
 	if respObj, ok := data["response"].(map[string]any); ok {
 		if status, ok := respObj["statusCode"].(float64); ok {
 			data["upstreamStatus"] = status
@@ -168,7 +171,7 @@ func (c *HTTPClient) do(ctx context.Context, method, path string, body any) (*Re
 		}
 	}
 
-	return &Response{OK: true, Data: data}, nil
+	return &Response{OK: true, Data: data, RenderID: resp.Header.Get("x-urlbox-request-id")}, nil
 }
 
 // mapStatusToCLIError maps a non-2xx response to a typed *output.CLIError.
@@ -265,11 +268,10 @@ func isAuthErrorCode(code string) bool {
 // option-validation failure. These come back as 4xx but should map to
 // ErrValidation (not the generic ErrUsage default) so the v0.9.0 schema-as-docs
 // contract is honored: --json passes through, and when the API rejects, the
-// CLI surfaces a validation envelope. Mirrors the ClientError subclasses in
-// urlbox-mono apps/api/src/lib/errors.ts (ValidateRequestErrors namespace
-// + a few peers used at the same layer).
+// CLI surfaces a validation envelope. Mirrors the API's request-validation
+// error codes.
 //
-// Round 5 First-2: target-URL rejection codes (InvalidURLError) also
+// Target-URL rejection codes (InvalidURLError) also
 // land here. The user passed a syntactically-valid URL the API couldn't
 // reach — ErrValidation ("your input was rejected") reads more
 // accurately than ErrUsage ("you misused the CLI") for retry-logic and
@@ -330,3 +332,27 @@ func extractAPIError(body []byte) (msg, code string) {
 	}
 	return trimmed, code
 }
+
+// extractRequestID reads the requestId field Urlbox error bodies carry
+// alongside the error object. Returns "" for non-JSON or absent field.
+func extractRequestID(body []byte) string {
+	var parsed map[string]any
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return ""
+	}
+	rid, _ := parsed["requestId"].(string)
+	return rid
+}
+
+// RenderIDError decorates a CLIError from a failed render call with the
+// render id the error body carried, so the render command can offer
+// `urlbox report <id>` for the failed render. Unwrap keeps errors.As
+// resolution to *output.CLIError intact everywhere else.
+type RenderIDError struct {
+	Err      *output.CLIError
+	RenderID string
+}
+
+func (e *RenderIDError) Error() string { return e.Err.Error() }
+
+func (e *RenderIDError) Unwrap() error { return e.Err }

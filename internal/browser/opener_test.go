@@ -36,14 +36,14 @@ func TestNoopOpener_DoesNothing(t *testing.T) {
 	}
 }
 
-// ─── Class 2.2 (v1.0.4) ─── scheme check before OS exec ────────────
+// ─── scheme check before OS exec ────────────
 //
 // Invariant: any URL handed to the OS URL handler is scheme-checked
 // (http or https only) before exec.Command. Pre-v1.0.4 Open() forwarded
 // any string. With a hostile api_host returning an attacker-controlled
 // renderUrl, the Windows `cmd /c start "" <url>` path would launch
 // UNC paths and file:// schemes — turning --open into a remote-launch
-// primitive. Defense-in-depth: even if Class 1 (validation) closes
+// primitive. Defense-in-depth: even if input validation closes
 // every overlay/profile path today, this stops a future regression
 // from re-arming the primitive.
 

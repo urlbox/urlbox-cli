@@ -82,8 +82,8 @@ func TestConfigSet_Get_RoundTrip_SingleProfile(t *testing.T) {
 
 	stdout.Reset()
 	stderr.Reset()
-	// --reveal: round-trip verifies raw value identity (default is now masked
-	// per UX I1; the masking behavior gets its own dedicated tests).
+	// --reveal: round-trip verifies raw value identity (default is now masked;
+	// the masking behavior gets its own dedicated tests).
 	if exit := cmd.Execute([]string{"config", "get", "api_secret", "--reveal", "--output-format", "quiet"}, &stdout, &stderr); exit != 0 {
 		t.Fatalf("get: exit=%d", exit)
 	}
@@ -138,8 +138,8 @@ func TestConfigSet_NoProfiles_Errors(t *testing.T) {
 }
 
 // Historical TestConfigSet_MultipleProfiles_NoFlag_Errors asserted that
-// 2+ profiles always errored without --profile. Round 5 CI-2 changed
-// that to honor default_profile transparently (matching how render /
+// 2+ profiles always errored without --profile. That changed
+// to honor default_profile transparently (matching how render /
 // status / link resolve). Coverage moved to:
 //   - TestConfigSet_MultipleProfiles_UsesDefaultProfile (positive)
 //   - TestConfigSet_MultipleProfiles_NoDefaultProfile_Errors (fallback)
@@ -188,7 +188,7 @@ func TestConfigSet_DefaultProfileKey_AlwaysWrites(t *testing.T) {
 	}
 }
 
-// TestConfigSet_DefaultProfile_UnknownName_Errors pins Round 7 EE class-fix:
+// TestConfigSet_DefaultProfile_UnknownName_Errors pins a regression:
 // naming a non-existent profile (here `ghost`) returns ErrNotFound exit 5,
 // not the legacy ErrUsage exit 1. This aligns with `profile default`/
 // `profile delete` and with the unified config.Resolve for render/status/
@@ -454,7 +454,7 @@ func must(t *testing.T, err error) {
 	}
 }
 
-// TestConfigGet_APISecret_MaskedByDefault pins UX I1: `config get api_secret`
+// TestConfigGet_APISecret_MaskedByDefault pins the masking rule: `config get api_secret`
 // masks the raw value to prevent accidental scrollback / log / clipboard
 // leakage. `config profile list` already masks; `config get api_secret`
 // was the outlier.
@@ -556,9 +556,9 @@ func TestConfigGet_APIKey_NotMasked(t *testing.T) {
 	}
 }
 
-// TestConfigSet_APISecret_MaskedInEnvelope pins Round 4 M4: `config set
+// TestConfigSet_APISecret_MaskedInEnvelope pins a regression: `config set
 // api_secret <value>` echoed the raw secret back in .data.value and in
-// the summary string. UX I1 (Round 1) only fixed `config get`. The set
+// the summary string. An earlier fix only covered `config get`. The set
 // path still leaked into CI logs and terminal scrollback.
 func TestConfigSet_APISecret_MaskedInEnvelope(t *testing.T) {
 	dir := t.TempDir()
@@ -613,11 +613,11 @@ func TestConfigSet_APIKey_NotMasked(t *testing.T) {
 	}
 }
 
-// TestConfigGet_UnknownFlagProfile_Errors pins Round 7 EE class-fix:
+// TestConfigGet_UnknownFlagProfile_Errors pins a regression:
 // `config get --profile X` where X doesn't exist returns ErrNotFound
 // exit 5 with command="config get", matching profile delete/default +
 // config.Resolve (used by render/status/link/doctor). Pre-fix this
-// returned ErrUsage exit 1 with command="" — the original Round 7
+// returned ErrUsage exit 1 with command="" — the original
 // finding ("envelope shape misalignment").
 func TestConfigGet_UnknownFlagProfile_Errors(t *testing.T) {
 	dir := t.TempDir()
@@ -680,10 +680,10 @@ func TestConfigSet_UnknownFlagProfile_Errors(t *testing.T) {
 	}
 }
 
-// TestConfigGet_UnknownEnvProfile_Errors pins Round 5 Adv-2 +
-// Round 7 EE: a typo in URLBOX_PROFILE silently fell back to the
-// default profile, leaking the default's secret. Round 5 closed the
-// silent-fallback (correctly errored with ErrUsage). Round 7 EE
+// TestConfigGet_UnknownEnvProfile_Errors pins two fixes:
+// a typo in URLBOX_PROFILE silently fell back to the
+// default profile, leaking the default's secret. The first fix closed the
+// silent-fallback (correctly errored with ErrUsage); the second
 // aligns the envelope to ErrNotFound exit 5 with command="config get"
 // — same shape as profile delete/default and the unified
 // config.Resolve. The class is "user named a profile that doesn't
@@ -750,7 +750,7 @@ func TestConfigGet_ValidEnvProfile_TargetsThatProfile(t *testing.T) {
 	}
 }
 
-// TestConfigProfileCreate_RejectsDangerousNames pins Round 5 Adv-4:
+// TestConfigProfileCreate_RejectsDangerousNames pins a regression:
 // profile names could contain path separators, control chars, and null
 // bytes. Null-byte truncation in particular is a footgun — "a\x00b"
 // silently collides with "a" because the JSON store keys by the
@@ -817,7 +817,7 @@ func TestConfigProfileCreate_AcceptsSafeNames(t *testing.T) {
 	}
 }
 
-// TestConfigSet_MultipleProfiles_UsesDefaultProfile pins Round 5 CI-2:
+// TestConfigSet_MultipleProfiles_UsesDefaultProfile pins the default-profile rule:
 // when 2+ profiles exist AND default_profile is set, config get/set
 // should target the default rather than require --profile. Previously
 // a CI script that ran `config set api_key X` after creating a second
@@ -905,7 +905,7 @@ func TestConfigSet_MultipleProfiles_NoDefaultProfile_Errors(t *testing.T) {
 	}
 }
 
-// TestConfigSet_APISecret_RejectsBadValues pins Round 6 Adv-4 + Adv-5:
+// TestConfigSet_APISecret_RejectsBadValues pins a regression:
 // config set api_secret silently accepted whitespace-only and empty
 // strings, AND its empty-string path silently cleared the saved secret
 // (bypassing the auth overwrite guard entirely). Now: validateSecretValue
@@ -1041,7 +1041,7 @@ func TestConfigProfileCreate_RejectsBadSecretValues(t *testing.T) {
 	}
 }
 
-// TestConfigProfileList_IsDefault_IsBool pins Round 8 MM: is_default
+// TestConfigProfileList_IsDefault_IsBool pins a regression: is_default
 // used to be string "true"/"false" because the row was typed
 // map[string]string. JSON consumers had to string-compare instead of
 // branching on a bool. Now bool.

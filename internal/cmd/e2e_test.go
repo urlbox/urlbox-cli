@@ -279,7 +279,7 @@ func TestE2E_UnknownCommand_ErrorEnvelope_JSON(t *testing.T) {
 }
 
 func TestE2E_UnknownCommand_ErrorEnvelope_Text(t *testing.T) {
-	// v1.0.4 Class 3.2: text-mode errors are human messages → stderr.
+	// Text-mode errors are human messages → stderr.
 	// Pre-1.0.4 they went to stdout, violating the CLAUDE.md
 	// "stdout for data, stderr for human messages" contract.
 	stdout, stderr, exitCode := runCLI(t, "--output-format", "text", "nonexistent")

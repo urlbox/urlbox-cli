@@ -1,4 +1,4 @@
-// internal/api/download_client.go — v1.0.4 Class 2.1.
+// internal/api/download_client.go
 //
 // Hardened HTTP client for binary render-output fetches. Separate from
 // the JSON-API client (NewHTTPClient) because:

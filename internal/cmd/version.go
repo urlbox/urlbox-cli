@@ -1,4 +1,4 @@
-// internal/cmd/version.go — Round 8 II: cobra's --version flag emits a
+// internal/cmd/version.go — cobra's --version flag emits a
 // plain-text line via VersionTemplate, which doesn't honor
 // --output-format. For agents that want structured version info, this
 // subcommand emits the same envelope every other command does.

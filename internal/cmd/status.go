@@ -42,11 +42,11 @@ func SetStatusClockForTest(c clock.Clock) { statusClock = c }
 func ResetStatusClockForTest() { statusClock = clock.New() }
 
 // defaultStatusTimeout is the per-call deadline for the status GET. Status
-// is cheap; users who want long polling reach for --wait + --timeout (Task 4).
+// is cheap; users who want long polling reach for --wait + --timeout.
 const defaultStatusTimeout = 60 * time.Second
 
 // defaultStatusPollInterval is the time between successive GETs when --wait
-// is in use (Task 4 wires up the polling loop; Task 3 only registers the flag).
+// is in use.
 const defaultStatusPollInterval = 2 * time.Second
 
 // statusFlags carries every convenience flag the status command supports.
@@ -319,8 +319,8 @@ func writeStatusEnvelope(cmd *cobra.Command, resp *api.Response, renderID string
 	default:
 		// In-flight: created, retrying, processing, or any future enum
 		// value the API might add. Default to ok=true so future enums
-		// don't auto-bomb the agent — Task 4's --wait will gate on terminal
-		// states explicitly. If the API ever introduces a new terminal
+		// don't auto-bomb the agent — --wait gates on terminal states
+		// explicitly. If the API ever introduces a new terminal
 		// status (cancelled, expired, etc.), warn on stderr so an operator
 		// notices the misclassification even though we keep the agent path
 		// non-fatal.
@@ -403,7 +403,7 @@ func buildStatusClient(cmd *cobra.Command, f *statusFlags) (api.Client, *output.
 		)
 	}
 
-	// v1.0.4 Class 5.1 — detect missing secret client-side. See the
+	// Detect missing secret client-side. See the
 	// matching comment in render.go.buildRenderClient.
 	if cli := requireSecret(resolved); cli != nil {
 		return nil, cli

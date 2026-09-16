@@ -32,9 +32,9 @@ const lockEmptyStaleAfter = 1 * time.Second
 
 // Update runs mutate against a freshly-loaded *Config and persists the
 // result, holding an exclusive file lock for the duration. The lock
-// closes the read-modify-write race Round 7 Adv-3 exercised.
+// closes the read-modify-write race that parallel profile creates exercised.
 //
-// Round 8 KK: stale-lock recovery. The original O_EXCL sentinel was
+// Stale-lock recovery. The original O_EXCL sentinel was
 // brittle to SIGKILL/SIGTERM (the deferred os.Remove never ran, leaving
 // a zero-byte .lock that wedged every subsequent write for 5s). Now
 // the lock file contains the holder's PID; on a contended acquire, we
@@ -84,7 +84,7 @@ func withFileLock(path string, fn func() error) error {
 
 // acquireLock tries to create lockPath atomically. If a lock already
 // exists, it reads the PID inside, checks if that process is alive,
-// and clobbers the file if not (stale-lock recovery — Round 8 KK).
+// and clobbers the file if not (stale-lock recovery).
 // Returns a typed *output.CLIError so callers don't need to wrap.
 func acquireLock(lockPath string) error {
 	deadline := time.Now().Add(lockAcquireTimeout)
@@ -100,7 +100,7 @@ func acquireLock(lockPath string) error {
 			// Permission denied, parent dir missing, etc. — local FS
 			// problem, not a contention issue. Map to ErrForbidden so
 			// the exit code reflects "you can't touch this", not "server
-			// problem" (Round 8 Adv-1 M1).
+			// problem".
 			return output.NewCLIError(
 				output.ErrForbidden,
 				"could not create config lock: "+err.Error(),
@@ -143,7 +143,7 @@ func tryCleanStaleLock(lockPath string) bool {
 	if pidStr == "" {
 		// Zero-byte lockfile — could be either:
 		//   (a) the previous writer SIGKILL'd before writing its PID,
-		//       leaving the empty O_EXCL'd file forever (pre-KK bug)
+		//       leaving the empty O_EXCL'd file forever (the old bug)
 		//   (b) the CURRENT writer just succeeded the O_EXCL Open and
 		//       hasn't called Write yet — millisecond race
 		// Distinguish by file age: an empty file >1s old is definitely

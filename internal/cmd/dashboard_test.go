@@ -40,8 +40,8 @@ func TestDashboard_OpensBrowser_WhenTextFormat(t *testing.T) {
 	}
 }
 
-// TestDashboard_JSONFormat_NoBrowserSideEffect pins Round 8 MM /
-// Adv-4 M4: when the user asks for json (or quiet), they're scripting
+// TestDashboard_JSONFormat_NoBrowserSideEffect pins a regression:
+// when the user asks for json (or quiet), they're scripting
 // around the URL — don't launch a browser tab as a side effect. The
 // envelope still carries the URL.
 func TestDashboard_JSONFormat_NoBrowserSideEffect(t *testing.T) {
@@ -81,7 +81,7 @@ func TestDashboard_HeadlessFallback_PrintsURL(t *testing.T) {
 	t.Cleanup(cmd.ResetDashboardOpenerForTest)
 
 	// Use text format so we hit the headless code path (json path now
-	// short-circuits before reaching the headless check — Round 8 MM).
+	// short-circuits before reaching the headless check).
 	var stdout, stderr bytes.Buffer
 	exit := cmd.Execute([]string{"dashboard", "--output-format", "text"}, &stdout, &stderr)
 	if exit != 0 {
@@ -103,7 +103,7 @@ func TestDashboard_OpenError_ServerExit(t *testing.T) {
 	t.Cleanup(cmd.ResetHeadlessDetectorForTest)
 
 	// Use text format so we exercise the actual opener path — json
-	// mode never calls the opener now (Round 8 MM).
+	// mode never calls the opener now.
 	var stdout, stderr bytes.Buffer
 	exit := cmd.Execute([]string{"dashboard", "--output-format", "text"}, &stdout, &stderr)
 	if exit != 10 {

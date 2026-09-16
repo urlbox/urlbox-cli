@@ -327,8 +327,7 @@ func TestHTTPClient_Render_400_ApiKeyNotFound_MapsToAuth(t *testing.T) {
 
 // When the API response includes data.response.statusCode, propagate it
 // through Response.Data so the render command can surface it in the
-// envelope. The Urlbox API nests upstream status under "response" (see
-// urlbox-mono apps/api/src/lib/utils.ts:86-122).
+// envelope. The Urlbox API nests upstream status under "response".
 func TestHTTPClient_Render_UpstreamStatus_Propagates(t *testing.T) {
 	m := apitest.New(apitest.SuccessJSON(`{
 		"renderUrl": "https://renders.urlbox.com/x.png",
@@ -451,8 +450,8 @@ func TestHTTPClient_Render_NonJSONErrorBody_FallsBackToBodyString(t *testing.T) 
 	}
 }
 
-// TestHTTPClient_Render_InvalidURLError_MapsToValidation pins Round 5
-// First-2: when the API returns HTTP 400 with apiCode="InvalidURLError"
+// TestHTTPClient_Render_InvalidURLError_MapsToValidation pins a regression:
+// when the API returns HTTP 400 with apiCode="InvalidURLError"
 // (typical for unreachable target URLs like https://nonexistent.invalid),
 // the CLI used to map it to ErrUsage (exit 1) — implying the user
 // misused the CLI. But the user passed a syntactically-valid URL; the
@@ -472,7 +471,7 @@ func TestHTTPClient_Render_InvalidURLError_MapsToValidation(t *testing.T) {
 		t.Fatalf("err=%v, want *output.CLIError", err)
 	}
 	if cli.Code != output.ErrValidation {
-		t.Errorf("Code=%q, want %q (Round 5 First-2)", cli.Code, output.ErrValidation)
+		t.Errorf("Code=%q, want %q", cli.Code, output.ErrValidation)
 	}
 	if !strings.Contains(cli.Message, "Invalid URL") {
 		t.Errorf("Message=%q should surface the API's text", cli.Message)

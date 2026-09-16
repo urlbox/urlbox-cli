@@ -37,7 +37,7 @@ func TestUpgrade_DetectsScoop(t *testing.T) {
 }
 
 func TestUpgrade_DetectsNpm(t *testing.T) {
-	method := cmd.DetectInstallMethod("/Users/cjr/.nvm/versions/node/v22.17.0/lib/node_modules/@urlbox/cli/urlbox")
+	method := cmd.DetectInstallMethod("/Users/user/.nvm/versions/node/v22.17.0/lib/node_modules/@urlbox/cli/urlbox")
 	if method != "npm" {
 		t.Errorf("expected 'npm', got %q", method)
 	}

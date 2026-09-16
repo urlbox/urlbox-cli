@@ -1,7 +1,7 @@
 // Package surface generates a deterministic snapshot of the CLI's command and flag surface.
 // The snapshot is committed to SURFACE.txt and checked in CI to prevent silent breaking changes.
 //
-// Exclusion rule (v1.0.4 Class 6 — documented explicitly via Header()):
+// Exclusion rule (documented explicitly via Header()):
 //   - Cobra builtins (`help` subcommand, `--help` / `--version`) are
 //     skipped. They're stable framework-level surfaces we don't own
 //     and can't break; tracking them adds noise without a guarantee.

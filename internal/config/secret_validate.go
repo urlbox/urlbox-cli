@@ -1,17 +1,14 @@
-// internal/config/secret_validate.go — Round 8 FF: moved from
+// internal/config/secret_validate.go — moved from
 // internal/cmd/secret_validate.go so config.Resolve can call it on the
 // URLBOX_API_SECRET env path. The cmd-side wrapper (still named
 // validateSecretValue in package cmd) is now a one-line forward to
 // config.ValidateSecretValue.
 //
-// History:
-//   - Round 6 X: introduced as the single gate for direct-input secret
-//     paths (auth flag, stdin, file, config set api_secret, profile create).
-//   - Round 7 DD: extended to reject Unicode Cf "Format" chars
-//     (invisible: zero-width, BOM, bidi).
-//   - Round 8 FF: extended to reject invalid UTF-8 and Mn "Mark,
-//     Nonspacing" (combining marks, variation selectors) plus moved
-//     here so the URLBOX_API_SECRET env path also enforces the rule.
+// The single gate for every secret input path (auth flag, stdin, file,
+// config set api_secret, profile create, URLBOX_API_SECRET): rejects
+// empty/whitespace, control chars, Unicode Cf "Format" chars (invisible:
+// zero-width, BOM, bidi), Mn "Mark, Nonspacing" (combining marks,
+// variation selectors), and invalid UTF-8.
 package config
 
 import (

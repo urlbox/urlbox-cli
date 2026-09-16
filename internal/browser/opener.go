@@ -23,7 +23,7 @@ var ErrUnopenableURL = errors.New("refused to open URL: scheme must be http or h
 // via a hostile api_host that returned an arbitrary renderUrl) and
 // the OS handler would happily launch executables for some of them.
 //
-// v1.0.4 Class 2.2: pre-1.0.4 Open() forwarded any string, turning
+// Pre-1.0.4 Open() forwarded any string, turning
 // --open into a remote-launch primitive on Windows (cmd /c start
 // happily resolves UNC paths and file: schemes to executables).
 func isOpenableURL(raw string) bool {

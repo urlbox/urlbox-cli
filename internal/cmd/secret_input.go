@@ -58,7 +58,7 @@ const maxSecretBytes = 4096
 // directExplicit distinguishes `--api-secret ""` (passed explicitly with
 // an empty value) from `--api-secret` not being passed at all. cobra
 // collapses both to direct == "" at the Go level — only Flags().Changed()
-// can tell them apart. Explicit empty is a usage error (Round 4 M3) so
+// can tell them apart. Explicit empty is a usage error so
 // the user isn't silently fed env/profile when they were trying to test
 // "what happens with no auth?".
 //
