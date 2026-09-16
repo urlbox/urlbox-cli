@@ -64,7 +64,7 @@ func TestSnapshot_Sorted(t *testing.T) {
 	}
 }
 
-// ─── v1.0.4 Class 6 — explicit exclusion-rule header ────────────────
+// ─── explicit exclusion-rule header ────────────────
 //
 // Invariant: the surface contract documents what it covers AND what it
 // deliberately excludes, so a reader of SURFACE.txt knows the bounds

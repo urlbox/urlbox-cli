@@ -480,6 +480,15 @@ urlbox render [url] --user-agent
 urlbox render [url] --wait-until
 urlbox render [url] --webhook-url
 urlbox render [url] --width
+urlbox report <renderId>
+urlbox report <renderId> --agent
+urlbox report <renderId> --category
+urlbox report <renderId> --comment
+urlbox report <renderId> --jq
+urlbox report <renderId> --max-retries
+urlbox report <renderId> --no-retry
+urlbox report <renderId> --output-format
+urlbox report <renderId> --profile
 urlbox schema
 urlbox schema --agent
 urlbox schema --jq
@@ -627,6 +636,11 @@ urlbox storage update <name-or-id> --provider
 urlbox storage update <name-or-id> --region
 urlbox storage update <name-or-id> --sas-token
 urlbox storage update <name-or-id> --secret
+urlbox support
+urlbox support --agent
+urlbox support --jq
+urlbox support --output-format
+urlbox support --profile
 urlbox upgrade
 urlbox upgrade --agent
 urlbox upgrade --jq

@@ -142,7 +142,7 @@ func TestResolve_EnvProfile_PicksProfile(t *testing.T) {
 	}
 }
 
-// TestResolve_UnknownEnvProfile_Errors pins Round 5 Adv-2: when
+// TestResolve_UnknownEnvProfile_Errors pins a regression: when
 // URLBOX_PROFILE names a profile that doesn't exist, Resolve must
 // return ErrNotFound rather than silently fall through to env/flag
 // credentials on the (empty) Profile struct — that fallthrough
@@ -266,7 +266,7 @@ func TestResolve_APIKey_FromRepoOverlay(t *testing.T) {
 	}
 }
 
-// TestResolve_EnvAPISecret_InvalidUTF8_Rejected pins Round 8 FF:
+// TestResolve_EnvAPISecret_InvalidUTF8_Rejected pins a regression:
 // URLBOX_API_SECRET used to bypass ValidateSecretValue entirely. The
 // adversarial demo: signing HMACs with control-char-corrupted env
 // bytes. Resolve now applies the same gate the flag/stdin/file paths
@@ -342,10 +342,10 @@ func TestResolve_EnvAPISecret_Trimmed(t *testing.T) {
 	}
 }
 
-// ─── Class 1 (v1.0.4) ─────────────────────────────────────────────
+// ─── value validation ─────────────────────────────────────────────
 // Invariant: every credential/host value reaching the API client has
 // been through ValidateSecretValue / ValidateAPIHost, regardless of
-// source. Round 8 FF+GG closed env + flag paths but the overlay,
+// source. Earlier fixes closed env + flag paths but the overlay,
 // FlagAPISecret, and profile-from-disk paths were unvalidated.
 //
 // These tests deliberately use cases that fail under the EXISTING

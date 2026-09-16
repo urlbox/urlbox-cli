@@ -40,6 +40,11 @@ type Response struct {
 	Error       string         `json:"error,omitempty"`
 	Code        string         `json:"code,omitempty"`
 	Hint        string         `json:"hint,omitempty"`
+	// RenderID is the render id the API surfaced OUTSIDE the body — the
+	// x-urlbox-request-id response header. Sync render bodies carry no id,
+	// so this is the only place a sync render's id exists. In-memory only:
+	// json:"-" keeps envelopes unchanged.
+	RenderID string `json:"-"`
 }
 
 // Breadcrumb is a "next step" hint emitted alongside a successful Response.

@@ -403,7 +403,7 @@ func TestStatus_Wait_FailedTerminal_Exit10(t *testing.T) {
 // TestStatus_Wait_TimesOut_TimeoutExit confirms that when --timeout elapses
 // before a terminal status is observed, runStatusWait returns ErrTimeout
 // (exit 11) with a message naming the renderId, the duration, and the last
-// status. Round 1 review (Arch I2 + UX I7): a deadline-exceeded outcome is
+// status. A deadline-exceeded outcome is
 // what ErrTimeout exists for; exit 1 (ErrUsage) conflated poll-timeouts with
 // "bad flag" usage errors and broke agent retry classification.
 func TestStatus_Wait_TimesOut_TimeoutExit(t *testing.T) {
@@ -462,7 +462,7 @@ func TestStatus_Wait_TimesOut_TimeoutExit(t *testing.T) {
 }
 
 // TestStatus_Wait_LaterPollContextTimeout_DoesNotSayShorterThanOneCall
-// pins Arch I1: the "shorter than a single API call" friendly message
+// pins a regression: the "shorter than a single API call" friendly message
 // must only fire on attempt 0. If a per-poll context-deadline fires on
 // attempt N>0 (e.g., a slow GET several polls into a long --wait), the
 // friendly message lies — by definition the first call already succeeded.

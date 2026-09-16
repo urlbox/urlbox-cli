@@ -161,6 +161,7 @@ documents the well-known options, but the API accepts more.
 | `urlbox config profile default`  | Switch the default profile                             |
 | `urlbox config profile delete`   | Delete a non-default profile                           |
 | `urlbox dashboard`               | Open the Urlbox dashboard in the user's browser        |
+| `urlbox support`                 | Open the Urlbox support contact page in the user's browser |
 | `urlbox doctor`                  | Diagnose install, config, network, credentials         |
 | `urlbox link`                    | Generate an HMAC-signed render URL with no API call    |
 | `urlbox login`                   | Browser sign-in (agents: use `URLBOX_API_SECRET` or `config profile create`) |
@@ -177,6 +178,7 @@ documents the well-known options, but the API accepts more.
 | `urlbox screenshot <url>`        | Alias for `render --format png` (also `urlbox shot`)   |
 | `urlbox pdf <url>`               | Alias for `render --format pdf --full-page`            |
 | `urlbox video <url>`             | Alias for `render --format mp4`                        |
+| `urlbox report <renderId>`       | Report a bad render to the Urlbox team (category + comment) |
 | `urlbox schema render`           | Print the JSON Schema for the render request payload   |
 | `urlbox skill`                   | Show this skill content (`urlbox skill show`)          |
 | `urlbox status <renderId>`       | Check / poll the status of an async render             |
@@ -429,6 +431,37 @@ urlbox dashboard --output-format json --jq '.data.url'
 
 Exit codes: 0 on success (browser launched or URL printed); 10 if the OS
 browser handler returned an error (URL is in the hint).
+
+## report: report a bad render
+
+`urlbox report <renderId>` files a render report with the Urlbox team.
+Requires a signed-in session — the HUMAN runs `urlbox login` (browser
+device flow) once; agents never sign in themselves and the render
+secret (`URLBOX_API_SECRET`) cannot file reports.
+
+Non-interactive use requires both flags; the command never prompts when
+stdin is not a terminal:
+
+```sh
+urlbox report 01a0906a-…_ps --category bot-detection --comment "page shows a captcha" --output-format json --jq '.data.id'
+```
+
+`--category` is a closed set: `bot-detection`, `login-required`,
+`missing-content`, `cookie-banner-or-popup`, `render-failed`, `other`.
+Where the renderId comes from: async render responses carry
+`data.renderId`; sync render JSON carries NO id (use `--async` when you
+plan to report). One report per render — re-filing while the report is
+open edits it in place; once the team picks it up you get exit 7.
+
+Exit codes: 0 filed; 1 missing/invalid category or comment; 3 not
+logged in; 5 render not found (expired ~60 days or another org's);
+7 report locked (already in review).
+
+## support: open the support contact page
+
+`urlbox support` opens https://urlbox.com/contact. Same envelope contract
+as `dashboard`: json/quiet never launch a browser and always carry
+`data.url`; headless prints the URL to stderr.
 
 ## Common workflows
 

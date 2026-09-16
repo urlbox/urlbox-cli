@@ -4,6 +4,18 @@ All notable changes to the `urlbox` CLI are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+**Report a bad render from the CLI.** Every render response now prints a
+muted hint line with the render's id and the ready-to-run report command
+(interactive terminals only — json/quiet/piped output is byte-identical).
+`urlbox report <renderId>` files the report: `--category` + `--comment`
+for agents and scripts, an interactive category picker + comment prompt
+for humans. Reports need a signed-in session (`urlbox login`); render
+secrets cannot file them. `urlbox support` opens the support contact
+page, with the dashboard command's headless and machine-readable
+behaviour.
+
 ## v1.2.0 — 2026-08-19
 
 **`urlbox login` is the only interactive sign-in; `urlbox auth` is gone.**

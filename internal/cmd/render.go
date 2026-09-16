@@ -169,7 +169,7 @@ func runRender(cmd *cobra.Command, args []string, f *renderFlags) error {
 		f.url = args[0]
 	}
 
-	// Round 5 Adv-5: reject negative --timeout up front. Without this,
+	// Reject negative --timeout up front. Without this,
 	// `--timeout -5s` produced the nonsense diagnostic "Render timed out
 	// after -5s" — the per-attempt context immediately expired and the
 	// timeout-error path interpolated the negative duration verbatim.
@@ -196,7 +196,7 @@ func runRender(cmd *cobra.Command, args []string, f *renderFlags) error {
 		f.apiSecret = resolved
 	}
 
-	// Round 4 M2: reject numeric flags outside the JSON safe-int range
+	// Reject numeric flags outside the JSON safe-int range
 	// (±2^53-1). Go int64 accepts values JSON marshalling silently rounds
 	// to a nearby float64, so the payload that reaches the API differs
 	// from what the user typed. Catch it locally with a precise error.
@@ -247,7 +247,7 @@ func runRender(cmd *cobra.Command, args []string, f *renderFlags) error {
 	applyFlagsToMap(cmd, f, merged)
 
 	// 4. Require url somewhere — and require it to be a non-empty string.
-	// Round 5 Adv-7: --json '{"url":""}' and --json '{"url":null}' used to
+	// --json '{"url":""}' and --json '{"url":null}' used to
 	// bypass this check because it only verified the key's presence.
 	urlVal, urlPresent := merged["url"]
 	missing := !urlPresent
@@ -293,7 +293,7 @@ func runRender(cmd *cobra.Command, args []string, f *renderFlags) error {
 	if vErr != nil {
 		return vErr
 	}
-	// v1.0.4 Class 3.4 — warning routing per format:
+	// Warning routing per format:
 	//   - text mode: print "warning: ..." inline on stderr (humans
 	//     expect them near the success line; the text formatter does
 	//     not render envelope.warnings).
@@ -318,8 +318,8 @@ func runRender(cmd *cobra.Command, args []string, f *renderFlags) error {
 		return cliErr
 	}
 
-	// 5.6. Pre-flight --output sandbox + writability before any API call
-	// (Round 4 M1, M6). Without this, --dry-run silently passed paths
+	// 5.6. Pre-flight --output sandbox + writability before any API call.
+	// Without this, --dry-run silently passed paths
 	// outside CWD and real renders burned a credit before discovering
 	// the target was unwritable. Skipped for --async since --output is
 	// not honored on the async path (the renderId is returned instead).
@@ -336,7 +336,7 @@ func runRender(cmd *cobra.Command, args []string, f *renderFlags) error {
 
 	// 6. --dry-run short-circuits with the validated payload in the envelope.
 	if f.dryRun {
-		// Round 5 Adv-3: flag the silent precedence when --dry-run wins
+		// Flag the silent precedence when --dry-run wins
 		// over --curl / --output. Without this the user has no signal
 		// that their --curl print / --output save wasn't performed.
 		breadcrumbs := []output.Breadcrumb{
@@ -408,7 +408,7 @@ func runRender(cmd *cobra.Command, args []string, f *renderFlags) error {
 				cli.Hint = networkHint(errors.New(cli.Message), true, f.timeout)
 			}
 		}
-		return err
+		return appendReportHint(cmd, err)
 	}
 
 	// 9. --output: download the rendered file to a sandboxed local path.
@@ -449,7 +449,9 @@ func runRender(cmd *cobra.Command, args []string, f *renderFlags) error {
 		breadcrumbsForResp(resp, f),
 	)
 	env.Warnings = warnings
-	return writeRenderEnvelope(cmd, env)
+	werr := writeRenderEnvelope(cmd, env)
+	printReportHint(cmd, renderIDForHint(resp))
+	return werr
 }
 
 // breadcrumbsForResp returns the right next-step breadcrumbs based on what
@@ -487,16 +489,16 @@ const jsonSafeIntMax = 9007199254740991
 // they become float64. Then it converts the surviving numbers back to
 // float64 to preserve the existing map[string]any contract downstream.
 //
-// Round 6 class-fix: walks the ENTIRE JSON tree (nested maps + arrays).
+// Walks the ENTIRE JSON tree (nested maps + arrays).
 // The previous version only checked top-level keys width/height/delay/
 // quality, leaving every other integer — including legitimate fields
 // like {"viewport":{"width":...}} — unchecked. The fundamental rule is
 // "no integer anywhere should silently round when marshaled to JSON",
 // independent of which key it sits under.
 func parseJSONWithIntRangeCheck(jsonBytes []byte) (map[string]any, *output.CLIError) {
-	// Round 8 LL: detect duplicate keys before main parse. Standard
-	// json.Unmarshal silently last-wins on dup keys, which Adv-2 found
-	// in `--json '{"url":"a","url":"b"}'` (signed b, no warning). Fail
+	// Detect duplicate keys before main parse. Standard
+	// json.Unmarshal silently last-wins on dup keys —
+	// e.g. `--json '{"url":"a","url":"b"}'` (signed b, no warning). Fail
 	// fast so hand-edited JSON typos surface as errors.
 	if cliErr := checkDuplicateJSONKeys(jsonBytes); cliErr != nil {
 		return nil, cliErr
@@ -667,10 +669,10 @@ func walkAndCheckInts(v any, path string) *output.CLIError {
 		// they exceed the safe range — fractional/sci floats already
 		// have float64 precision and the API validates value semantics.
 		//
-		// Round 8 LL: the previous version called v.Int64() and treated
+		// The previous version called v.Int64() and treated
 		// any error as "pass through". But Int64() errors on TWO cases:
 		// fractional numbers AND integers > 2^63. The latter were silent-
-		// rounding to floats downstream (Adv-2 demo: width=99999999999999999999
+		// rounding to floats downstream (e.g. width=99999999999999999999
 		// → query 1e+20). Now we inspect the literal string and reject
 		// out-of-int64 integers explicitly.
 		s := string(v)
@@ -764,7 +766,6 @@ func convertNumberValue(v any) any {
 // validateIntFlagRanges rejects --width / --height / --delay / --quality
 // / --max-retries values outside ±2^53-1. The Go int64 flag accepts much
 // larger; we have to catch it here before json.Marshal silently rounds.
-// Round 4 M2.
 func validateIntFlagRanges(f *renderFlags) *output.CLIError {
 	checks := []struct {
 		flag string
@@ -939,7 +940,7 @@ func buildRenderClient(cmd *cobra.Command, f *renderFlags) (api.Client, *output.
 		)
 	}
 
-	// v1.0.4 Class 5.1 — detect missing secret client-side with the
+	// Detect missing secret client-side with the
 	// CLI's own vocabulary. Pre-1.0.4 we let the API return its
 	// confusing "Api Key does not exist" message, costing a network
 	// round-trip and a vocabulary mismatch (CLI says "API secret"
@@ -992,8 +993,6 @@ func summariseRenderResp(resp *api.Response) string {
 //   - sync + --output saved a file → the absolute saved path (savedTo)
 //   - sync + no --output → the hosted renderUrl
 //   - async → the renderId for follow-up `urlbox status` calls
-//
-// Round 5 First-3 / Power-1.
 func writeRenderEnvelope(cmd *cobra.Command, env *output.Envelope) error {
 	formatFlag, _ := cmd.Root().PersistentFlags().GetString("output-format")
 	jqExpr, _ := cmd.Root().PersistentFlags().GetString("jq")

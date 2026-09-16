@@ -96,7 +96,7 @@ func loadSchemaFrom(b []byte) (*jsonschema.Schema, []string, error) {
 //
 // Returns (payload, warnings, nil) on success. Returns (nil, nil, *CLIError)
 // for the local hard errors above. Warnings are owned by the caller — no
-// package-global state is mutated (Arch I3 from Round 1 review).
+// package-global state is mutated.
 func ValidatePayload(b []byte) (payload map[string]any, warnings []string, cliErr *output.CLIError) {
 	if err := SanitizeRaw(b); err != nil {
 		return nil, nil, err

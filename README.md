@@ -114,6 +114,18 @@ urlbox status ps_abc123 --wait
 
 Pass `--async` to queue a render and get a `renderId` back immediately. `status` checks it, and `status --wait` polls (every 2s by default) until it reaches a terminal state — `succeeded` or `failed`. Webhooks and long-running renders are covered at [urlbox.com/docs/cli/async-and-webhooks](https://urlbox.com/docs/cli/async-and-webhooks).
 
+### Reporting a bad render
+
+```sh
+urlbox report 01a0906a-…_ps                      # interactive: category picker + comment
+urlbox report 01a0906a-…_ps --category bot-detection --comment "page shows a captcha"
+```
+
+Every render prints its id in a hint line under the result. `report` files
+the problem straight to the Urlbox team (requires `urlbox login`); the team
+follows up on your report from the dashboard. `urlbox support` opens the
+contact page for anything else.
+
 ### Account and context
 
 ```sh
@@ -128,6 +140,8 @@ urlbox usage                 # render usage for the current period
 | Command | Does |
 |---------|------|
 | `login` / `logout` | Sign in through the browser; sign out and revoke this device's session |
+| `report <renderId>` | File a render problem report with the Urlbox team (needs `login`) |
+| `support` | Open the support contact page in your browser |
 | `whoami` (alias `me`) | Show the signed-in user and active org/project |
 | `orgs list` / `orgs select` | List or switch your active organisation (`--project` finishes the switch in one step) |
 | `projects list` / `select` / `show` | Browse and switch the active project |

@@ -197,11 +197,11 @@ func TestSmoke_v090_PassthroughTotallyMadeUp(t *testing.T) {
 //   - message is non-empty and signals options-level rejection
 //   - hint is non-empty and points the agent at next steps
 //
-// What we CAN'T verify here (deferred to a follow-up urlbox-mono PR):
-// the API's response body does not include `info.errors` (the Zod tree
-// with field names) — only the generic "Invalid options, please check
-// errors" message + the `InvalidOptions` code. Field-level detail would
-// require an API change to add `info.errors` to the wire response.
+// What we CAN'T verify here (would need an API-side change):
+// the API's response body does not include field-level validation detail
+// — only the generic "Invalid options, please check errors" message + the
+// `InvalidOptions` code. Surfacing per-field errors would require the API
+// to add them to the wire response.
 func TestSmoke_v090_KnownBadType_APIReturnsMeaningfulError(t *testing.T) {
 	c := smokeClient(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

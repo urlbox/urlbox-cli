@@ -21,7 +21,7 @@ var supportedConfigKeys = []string{"api_key", "api_secret", "api_host", "default
 
 // profileNameRE pins the allowed shape of a profile name: must start with
 // an alphanumeric, then 0–63 more alphanumerics / underscore / hyphen,
-// totalling 1–64 chars. Round 5 Adv-4: profile names previously accepted
+// totalling 1–64 chars. Profile names previously accepted
 // path separators (`/`, `..`), control chars (\n, \r, \t), null bytes
 // (silent truncation collisions: a\0b vs a), leading whitespace or dots,
 // and arbitrarily long strings. All footguns in their own way.
@@ -98,8 +98,8 @@ func newProfileCreateCmd() *cobra.Command {
 			if cliErr != nil {
 				return cliErr
 			}
-			// Validate the resolved secret value when one was provided. Round 6
-			// class-fix: profile create must go through the same gate every
+			// Validate the resolved secret value when one was provided —
+			// profile create must go through the same gate every
 			// secret-writing path uses. An empty resolvedSecret here means
 			// no flag was passed — that's allowed for profile create (the
 			// profile can be created secretless and have the secret added
@@ -111,7 +111,7 @@ func newProfileCreateCmd() *cobra.Command {
 				}
 				resolvedSecret = validated
 			}
-			// Round 8 GG: same gate for api_host as for api_secret —
+			// Same gate for api_host as for api_secret —
 			// validates scheme, rejects embedded creds + CRLF + control
 			// chars before persisting.
 			if apiHost != "" {
@@ -121,8 +121,8 @@ func newProfileCreateCmd() *cobra.Command {
 				}
 				apiHost = validated
 			}
-			// Atomic check + create under the config-file lock (Round 7 CC
-			// class-fix): the previous Load -> check -> Save sequence raced
+			// Atomic check + create under the config-file lock — the
+			// previous Load -> check -> Save sequence raced
 			// when parallel `config profile create` calls hit the same
 			// XDG_CONFIG_HOME — 20 parallel calls used to lose 5-6.
 			if err := config.Update(func(cfg *config.Config) error {
@@ -185,7 +185,7 @@ func newProfileListCmd() *cobra.Command {
 					"name":          n,
 					"api_host":      p.APIHost,
 					"masked_secret": maskSecret(p.APISecret),
-					// Round 8 MM: was string("true"/"false") because the
+					// Was string("true"/"false") because the
 					// row was typed map[string]string. Now bool so JSON
 					// consumers (agents) can use it directly without
 					// string-comparison.
@@ -312,7 +312,7 @@ func newConfigGetCmd() *cobra.Command {
 		Long: `Read a config value from the resolved profile.
 
 For api_secret and session_token, the raw value is masked by default
-(Round 1 UX I1) to avoid leaking into scrollback / clipboard / log
+to avoid leaking into scrollback / clipboard / log
 capture. Pass --reveal to print the unmasked value (intended for
 clipboard-copy workflows with eyes on the screen).`,
 		Args: cobra.ExactArgs(1),
@@ -383,7 +383,7 @@ profile count.`,
 			}
 			// Validate api_secret / session_token values through the same gate
 			// every secret-writing path uses. Rejects empty / whitespace /
-			// control chars. Round 6 class-fix.
+			// control chars.
 			if key == "api_secret" || key == "session_token" {
 				validated, vErr := config.ValidateSecretValue(val)
 				if vErr != nil {
@@ -391,7 +391,7 @@ profile count.`,
 				}
 				val = validated
 			}
-			// Round 8 GG: api_host gets the same treatment — was accepting
+			// api_host gets the same treatment — was accepting
 			// javascript:, file://, embedded credentials, CRLF before.
 			if key == "api_host" {
 				validated, vErr := config.ValidateAPIHost(val)
@@ -439,7 +439,7 @@ profile count.`,
 
 			// Per-profile key (api_key / api_secret / api_host). Profile
 			// resolution + overwrite-guard + write all happen under one
-			// Update so the read-modify-write window is atomic. Round 7 CC.
+			// Update so the read-modify-write window is atomic.
 			var profileName string
 			if err := config.Update(func(c *config.Config) error {
 				name, perr := resolveTargetProfile(cmd, c)
@@ -466,7 +466,7 @@ profile count.`,
 				}
 				return output.NewCLIError(output.ErrServer, "failed to write config", err.Error())
 			}
-			// Round 4 M4: mirror the masking that `config get api_secret`
+			// Mirror the masking that `config get api_secret`
 			// already does — never echo a freshly-set secret back through
 			// the envelope (CI logs, scrollback, --output-format quiet pipes).
 			// The raw value is still persisted on disk; only the
@@ -493,13 +493,13 @@ profile count.`,
 //
 // Precedence (highest first):
 //   - 0 profiles → ErrUsage "No profiles configured" (setup issue)
-//   - --profile given → must exist, else ErrNotFound (Round 7 EE: every
+//   - --profile given → must exist, else ErrNotFound (every
 //     "user named a profile that doesn't exist" site now reports the same
 //     envelope as profile delete/default and the unified config.Resolve)
 //   - URLBOX_PROFILE set → must exist, else ErrNotFound (same class)
 //   - 1 profile, no flag/env → that profile (implicit)
-//   - 2+ profiles, default_profile set and exists → default_profile (Round 5
-//     CI-2: matches how render/status/link resolve)
+//   - 2+ profiles, default_profile set and exists → default_profile
+//     (matches how render/status/link resolve)
 //   - 2+ profiles, no default_profile → ErrUsage "--profile is required"
 //     (ambiguity — user didn't specify which, not a name lookup miss)
 func resolveTargetProfile(cmd *cobra.Command, c *config.Config) (string, error) {
@@ -537,7 +537,7 @@ func resolveTargetProfile(cmd *cobra.Command, c *config.Config) (string, error) 
 		}
 	}
 	// 2+ profiles, no flag, no env: fall back to default_profile if set.
-	// Round 5 CI-2 — config get/set used to require --profile here, but
+	// Config get/set used to require --profile here, but
 	// render/status/link already resolved default_profile transparently,
 	// breaking CI scripts that ran `config set api_key X` after creating
 	// a second profile.

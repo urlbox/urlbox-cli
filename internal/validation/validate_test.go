@@ -123,8 +123,7 @@ func TestValidatePayload_RejectsURLControlChars(t *testing.T) {
 // refactor and the field list drifted). v0.9.0's "schema as documentation"
 // model handles this gracefully — unknown fields pass through verbatim and the
 // API decides. This test guarantees the unknown-passthrough path stays open
-// for these dashboard-supported fields. See urlbox-mono
-// packages/types/src/render/render.types.ts:1277-1292 for API definitions.
+// for these dashboard-supported fields.
 func TestValidatePayload_AcceptsUnknownFields_WithWarning(t *testing.T) {
 	payload := []byte(`{
 		"url": "https://example.com",
@@ -198,7 +197,7 @@ func TestValidatePayload_KnownKey_BadType_PassesThrough(t *testing.T) {
 	}
 }
 
-// TestValidatePayload_Concurrent_NoCrossPollination is the Arch I3 guard:
+// TestValidatePayload_Concurrent_NoCrossPollination is the no-global-state guard:
 // the package no longer holds a global lastWarnings slice, so concurrent
 // callers must each see their own warning set without race / clobber.
 // Run with -race to make this assertion meaningful.
