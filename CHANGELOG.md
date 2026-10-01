@@ -4,6 +4,29 @@ All notable changes to the `urlbox` CLI are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Added
+- **New-version notice.** Once a day, interactive runs check GitHub for a
+  newer release and print a one-line notice to stderr pointing at
+  `urlbox upgrade`. Text output to a terminal only: JSON, quiet, `--jq`,
+  piped and `CI` runs are unchanged. The check runs alongside the command,
+  is capped at 2s, and a failure is silent. Opt out with
+  `URLBOX_NO_UPDATE_NOTIFIER=1`.
+- `urlbox doctor`'s `version` check reports whether a newer release
+  exists (`warn`, never `fail`; a failed lookup stays `ok`).
+
+### Changed
+- `urlbox upgrade` checks for the latest release first: it does nothing
+  when you're already current, and names the target version when it
+  upgrades. The envelope gains `latestVersion` and `upToDate` (both
+  omitted when the lookup fails, which never blocks the upgrade).
+
+### Fixed
+- `urlbox upgrade` now follows the PATH symlink to the real binary, so
+  Intel-Mac Homebrew installs (`/usr/local/bin/urlbox` → `Cellar`) are
+  detected as Homebrew instead of printing manual instructions.
+
 ## v1.2.0 — 2026-08-19
 
 **`urlbox login` is the only interactive sign-in; `urlbox auth` is gone.**

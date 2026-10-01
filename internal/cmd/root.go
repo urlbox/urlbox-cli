@@ -38,7 +38,16 @@ func Execute(args []string, stdout, stderr io.Writer) int {
 	rootCmd.SetArgs(args)
 	rootCmd.SetOut(stdout)
 	rootCmd.SetErr(stderr)
+	notifier := attachUpdateNotifier(rootCmd)
 
+	code := executeRoot(rootCmd, args, stdout, stderr)
+	notifier.finish(stderr)
+	return code
+}
+
+// executeRoot runs the command tree and writes any error envelope,
+// returning the process exit code.
+func executeRoot(rootCmd *cobra.Command, args []string, stdout, stderr io.Writer) int {
 	err := rootCmd.Execute()
 	if err == nil {
 		return 0

@@ -17,6 +17,7 @@ import (
 	"github.com/urlbox/urlbox-cli/internal/api"
 	"github.com/urlbox/urlbox-cli/internal/config"
 	"github.com/urlbox/urlbox-cli/internal/output"
+	"github.com/urlbox/urlbox-cli/internal/update"
 	"github.com/urlbox/urlbox-cli/internal/version"
 )
 
@@ -232,7 +233,7 @@ func runDoctorChecks(ctx context.Context, resolved *config.Resolved, profile *co
 	credentialOnly := resolved != nil && resolved.APISecret != ""
 
 	return []Check{
-		checkVersion(),
+		checkVersion(ctx),
 		checkInstallMethod(),
 		checkConfigFile(),
 		checkSession(ctx, host, profile, credentialOnly),
@@ -244,8 +245,31 @@ func runDoctorChecks(ctx context.Context, resolved *config.Resolved, profile *co
 	}
 }
 
-func checkVersion() Check {
-	return Check{Name: "version", Status: "ok", Message: version.Version}
+// checkVersion reports the running version and whether a newer release
+// exists. A newer release is a warning, never a failure, and a failed
+// lookup stays "ok": doctor is a CI health gate and must not flap on
+// GitHub rate limits.
+func checkVersion(ctx context.Context) Check {
+	current := updateCurrentVersion()
+	if !update.IsRelease(current) {
+		return Check{Name: "version", Status: "ok", Message: current}
+	}
+	ctx, cancel := context.WithTimeout(ctx, upgradeCheckTimeout)
+	defer cancel()
+	latest, err := updateFetchLatest(ctx)
+	switch {
+	case err != nil:
+		return Check{Name: "version", Status: "ok", Message: current + " (couldn't check for updates)"}
+	case update.IsNewer(current, latest):
+		return Check{
+			Name:    "version",
+			Status:  "warn",
+			Message: current + " (" + latest + " available)",
+			Hint:    "Run `urlbox upgrade` to update.",
+		}
+	default:
+		return Check{Name: "version", Status: "ok", Message: current + " (latest)"}
+	}
 }
 
 func checkInstallMethod() Check {
