@@ -180,7 +180,7 @@ documents the well-known options, but the API accepts more.
 | `urlbox schema render`           | Print the JSON Schema for the render request payload   |
 | `urlbox skill`                   | Show this skill content (`urlbox skill show`)          |
 | `urlbox status <renderId>`       | Check / poll the status of an async render             |
-| `urlbox upgrade`                 | Self-update via detected install method                |
+| `urlbox upgrade`                 | Update via detected install method; no-op if current   |
 
 ## render: capture a URL
 

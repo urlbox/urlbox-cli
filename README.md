@@ -21,9 +21,12 @@ scoop install urlbox
 
 # Go
 go install github.com/urlbox/urlbox-cli/cmd/urlbox@latest
+
+# macOS / Linux, no package manager (installs to /usr/local/bin)
+curl -fsSL https://cli.urlbox.com/install.sh | sh
 ```
 
-Linux `.deb`/`.rpm`/`.apk` packages and a `curl | sh` installer are covered in [the install docs](https://urlbox.com/docs/cli/install).
+The install script checks the download's SHA-256 against the release checksums, and also verifies their Sigstore signature when `cosign` is installed. Linux `.deb`/`.rpm`/`.apk` packages are covered in [the install docs](https://urlbox.com/docs/cli/install).
 
 Confirm it worked:
 
@@ -169,8 +172,18 @@ Secrets are masked by default in both text and JSON — pass `--reveal` on `list
 | `skill show` / `install` | Print or install the agent skill (see below) |
 | `doctor` | Check version, config, session, credentials, and API reachability |
 | `dashboard` | Open the Urlbox dashboard in your browser |
-| `upgrade` | Update to the latest version via the detected install method |
+| `upgrade` | Update to the latest release via the detected install method (no-op when already current) |
 | `version` | Print the version, commit, and build date |
+
+### Staying up to date
+
+Once a day, when you run a command in a terminal, the CLI checks GitHub for a newer release and prints one line to stderr if there is one:
+
+```
+A new version of urlbox is available: 1.2.0 → 1.3.0. Run `urlbox upgrade` to update.
+```
+
+It never prints in JSON, quiet, `--jq`, or piped output, and never runs when `CI` is set. `urlbox doctor` reports the same check. To turn the notice off, set `URLBOX_NO_UPDATE_NOTIFIER=1`.
 
 Troubleshooting guide: [urlbox.com/docs/cli/troubleshooting](https://urlbox.com/docs/cli/troubleshooting). Full reference: [urlbox.com/docs/cli/command-reference](https://urlbox.com/docs/cli/command-reference).
 
