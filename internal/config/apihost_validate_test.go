@@ -6,7 +6,7 @@ import (
 	"github.com/urlbox/urlbox-cli/internal/config"
 )
 
-// TestValidateAPIHost_RejectsHostileSchemes pins Round 8 Class B (GG):
+// TestValidateAPIHost_RejectsHostileSchemes pins a regression:
 // the adversarial repro accepted javascript:, file://, ftp://, and
 // embedded-credential URLs verbatim. Now rejected as ErrUsage.
 func TestValidateAPIHost_RejectsHostileSchemes(t *testing.T) {
@@ -111,7 +111,7 @@ func TestValidateAPIHost_AcceptsValid(t *testing.T) {
 	}
 }
 
-// ─── Class 1.2 (v1.0.4) — http:// only for loopback ─────────────────
+// ─── http:// only for loopback ─────────────────
 //
 // Invariant: plain http:// is rejected unless the host is loopback
 // (127.0.0.1, ::1, localhost). Closes a downgrade path where a

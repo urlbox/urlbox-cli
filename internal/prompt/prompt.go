@@ -13,6 +13,10 @@ import (
 // ErrNotInteractive is returned when a prompt is attempted without a terminal.
 var ErrNotInteractive = errors.New("not an interactive terminal")
 
+// ErrAborted is returned when the user backs out of a prompt (Esc / Ctrl-C)
+// before submitting.
+var ErrAborted = huh.ErrUserAborted
+
 func theme() *huh.Theme {
 	t := huh.ThemeCharm()
 	t.Focused.Base = t.Focused.Base.MarginBottom(1)
@@ -89,4 +93,23 @@ func TypeToConfirm(title, expected string) error {
 		return fmt.Errorf("confirmation did not match %q — aborted", expected)
 	}
 	return nil
+}
+
+// TextInput draws a single-line text input to stderr and returns the
+// trimmed value. validate (optional) runs inside the form so the user can
+// correct in place. It returns ErrNotInteractive when stdin is not a
+// terminal.
+func TextInput(title string, validate func(string) error) (string, error) {
+	if !term.IsTerminal(int(os.Stdin.Fd())) { //nolint:gosec // file descriptors fit in int on every platform Go supports
+		return "", ErrNotInteractive
+	}
+	var typed string
+	input := huh.NewInput().Title(title).Value(&typed)
+	if validate != nil {
+		input = input.Validate(validate)
+	}
+	if err := input.WithTheme(theme()).Run(); err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(typed), nil
 }

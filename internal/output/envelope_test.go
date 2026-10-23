@@ -114,7 +114,7 @@ func containsKey(jsonStr, key string) bool {
 	return ok
 }
 
-// ─── v1.0.4 Class 3.1 — Warnings on envelopes ──────────────────────
+// ─── Warnings on envelopes ──────────────────────
 // Invariant: agent-consumable warnings (fuzzy-typo hints, --json key
 // suggestions) travel inside the envelope as a structured field, not
 // as plain stderr text alongside the JSON envelope on stdout.

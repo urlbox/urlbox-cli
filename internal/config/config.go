@@ -60,11 +60,11 @@ func Load() (*Config, error) {
 }
 
 // LoadOrCLIError wraps Load with the exit-code-class mapping every cmd-side
-// caller wants. Round 8 review M1: bare Load errors used to be wrapped as
+// caller wants. Bare Load errors used to be wrapped as
 // ErrServer (exit 10) at 6 call sites, but the contract reserves 10 for
 // upstream-server problems. Local I/O failures (chmod 000, fs corruption)
 // should be ErrForbidden (exit 4) and malformed JSON ErrUsage (exit 2).
-// Symmetric with the Update/write path's KK class-fix.
+// Symmetric with the Update/write path's error mapping.
 func LoadOrCLIError() (*Config, *output.CLIError) {
 	cfg, err := Load()
 	if err == nil {

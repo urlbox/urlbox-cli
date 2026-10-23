@@ -1,5 +1,5 @@
-// internal/config/secret_validate_test.go — class-fix tests for secret-value
-// validation. Round 6 surfaced four sibling bypasses of the secret guard:
+// internal/config/secret_validate_test.go — regression tests for secret-value
+// validation. Four sibling bypasses of the secret guard existed:
 // whitespace-only --api-secret accepted (auth + config set); control
 // chars accepted; config set api_secret "" silently cleared the secret
 // (bypassing the auth overwrite guard); leading/trailing whitespace
@@ -96,12 +96,12 @@ func TestValidateSecretValue_TrimsSurroundingWhitespace(t *testing.T) {
 	}
 }
 
-// TestValidateSecretValue_RejectsInvisibleUnicode pins Round 7 (Med):
+// TestValidateSecretValue_RejectsInvisibleUnicode pins a regression:
 // strings.TrimSpace handles Zs/Zl/Zp (NBSP, line/paragraph separators) but
 // NOT Cf "Format" characters — zero-width spaces, joiners, BOM, bidi
 // controls. These are invisible in terminals but persist verbatim in the
 // stored secret, causing auth to fail with mysterious 401s ("but I copied
-// the right secret!"). The class-fix rejects every Cf rune anywhere in
+// the right secret!"). The fix rejects every Cf rune anywhere in
 // the value.
 //
 // All invisible chars are spelled with \u escapes so the source file stays
@@ -198,7 +198,7 @@ func TestValidateSecretValue_AcceptsNormalSecrets(t *testing.T) {
 	}
 }
 
-// TestValidateSecretValue_RejectsCombiningMarks pins Round 8 Class A:
+// TestValidateSecretValue_RejectsCombiningMarks pins a regression:
 // Mn "Mark, Nonspacing" Unicode characters (combining marks like U+0300
 // COMBINING GRAVE, variation selectors U+FE00..FE0F) are invisible by
 // design — they decorate the preceding char. Pasting "à" composed as
@@ -234,7 +234,7 @@ func TestValidateSecretValue_RejectsCombiningMarks(t *testing.T) {
 	}
 }
 
-// TestValidateSecretValue_RejectsInvalidUTF8 pins Round 8 Class A:
+// TestValidateSecretValue_RejectsInvalidUTF8 pins a regression:
 // invalid UTF-8 byte sequences — lone surrogates (U+D800..U+DFFF range
 // when encoded as raw bytes), overlong encodings (e.g. C0 80 for NUL),
 // bare 5th/6th-byte continuation forms (0xFF), truncated multi-byte

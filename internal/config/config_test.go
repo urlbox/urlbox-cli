@@ -288,10 +288,10 @@ func TestConfig_Save_AtomicViaRename(t *testing.T) {
 	}
 }
 
-// TestLoadOrCLIError_PermissionDenied pins Round 8 review M1: config-read
+// TestLoadOrCLIError_PermissionDenied pins a regression: config-read
 // permission errors used to be wrapped as ErrServer at 6 cmd-side call
 // sites. Now they map to ErrForbidden via LoadOrCLIError, symmetric with
-// the Update/write path's KK class-fix.
+// the Update/write path's error mapping.
 func TestLoadOrCLIError_PermissionDenied(t *testing.T) {
 	if os.Getuid() == 0 {
 		t.Skip("running as root; chmod 0000 won't block reads")

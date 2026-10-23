@@ -14,7 +14,7 @@ func newSurfaceCmd(root *cobra.Command) *cobra.Command {
 		Args:   cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			lines := surface.Snapshot(root)
-			// Round 8 MM: only emit JSON envelope when the user
+			// Only emit JSON envelope when the user
 			// EXPLICITLY passes --output-format json. The Makefile's
 			// `surface > SURFACE.txt` redirects stdout (not a TTY) and
 			// would otherwise auto-resolve to json — wrecking the
@@ -30,7 +30,7 @@ func newSurfaceCmd(root *cobra.Command) *cobra.Command {
 				return writeEnvelope(cmd, env)
 			}
 			w := cmd.OutOrStdout()
-			// v1.0.4 Class 6: emit the exclusion-rule header so SURFACE.txt
+			// Emit the exclusion-rule header so SURFACE.txt
 			// is self-documenting. Header lines are '#'-prefixed comments
 			// readers can filter when scripting.
 			for _, h := range surface.Header() {

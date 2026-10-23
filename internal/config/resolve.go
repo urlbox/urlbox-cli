@@ -67,9 +67,9 @@ func ProfileName(flagProfile, envProfile string, overlay *RepoOverlay, cfg *Conf
 //
 // Errors:
 //   - FlagProfile or EnvProfile names a profile that doesn't exist in
-//     opts.Config (Round 5 Adv-2 + Round 7 EE).
+//     opts.Config.
 //   - Any credential/host value (flag/env/overlay/profile) fails its
-//     validator. v1.0.4 Class 1 closed three gaps in Round 8's FF+GG:
+//     validator. v1.0.4 closed three remaining gaps:
 //     RepoOverlay.APIHost/APISecret were consumed verbatim, FlagAPISecret
 //     relied on upstream auth-command validation only, and profile values
 //     loaded from disk bypassed every write-time gate.
@@ -150,7 +150,7 @@ func Resolve(opts ResolveOptions) (*Resolved, error) {
 	var profile Profile
 	if opts.Config != nil {
 		p, ok := opts.Config.Profiles[r.Profile]
-		// Round 5 Adv-2: error symmetrically when EnvProfile names a
+		// Error symmetrically when EnvProfile names a
 		// non-existent profile. Before the fix, only --profile rejected
 		// unknown names; URLBOX_PROFILE silently fell through to env /
 		// flag credentials, leaking the wrong profile's behaviour.
@@ -170,7 +170,7 @@ func Resolve(opts ResolveOptions) (*Resolved, error) {
 		}
 		profile = p
 
-		// v1.0.4 Class 1 — defense-in-depth: profile values were validated
+		// Defense-in-depth: profile values were validated
 		// at write time (config set, profile create), but a manually-edited
 		// ~/.config/urlbox/config.json bypasses every write-time gate.
 		// Validate on read so the read path is the same single chokepoint

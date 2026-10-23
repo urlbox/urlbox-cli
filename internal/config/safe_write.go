@@ -1,5 +1,3 @@
-// internal/config/safe_write.go — v1.0.4 Class 4.
-//
 // SafeWriteUserFile is the single helper every CLI-initiated write to
 // a user-owned path goes through. The contract:
 //

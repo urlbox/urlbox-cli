@@ -101,7 +101,6 @@ var ghostCommandSubstrings = []string{
 
 // TestNoGhostCommandsInHints walks production .go files and fails when
 // any line contains a substring naming a command/flag that doesn't exist.
-// Caught Round 1 review C1/C2 (config.go:306,359 and render.go:487,520).
 func TestNoGhostCommandsInHints(t *testing.T) {
 	root, err := repoRoot()
 	if err != nil {

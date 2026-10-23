@@ -204,8 +204,8 @@ func TestResolveAPISecretInput_File_MissingHintIsFriendly(t *testing.T) {
 	}
 }
 
-// TestResolveAPISecretInput_File_MissingMessage_NoPathDuplicate pins
-// Round 3 UX nit: os.Open's error already includes the path, so wrapping
+// TestResolveAPISecretInput_File_MissingMessage_NoPathDuplicate pins a polish fix:
+// os.Open's error already includes the path, so wrapping
 // it without unwrapping produced "failed to read --api-secret-file /p:
 // open /p: no such file or directory" with the path appearing twice.
 // Unwrap via errors.As(*os.PathError) and use the inner cause.

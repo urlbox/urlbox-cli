@@ -1,5 +1,3 @@
-// internal/cmd/auth_preflight.go — v1.0.4 Class 5.
-//
 // Client-side pre-flight checks so predictable failures fail fast with
 // the CLI's own vocabulary, not the API's. Pre-1.0.4 a missing-secret
 // `urlbox render <url>` returned the API's confusing

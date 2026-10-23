@@ -86,9 +86,9 @@ Exit codes:
 func runDashboard(c *cobra.Command) error {
 	data := map[string]any{"url": dashboardURL}
 
-	// Round 8 MM: when the user asks for structured output (json/quiet),
+	// When the user asks for structured output (json/quiet),
 	// they're scripting around the URL — don't fire a browser side-effect
-	// in addition to printing the envelope. Adv-4 M4: agents calling
+	// in addition to printing the envelope. Agents calling
 	// `dashboard --output-format json` got an unexpected browser tab.
 	formatFlag, _ := c.Root().PersistentFlags().GetString("output-format")
 	resolvedFormat := output.ResolveFormat(formatFlag, c.OutOrStdout())

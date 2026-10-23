@@ -493,7 +493,7 @@ func TestLink_BadJSON_ValidationError(t *testing.T) {
 	}
 }
 
-// TestLink_PositionalURL pins Round 5 First-1: link now accepts a
+// TestLink_PositionalURL pins a regression: link now accepts a
 // positional URL like render does. Previously `urlbox link
 // https://example.com` errored with "unknown command", forcing the
 // user to discover --url. The inconsistency was confusing — render
