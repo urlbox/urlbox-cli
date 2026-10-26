@@ -4,7 +4,7 @@ All notable changes to the `urlbox` CLI are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
-## Unreleased
+## v1.3.0 — 2026-10-26
 
 ### Added
 - **Report a bad render from the CLI.** Every render response now prints a
