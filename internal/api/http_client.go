@@ -35,9 +35,11 @@ type HTTPClient struct {
 	APIKey    string // publishable key (reserved for HMAC URL signing in Phase 5)
 	APISecret string // secret key for the Authorization: Bearer header
 	UserAgent string
-	Timeout   time.Duration
-	Retry     RetryConfig
-	HTTP      *http.Client // injectable for tests; default is built from Timeout
+	// Timeout caps a call only when the caller's context has no deadline.
+	// Callers that set one (render and status --timeout) own the budget.
+	Timeout time.Duration
+	Retry   RetryConfig
+	HTTP    *http.Client // injectable for tests
 }
 
 // NewHTTPClient constructs a client with spec defaults. baseURL must be
@@ -51,8 +53,10 @@ func NewHTTPClient(baseURL, apiKey, apiSecret string) *HTTPClient {
 		UserAgent: BuildUserAgent(version.Version),
 		Timeout:   timeout,
 		Retry:     DefaultRetryConfig(),
+		// No http.Client Timeout: it would cut every call at a fixed value,
+		// whatever deadline the caller set (issue #10). do() applies Timeout
+		// through the context instead.
 		HTTP: &http.Client{
-			Timeout: timeout,
 			Transport: &http.Transport{
 				TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12},
 			},
@@ -78,6 +82,12 @@ func (c *HTTPClient) Status(ctx context.Context, renderID string) (*Response, er
 
 // do is the single request entry point: build, send (through retry), parse.
 func (c *HTTPClient) do(ctx context.Context, method, path string, body any) (*Response, error) {
+	if _, ok := ctx.Deadline(); !ok && c.Timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, c.Timeout)
+		defer cancel()
+	}
+
 	var bodyBytes []byte
 	if body != nil {
 		b, err := json.Marshal(body)
