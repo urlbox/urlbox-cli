@@ -4,6 +4,19 @@ All notable changes to the `urlbox` CLI are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
+## v1.3.1 — 2026-11-23
+
+### Fixed
+- **`--timeout` is honoured.** Sync renders failed after 30 seconds whatever
+  `--timeout` said, because the API client had its own fixed 30s limit. The
+  `--timeout` deadline is now the only limit, so `--timeout 6m` waits six
+  minutes and the 60s default applies. `status --timeout` had the same
+  problem and is fixed too.
+- `--timeout 0` is now a usage error, like negative values. It used to fail
+  with "Render timed out after 0s" without sending the request.
+- The `--timeout` help text and the skill describe it as the total budget for
+  the call, retries included, instead of a per-attempt timeout.
+
 ## v1.3.0 — 2026-10-26
 
 ### Added
