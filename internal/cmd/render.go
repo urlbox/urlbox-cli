@@ -52,8 +52,8 @@ func SetStdinForTest(r io.Reader) { renderStdin = r }
 // ResetStdinForTest restores os.Stdin.
 func ResetStdinForTest() { renderStdin = os.Stdin }
 
-// defaultRenderTimeout is the per-attempt deadline for a render call. On
-// expiry the CLI fails fast with code "timeout" (exit 11) and surfaces the
+// defaultRenderTimeout is the deadline for the whole render call, retries
+// and backoff included. On expiry the CLI fails fast with code "timeout" (exit 11) and surfaces the
 // three recovery paths via networkHint — it does not retry.
 const defaultRenderTimeout = 60 * time.Second
 
@@ -82,7 +82,7 @@ type renderFlags struct {
 // wire. Only flags that produce option-map entries appear here; meta flags
 // like --dry-run, --curl, --output, --preset are handled separately.
 //
-// Note: --timeout is a CLI-level duration flag (per-attempt budget); it is
+// Note: --timeout is a CLI-level duration flag (total call budget); it is
 // NOT a render-API option. The API's hard-page-timeout (ms) can still be
 // set via --json {"timeout": 30000}.
 var flagToOptionKey = map[string]string{
@@ -138,8 +138,8 @@ func attachRenderFlags(c *cobra.Command, f *renderFlags) {
 	c.Flags().BoolVar(&f.fullPage, "full-page", false, "Capture the full scrollable page")
 	c.Flags().IntVar(&f.delay, "delay", 0, "Wait N ms after page load before capture")
 	c.Flags().DurationVar(&f.timeout, "timeout", defaultRenderTimeout,
-		"Per-attempt timeout for the render call (e.g. 60s, 3m). On timeout, "+
-			"the CLI fails fast — it does not retry. Raise this for heavy pages, "+
+		"Total time allowed for the render call, including any retries (e.g. 60s, 3m). "+
+			"A timeout itself is never retried. Raise this for heavy pages, "+
 			"or use --async --webhook-url for very long renders.")
 	c.Flags().StringVarP(&f.selector, "selector", "s", "", "CSS selector to capture")
 	c.Flags().IntVarP(&f.quality, "quality", "q", 0, "Output quality (1-100, format-dependent)")
@@ -169,11 +169,10 @@ func runRender(cmd *cobra.Command, args []string, f *renderFlags) error {
 		f.url = args[0]
 	}
 
-	// Reject negative --timeout up front. Without this,
-	// `--timeout -5s` produced the nonsense diagnostic "Render timed out
-	// after -5s" — the per-attempt context immediately expired and the
-	// timeout-error path interpolated the negative duration verbatim.
-	if f.timeout < 0 {
+	// Reject a zero or negative --timeout up front. Without this, the
+	// context expired before the request was sent and the timeout-error
+	// path reported "Render timed out after 0s" (or "-5s").
+	if f.timeout <= 0 {
 		return output.NewCLIError(
 			output.ErrUsage,
 			fmt.Sprintf("--timeout must be a positive duration; got %s", f.timeout),

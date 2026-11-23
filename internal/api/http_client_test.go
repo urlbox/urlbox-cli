@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -475,5 +476,55 @@ func TestHTTPClient_Render_InvalidURLError_MapsToValidation(t *testing.T) {
 	}
 	if !strings.Contains(cli.Message, "Invalid URL") {
 		t.Errorf("Message=%q should surface the API's text", cli.Message)
+	}
+}
+
+// slowServer answers with a valid render body after delay.
+func slowServer(t *testing.T, delay time.Duration) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		time.Sleep(delay)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"renderUrl":"https://cdn2.urlbox.io/x.png","size":1}`))
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// Issue #10: the caller's deadline (render/status --timeout) is the budget.
+// A fixed client-level timeout used to cut every request at 30s, whatever
+// --timeout said.
+func TestHTTPClient_CallerDeadlineOutlivesClientTimeout(t *testing.T) {
+	srv := slowServer(t, 300*time.Millisecond)
+	c := api.NewHTTPClient(srv.URL, "", "sec_test")
+	c.Retry = api.NoRetryConfig()
+	c.Timeout = 50 * time.Millisecond
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if _, err := c.Render(ctx, map[string]any{"url": "https://example.com"}); err != nil {
+		t.Fatalf("Render with a 5s deadline against a 300ms server: %v", err)
+	}
+}
+
+// Without a caller deadline, Timeout still caps the request so nothing can
+// hang forever.
+func TestHTTPClient_TimeoutAppliesWithoutCallerDeadline(t *testing.T) {
+	srv := slowServer(t, 300*time.Millisecond)
+	c := api.NewHTTPClient(srv.URL, "", "sec_test")
+	c.Retry = api.NoRetryConfig()
+	c.Timeout = 50 * time.Millisecond
+
+	_, err := c.Render(context.Background(), map[string]any{"url": "https://example.com"})
+	var cli *output.CLIError
+	if !errors.As(err, &cli) || cli.Code != output.ErrTimeout {
+		t.Fatalf("err=%v, want ErrTimeout", err)
+	}
+}
+
+func TestNewHTTPClient_NoFixedHTTPTimeout(t *testing.T) {
+	c := api.NewHTTPClient("https://api.urlbox.com", "", "sec_test")
+	if c.HTTP.Timeout != 0 {
+		t.Errorf("HTTP.Timeout = %s, want 0: the context deadline is the request budget", c.HTTP.Timeout)
 	}
 }

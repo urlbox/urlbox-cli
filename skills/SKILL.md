@@ -276,8 +276,8 @@ rarely helps.
 
 ### Timeout
 
-`--timeout duration` (default `60s`) sets the per-attempt budget for the
-render call. Raise it for heavy `--full-page` renders or news/article
+`--timeout duration` (default `60s`) sets the total budget for the render
+call, retries and backoff included. Raise it for heavy `--full-page` renders or news/article
 sites. For very long renders, prefer `--async --webhook-url <url>` so
 the CLI doesn't block.
 

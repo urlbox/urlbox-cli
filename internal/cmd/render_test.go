@@ -1315,30 +1315,34 @@ func TestRender_DryRunWithOutput_WarnsAboutSilentDrop(t *testing.T) {
 	}
 }
 
-// TestRender_NegativeTimeout_Errors pins a regression: --timeout -5s
-// used to produce the nonsense diagnostic "Render timed out after -5s".
-// Negative durations should be rejected at parse time with a clear
-// usage error.
-func TestRender_NegativeTimeout_Errors(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	t.Setenv("URLBOX_API_SECRET", "sec_test")
+// TestRender_NonPositiveTimeout_Errors pins two regressions: --timeout -5s
+// used to produce the nonsense diagnostic "Render timed out after -5s", and
+// --timeout 0 failed with "Render timed out after 0s" without ever sending
+// the request. Both are rejected up front with a clear usage error.
+func TestRender_NonPositiveTimeout_Errors(t *testing.T) {
+	for _, timeout := range []string{"-5s", "0", "0s"} {
+		t.Run(timeout, func(t *testing.T) {
+			t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+			t.Setenv("URLBOX_API_SECRET", "sec_test")
 
-	var stdout, stderr bytes.Buffer
-	exit := cmd.Execute([]string{
-		"render", "https://example.com",
-		"--timeout", "-5s",
-		"--output-format", "json",
-	}, &stdout, &stderr)
-	if exit != 1 {
-		t.Fatalf("exit=%d, want 1 (usage); stdout=%s", exit, stdout.String())
-	}
-	var env map[string]any
-	_ = json.Unmarshal(stdout.Bytes(), &env)
-	if env["code"] != "usage" {
-		t.Errorf("code=%v, want usage", env["code"])
-	}
-	if !strings.Contains(env["error"].(string), "positive") && !strings.Contains(env["error"].(string), "negative") {
-		t.Errorf("error should mention positive/negative; got %q", env["error"])
+			var stdout, stderr bytes.Buffer
+			exit := cmd.Execute([]string{
+				"render", "https://example.com",
+				"--timeout", timeout,
+				"--output-format", "json",
+			}, &stdout, &stderr)
+			if exit != 1 {
+				t.Fatalf("exit=%d, want 1 (usage); stdout=%s", exit, stdout.String())
+			}
+			var env map[string]any
+			_ = json.Unmarshal(stdout.Bytes(), &env)
+			if env["code"] != "usage" {
+				t.Errorf("code=%v, want usage", env["code"])
+			}
+			if msg, _ := env["error"].(string); !strings.Contains(msg, "positive") {
+				t.Errorf("error should say the duration must be positive; got %q", env["error"])
+			}
+		})
 	}
 }
 

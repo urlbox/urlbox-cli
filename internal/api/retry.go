@@ -70,8 +70,8 @@ func RetryDo(ctx context.Context, cfg RetryConfig, do func() (*http.Response, er
 		if err == nil && !isRetryable(resp.StatusCode) {
 			return resp, nil
 		}
-		// Timeout means the per-attempt budget is exhausted; retrying will
-		// hit it again. Surface the timeout fast so the agent can pick the
+		// Timeout means the call's budget is exhausted; retrying can't
+		// help. Surface the timeout fast so the agent can pick the
 		// recovery (retry / --timeout / --async). Net/http wraps the
 		// context error in url.Error — errors.Is unwraps it.
 		if err != nil && (errors.Is(err, context.DeadlineExceeded) ||
